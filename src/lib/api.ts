@@ -16,7 +16,7 @@ const getBaseUrl = () => {
 };
 
 /** When true, requests go through Next.js API proxy so backend calls are logged in the Node terminal */
-const useProxy = () =>
+const shouldUseProxy = () =>
   typeof window !== "undefined" && process.env.NEXT_PUBLIC_USE_API_PROXY === "true";
 
 export async function apiClient<T>(
@@ -24,7 +24,8 @@ export async function apiClient<T>(
   options: RequestInit = {}
 ): Promise<ApiSuccess<T>> {
   const pathNormalized = path.startsWith("/") ? path.slice(1) : path;
-  const base = useProxy()
+  const useProxy = shouldUseProxy();
+  const base = useProxy
     ? ""
     : getBaseUrl();
   const url = path.startsWith("http")
@@ -33,7 +34,7 @@ export async function apiClient<T>(
       ? `${base}/${pathNormalized}`
       : `/api/proxy/${pathNormalized}`;
 
-  if (!base && !path.startsWith("http") && !useProxy()) {
+  if (!base && !path.startsWith("http") && !useProxy) {
     throw new Error(
       "API URL not configured. Set NEXT_PUBLIC_API_URL in .env.local (e.g. http://localhost:3010/v1)."
     );
