@@ -81,6 +81,14 @@ npm run build
 npm start
 ```
 
+### Deploy na Vercel
+
+1. Conecte o repositório ao [Vercel](https://vercel.com); o framework Next.js é detectado automaticamente.
+2. Configure as variáveis de ambiente no painel do projeto:
+   - **NEXT_PUBLIC_API_URL**: URL base da API (ex.: `https://sua-api.vercel.app/v1` ou o backend onde estiver rodando).
+3. (Opcional) **NEXT_PUBLIC_USE_API_PROXY**: `true` só faz sentido em desenvolvimento com proxy local; em produção deixe sem valor ou `false`.
+4. Faça o deploy; a Vercel usa `npm run build` e serve o app.
+
 ---
 
 ## Estrutura do projeto (resumo)

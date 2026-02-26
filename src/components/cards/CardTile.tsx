@@ -38,6 +38,9 @@ function IconMinus({ className }: { className?: string }) {
 const cardClassName =
   "group relative aspect-[2.5/3.5] w-full overflow-hidden rounded-lg border border-gray-700/50 bg-gray-800 shadow-lg transition-all duration-200 ease-out hover:-translate-y-1 hover:scale-[1.03] hover:shadow-xl hover:shadow-black/30";
 
+/** Set to false once Riot API key is approved and card assets come from Riot only */
+const SUPPRESS_CARD_IMAGES = true;
+
 export function CardTile({
   card,
   inCollection = false,
@@ -57,9 +60,11 @@ export function CardTile({
 
   const Wrapper = wrapperElement;
 
+  const showCardImage = card.imageUrl && !SUPPRESS_CARD_IMAGES;
+
   return (
     <Wrapper className={cardClassName}>
-      {card.imageUrl ? (
+      {showCardImage ? (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element -- dynamic URLs from API */}
           <img
@@ -73,7 +78,7 @@ export function CardTile({
                 <span className="flex h-10 min-w-10 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-sm font-bold tabular-nums text-gray-300">
                   {card.collector_number ?? "—"}
                 </span>
-<div className="flex items-center gap-1">
+                <div className="flex items-center gap-1">
                   {inCollection && qty > 0 && (
                   <span className="flex h-10 min-w-10 items-center justify-center rounded-md border border-white/30 bg-black/70 px-2 text-sm font-bold tabular-nums text-white shadow">
                       ×{qty}
@@ -107,45 +112,51 @@ export function CardTile({
           </div>
         </>
       ) : (
-        <div className={`flex h-full w-full flex-col items-center justify-center gap-2 rounded-lg bg-gray-800 p-4 text-center ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`}>
-          <span className="text-4xl text-gray-600">?</span>
-          <p className="text-sm font-medium text-gray-400">{card.name}</p>
-          {card.type && <p className="text-xs text-gray-500">{card.type}</p>}
-          {showCollectionActions && (
-            <div className="flex w-full items-center justify-between gap-2">
-              <span className="flex h-10 min-w-10 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-sm font-bold tabular-nums text-gray-300">
-                {card.collector_number ?? "—"}
-              </span>
-              <div className="flex items-center gap-1">
-                {inCollection && qty > 0 && (
-                  <span className="flex h-10 min-w-10 items-center justify-center rounded-md border border-white/30 bg-black/70 px-2 text-sm font-bold tabular-nums text-white">
-                    ×{qty}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={onAdd}
-                  disabled={actionDisabled}
-                  className="flex size-10 shrink-0 items-center justify-center rounded-md border-2 border-green-600 bg-green-700 text-white shadow hover:bg-green-600 disabled:opacity-50"
-                  aria-label="Add one"
-                >
-                  <IconPlus />
-                </button>
-                {canDecrease && (
+        <>
+          <div className={`absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gray-800 p-4 text-center ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`}>
+            <span className="text-3xl text-gray-500" aria-hidden>🖼️</span>
+            <p className="text-xs font-medium text-gray-400">Image unavailable.</p>
+            <p className="text-xs text-gray-500">Waiting for my well-deserved API key ;)</p>
+          </div>
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-2 py-3 pt-6">
+            {showCollectionActions && (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="flex h-10 min-w-10 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-sm font-bold tabular-nums text-gray-300">
+                  {card.collector_number ?? "—"}
+                </span>
+                <div className="flex items-center gap-1">
+                  {inCollection && qty > 0 && (
+                    <span className="flex h-10 min-w-10 items-center justify-center rounded-md border border-white/30 bg-black/70 px-2 text-sm font-bold tabular-nums text-white shadow">
+                      ×{qty}
+                    </span>
+                  )}
                   <button
                     type="button"
-                    onClick={onDecrease}
+                    onClick={(e) => { e.preventDefault(); onAdd?.(); }}
                     disabled={actionDisabled}
-                    className="flex size-10 shrink-0 items-center justify-center rounded-md border border-gray-500 bg-gray-700/90 text-white transition-colors hover:bg-gray-600 disabled:opacity-50"
-                    aria-label="Decrease quantity"
+                    className="flex size-10 shrink-0 items-center justify-center rounded-md border-2 border-green-600 bg-green-700 text-white shadow transition-colors hover:bg-green-600 hover:border-green-500 disabled:opacity-50"
+                    title="Add one"
+                    aria-label="Add one"
                   >
-                    <IconMinus />
+                    <IconPlus />
                   </button>
-                )}
+                  {canDecrease && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); onDecrease?.(); }}
+                      disabled={actionDisabled}
+                      className="flex size-10 shrink-0 items-center justify-center rounded-md border border-gray-500 bg-gray-700/90 text-white transition-colors hover:bg-gray-600 disabled:opacity-50"
+                      title="Decrease quantity"
+                      aria-label="Decrease quantity"
+                    >
+                      <IconMinus />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </>
       )}
     </Wrapper>
   );
