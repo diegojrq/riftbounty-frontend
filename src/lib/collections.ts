@@ -1,5 +1,9 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from "./api";
-import type { CollectionItemResponse, CollectionResponse } from "@/types/collection";
+import type {
+  CollectionItemResponse,
+  CollectionResponse,
+  CollectionStats,
+} from "@/types/collection";
 
 /** GET /v1/collections/me – returns user's collection (creates on first call) */
 export async function getCollection(): Promise<CollectionResponse> {
@@ -23,5 +27,11 @@ export async function updateQuantity(cardId: string, quantity: number): Promise<
   const res = await apiPatch<CollectionItemResponse>("/collections/me/items/" + encodeURIComponent(cardId), {
     quantity,
   });
+  return res.data;
+}
+
+/** GET /v1/collections/me/stats – collection statistics for authenticated user */
+export async function getCollectionStats(): Promise<CollectionStats> {
+  const res = await apiGet<CollectionStats>("/collections/me/stats");
   return res.data;
 }

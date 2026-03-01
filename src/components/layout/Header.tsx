@@ -20,6 +20,9 @@ export function Header() {
               <Link href="/collection" className="text-sm text-gray-600 hover:text-gray-900">
                 My collection
               </Link>
+              <Link href="/decks" className="text-sm text-gray-600 hover:text-gray-900">
+                My decks
+              </Link>
               <span className="text-sm text-gray-600">
                 {user.displayName || user.email}
               </span>

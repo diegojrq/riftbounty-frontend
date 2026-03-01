@@ -94,7 +94,7 @@ export async function apiPost<T>(path: string, data: unknown): Promise<ApiSucces
 /** GET; params with undefined/empty values are omitted */
 export async function apiGet<T>(
   path: string,
-  params?: Record<string, string | number | undefined>
+  params?: Record<string, string | number | boolean | undefined>
 ): Promise<ApiSuccess<T>> {
   if (!params) return apiClient<T>(path);
   const search = new URLSearchParams();
@@ -114,6 +114,14 @@ export async function apiDelete<T>(path: string): Promise<ApiSuccess<T>> {
 export async function apiPatch<T>(path: string, data: unknown): Promise<ApiSuccess<T>> {
   return apiClient<T>(path, {
     method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+/** PUT with JSON body */
+export async function apiPut<T>(path: string, data: unknown): Promise<ApiSuccess<T>> {
+  return apiClient<T>(path, {
+    method: "PUT",
     body: JSON.stringify(data),
   });
 }
