@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const getBackendUrl = () => {
-  const url = process.env.NEXT_PUBLIC_API_URL;
-  if (!url) throw new Error("NEXT_PUBLIC_API_URL not set");
+  const url = process.env.API_URL;
+  if (!url) throw new Error("API_URL not set");
   return url.replace(/\/$/, "");
 };
 
@@ -18,6 +18,13 @@ export async function POST(
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   return proxy(request, await params, "POST");
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> }
+) {
+  return proxy(request, await params, "PUT");
 }
 
 export async function PATCH(
@@ -53,13 +60,7 @@ async function proxy(
     }
   }
 
-  console.log("[API proxy]", new Date().toISOString());
-  console.log("  Method:", method);
-  console.log("  URL:", backendUrl);
-  if (body !== null) {
-    console.log("  Payload:", JSON.stringify(body, null, 2));
-  }
-  console.log("");
+  const payloadStr = body !== null ? ` | payload: ${JSON.stringify(body)}` : "";
 
   const headers: HeadersInit = {};
   request.headers.forEach((value, key) => {
@@ -80,10 +81,10 @@ async function proxy(
   const resBody = await res.text();
   try {
     const json = JSON.parse(resBody);
-    console.log("[API proxy] Response status:", res.status);
-    console.log("");
+    console.log(`[proxy] ${method} /${pathSegment}${payloadStr} → ${res.status}`);
     return NextResponse.json(json, { status: res.status });
   } catch {
+    console.log(`[proxy] ${method} /${pathSegment}${payloadStr} → ${res.status}`);
     return new NextResponse(resBody, {
       status: res.status,
       headers: { "Content-Type": res.headers.get("Content-Type") ?? "text/plain" },

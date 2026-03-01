@@ -9,7 +9,11 @@ export interface Deck {
   championCardId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Card populado — backend pode retornar como `legendCard` ou `legend` */
+  legendCard?: Card | null;
   legend?: Card | null;
+  /** Card populado — backend pode retornar como `championCard` ou `champion` */
+  championCard?: Card | null;
   champion?: Card | null;
   mainItems?: DeckMainItem[];
   runeItems?: DeckRuneItem[];

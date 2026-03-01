@@ -28,6 +28,7 @@ export interface Card {
   cardAttributes?: unknown[];
   cardSubtypes?: unknown[];
   cardSupertypes?: unknown[];
+  cardDomains?: { domain: { id: number; name: string } }[];
   /** True if at least 1 in collection; false otherwise. Always present (false when not logged in). */
   inCollection?: boolean;
   /** Quantity in collection; always number (0 when not in collection). Same format logged in or not. */

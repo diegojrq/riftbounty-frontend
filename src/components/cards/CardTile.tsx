@@ -40,8 +40,10 @@ function IconMinus({ className }: { className?: string }) {
   );
 }
 
-const cardClassName =
-  "group relative aspect-[2.5/3.5] w-full overflow-hidden rounded-lg border border-gray-700/50 bg-gray-800 shadow-lg transition-all duration-200 ease-out hover:-translate-y-1 hover:scale-[1.03] hover:shadow-xl hover:shadow-black/30";
+const portraitClass = "aspect-[2.5/3.5]";
+const landscapeClass = "aspect-[3.5/2.5]";
+const cardBaseClass =
+  "group relative w-full overflow-hidden rounded-lg border border-gray-700/50 bg-gray-800 shadow-lg transition-all duration-200 ease-out hover:-translate-y-2 hover:shadow-xl hover:shadow-black/30";
 
 /** Set to true to hide card images (e.g. while waiting for Riot API key); backend may send imageUrl from other sources */
 const SUPPRESS_CARD_IMAGES = false;
@@ -64,19 +66,47 @@ export function CardTile({
   const qty = Number(quantity ?? card.collectionQuantity ?? 0);
   const canDecrease = inCollection && qty >= 1;
   const useGrayscale = grayscaleWhenNotInCollection && !inCollection;
+  const isLandscape = card.orientation?.toLowerCase() === "landscape";
+  const cardClassName = `${cardBaseClass} ${isLandscape ? landscapeClass : portraitClass}`;
 
   const Wrapper = wrapperElement;
 
   const showCardImage = card.imageUrl && !SUPPRESS_CARD_IMAGES;
 
   const imageNode = showCardImage ? (
-    /* eslint-disable-next-line @next/next/no-img-element -- dynamic URLs from API */
-    <img
-      src={card.imageUrl}
-      alt={card.name}
-      className={`absolute inset-0 h-full w-full object-cover transition-all duration-200 ease-out group-hover:scale-105 ${useGrayscale ? "grayscale" : ""}`}
-    />
+    isLandscape ? (
+      /*
+       * Imagem portrait dentro de container landscape:
+       * - largura do img = altura do container  → calc(100% * 2.5/3.5) da largura do container
+       * - altura do img  = largura do container → calc(100% * 3.5/2.5) da altura do container
+       * - centralizado e rotacionado 90° → visual preenche exatamente o container
+       */
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={card.imageUrl}
+        alt={card.name}
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          width: "calc(100% * 2.5 / 3.5)",
+          height: "calc(100% * 3.5 / 2.5)",
+          objectFit: "cover",
+          transform: "translate(-50%, -50%) rotate(90deg)",
+        }}
+        className={useGrayscale ? "grayscale" : ""}
+      />
+    ) : (
+      /* eslint-disable-next-line @next/next/no-img-element -- dynamic URLs from API */
+      <img
+        src={card.imageUrl}
+        alt={card.name}
+        className={`absolute inset-0 h-full w-full object-cover transition-all duration-200 ease-out ${useGrayscale ? "grayscale" : ""}`}
+      />
+    )
   ) : null;
+
+  const collectorNumber = card.collector_number ?? card.collectorNumber;
 
   return (
     <Wrapper className={cardClassName}>
@@ -101,10 +131,7 @@ export function CardTile({
                     ×{qty}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold tabular-nums text-gray-300">
-                    {(card.collector_number ?? card.collectorNumber) ?? "—"}
-                  </span>
+                <div className="flex items-center justify-end gap-2">
                   <div className="flex items-center gap-1">
                     {canDecrease && (
                       <button
@@ -130,6 +157,13 @@ export function CardTile({
                     </button>
                   </div>
                 </div>
+                {collectorNumber && (
+                  <div className="flex justify-end">
+                    <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold tabular-nums text-gray-300">
+                      {collectorNumber}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -161,10 +195,7 @@ export function CardTile({
                     ×{qty}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold tabular-nums text-gray-300">
-                    {(card.collector_number ?? card.collectorNumber) ?? "—"}
-                  </span>
+                <div className="flex items-center justify-end gap-2">
                   <div className="flex items-center gap-1">
                     {canDecrease && (
                       <button
@@ -190,6 +221,13 @@ export function CardTile({
                     </button>
                   </div>
                 </div>
+                {collectorNumber && (
+                  <div className="flex justify-end">
+                    <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold tabular-nums text-gray-300">
+                      {collectorNumber}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>

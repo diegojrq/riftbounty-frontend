@@ -9,36 +9,27 @@ import type { ApiSuccess } from "@/types/api";
 
 const DEFAULT_TIMEOUT_MS = 10000;
 
-const getBaseUrl = () => {
-  const url = process.env.NEXT_PUBLIC_API_URL;
-  if (!url) return "";
-  return url.replace(/\/$/, "");
+/**
+ * No browser: sempre usa /api/proxy/ (Next.js Route Handler server-side)
+ * → o backend real nunca aparece no Network tab do browser.
+ * No servidor (SSR/RSC): chama o backend direto via API_URL.
+ */
+const buildUrl = (path: string): string => {
+  if (path.startsWith("http")) return path;
+  const pathNormalized = path.startsWith("/") ? path.slice(1) : path;
+  if (typeof window !== "undefined") {
+    return `/api/proxy/${pathNormalized}`;
+  }
+  const base = (process.env.API_URL ?? "").replace(/\/$/, "");
+  if (!base) throw new Error("API_URL not set in .env.local");
+  return `${base}/${pathNormalized}`;
 };
-
-/** When true, requests go through Next.js API proxy so backend calls are logged in the Node terminal */
-const shouldUseProxy = () =>
-  typeof window !== "undefined" && process.env.NEXT_PUBLIC_USE_API_PROXY === "true";
 
 export async function apiClient<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<ApiSuccess<T>> {
-  const pathNormalized = path.startsWith("/") ? path.slice(1) : path;
-  const useProxy = shouldUseProxy();
-  const base = useProxy
-    ? ""
-    : getBaseUrl();
-  const url = path.startsWith("http")
-    ? path
-    : base
-      ? `${base}/${pathNormalized}`
-      : `/api/proxy/${pathNormalized}`;
-
-  if (!base && !path.startsWith("http") && !useProxy) {
-    throw new Error(
-      "API URL not configured. Set NEXT_PUBLIC_API_URL in .env.local (e.g. http://localhost:3010/v1)."
-    );
-  }
+  const url = buildUrl(path);
 
   const token = typeof window !== "undefined" ? getToken() : null;
   const headers: HeadersInit = {
@@ -59,6 +50,18 @@ export async function apiClient<T>(
       signal: options.signal ?? controller.signal,
     });
     clearTimeout(timeoutId);
+
+    // 204 No Content ou body vazio — resposta válida sem dados
+    if (res.status === 204 || res.headers.get("content-length") === "0") {
+      return { status: "success", data: null as unknown as T };
+    }
+
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      return { status: "success", data: null as unknown as T };
+    }
+
     const body = await res.json().catch(() => {
       throw new Error("Invalid response from API (not JSON). Check NEXT_PUBLIC_API_URL.");
     });

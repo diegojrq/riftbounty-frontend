@@ -100,7 +100,7 @@ export default function DecksPage() {
                     <span className="font-medium">{deck.name || "Unnamed deck"}</span>
                     <p className="mt-1 text-sm text-gray-400">
                       Main {mainCount}/40 · Runes {runeCount}/12
-                      {deck.legend && ` · ${deck.legend.name}`}
+                      {(deck.legendCard ?? deck.legend) && ` · ${(deck.legendCard ?? deck.legend)?.name}`}
                     </p>
                   </Link>
                 </li>
