@@ -6,6 +6,8 @@ import type { Card } from "@/types/card";
 interface CardHoverPreviewProps {
   card: Card;
   children: React.ReactNode;
+  /** When true, cards with type Battlefield use landscape aspect (only set on deck edit/view) */
+  battlefieldAsLandscape?: boolean;
 }
 
 /**
@@ -13,7 +15,7 @@ interface CardHoverPreviewProps {
  * Handles both portrait and landscape orientations.
  * Positions the preview smartly to avoid viewport overflow.
  */
-export function CardHoverPreview({ card, children }: CardHoverPreviewProps) {
+export function CardHoverPreview({ card, children, battlefieldAsLandscape = false }: CardHoverPreviewProps) {
   const [visible, setVisible] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; side: "left" | "right" }>({
     top: 0,
@@ -22,7 +24,10 @@ export function CardHoverPreview({ card, children }: CardHoverPreviewProps) {
   });
   const triggerRef = useRef<HTMLSpanElement>(null);
 
-  const isLandscape = card.orientation?.toLowerCase() === "landscape";
+  const isLandscape =
+    card.orientation?.toLowerCase() === "landscape" ||
+    (card.record_type?.toLowerCase().includes("battleground") ?? false) ||
+    (battlefieldAsLandscape && (card.type?.toLowerCase() === "battlefield"));
   // portrait: 280px wide × 392px tall  |  landscape: 392px wide × 280px tall
   const PREVIEW_W = isLandscape ? 392 : 280;
   const PREVIEW_H = isLandscape ? 280 : 392;

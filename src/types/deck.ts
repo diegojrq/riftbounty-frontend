@@ -17,6 +17,7 @@ export interface Deck {
   champion?: Card | null;
   mainItems?: DeckMainItem[];
   runeItems?: DeckRuneItem[];
+  sideboardItems?: DeckSideboardItem[];
   battlefields?: DeckBattlefield[];
   validation?: DeckValidation;
 }
@@ -29,6 +30,13 @@ export interface DeckMainItem {
 }
 
 export interface DeckRuneItem {
+  deckId: string;
+  cardId: string;
+  quantity: number;
+  card?: Card;
+}
+
+export interface DeckSideboardItem {
   deckId: string;
   cardId: string;
   quantity: number;

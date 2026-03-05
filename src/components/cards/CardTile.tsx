@@ -19,6 +19,8 @@ interface CardTileProps {
   actionDisabled?: boolean;
   /** Use "div" when wrapping in a parent li (e.g. with loading overlay) */
   wrapperElement?: "li" | "div";
+  /** When true, cards with type Battlefield use landscape aspect (only set on deck edit/view) */
+  battlefieldAsLandscape?: boolean;
   onAdd?: () => void;
   onDecrease?: () => void;
 }
@@ -59,6 +61,7 @@ export function CardTile({
   grayscaleWhenNotInCollection = false,
   actionDisabled = false,
   wrapperElement = "li",
+  battlefieldAsLandscape = false,
   onAdd,
   onDecrease,
 }: CardTileProps) {
@@ -66,7 +69,10 @@ export function CardTile({
   const qty = Number(quantity ?? card.collectionQuantity ?? 0);
   const canDecrease = inCollection && qty >= 1;
   const useGrayscale = grayscaleWhenNotInCollection && !inCollection;
-  const isLandscape = card.orientation?.toLowerCase() === "landscape";
+  const isLandscape =
+    card.orientation?.toLowerCase() === "landscape" ||
+    (card.record_type?.toLowerCase().includes("battleground") ?? false) ||
+    (battlefieldAsLandscape && (card.type?.toLowerCase() === "battlefield"));
   const cardClassName = `${cardBaseClass} ${isLandscape ? landscapeClass : portraitClass}`;
 
   const Wrapper = wrapperElement;

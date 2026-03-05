@@ -7,7 +7,9 @@ import { CollectionStats } from "@/components/collection/CollectionStats";
 import { CardTile } from "@/components/cards/CardTile";
 import {
   addToCollection,
+  getCollection,
   removeFromCollection,
+  setCollectionVisibility,
   updateQuantity,
 } from "@/lib/collections";
 import { useAuth } from "@/lib/auth-context";
@@ -57,6 +59,9 @@ export default function CollectionPage() {
   const [selectedAttributes, setSelectedAttributes] = useState<string[]>([]);
   const [actionCardId, setActionCardId] = useState<string | null>(null);
   const [statsRefreshTrigger, setStatsRefreshTrigger] = useState(0);
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [collectionPublic, setCollectionPublic] = useState<boolean>(false);
+  const [visibilityLoading, setVisibilityLoading] = useState(false);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const cardsContainerRef = useRef<HTMLDivElement>(null);
 
@@ -128,6 +133,15 @@ export default function CollectionPage() {
     setOffset(0);
     fetchCards(buildParams({ offset: 0 }));
   }, [user, nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, collectionStatus, selectedAttributes, buildParams, fetchCards]);
+
+  useEffect(() => {
+    if (!user) return;
+    getCollection()
+      .then((data) => {
+        setCollectionPublic(data.collection.isPublic ?? false);
+      })
+      .catch(() => {});
+  }, [user, statsRefreshTrigger]);
 
   const loadMore = useCallback(async () => {
     if (!user) return;
@@ -212,7 +226,7 @@ export default function CollectionPage() {
       const data = await updateQuantity(card.uuid, qty - 1);
       setItems((prev) =>
         prev.map((c) =>
-          c.uuid === (data.cardId ?? data.card?.uuid)
+          c.uuid === (data.cardId ?? data.cardUuid ?? data.card?.uuid)
             ? { ...c, ...data.card, collectionQuantity: data.quantity, inCollection: true }
             : c
         )
@@ -222,6 +236,20 @@ export default function CollectionPage() {
       // could set error toast
     } finally {
       setActionCardId(null);
+    }
+  }
+
+  async function handleVisibilityToggle() {
+    if (!user) return;
+    setVisibilityLoading(true);
+    try {
+      const next = !collectionPublic;
+      await setCollectionVisibility(next);
+      setCollectionPublic(next);
+    } catch {
+      // toast error
+    } finally {
+      setVisibilityLoading(false);
     }
   }
 
@@ -262,6 +290,26 @@ export default function CollectionPage() {
           {error && (
             <div className="rounded bg-red-900/50 px-3 py-1.5 text-sm text-red-200">{error}</div>
           )}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-400">Public collection</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={collectionPublic}
+              disabled={visibilityLoading}
+              onClick={handleVisibilityToggle}
+              className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${
+                collectionPublic ? "border-emerald-500 bg-emerald-600" : "border-gray-600 bg-gray-700"
+              } ${visibilityLoading ? "opacity-50" : ""}`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  collectionPublic ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+            <span className="text-xs text-gray-500">Visible on your profile</span>
+          </div>
         </header>
         <CollectionStats breakdown={false} refreshTrigger={statsRefreshTrigger} />
       </div>
@@ -270,9 +318,9 @@ export default function CollectionPage() {
       <div className="sticky top-0 z-20 border-b border-gray-700 bg-gray-900">
         <div className="mx-auto w-full max-w-[1600px] px-4 py-3 sm:px-6 lg:px-10 xl:px-12">
 
-          {/* Linha 0: busca */}
-          <div className="mb-3">
-            <div className="relative w-full">
+          {/* Linha 0: busca + toggle filters */}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="relative min-w-0 flex-1">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden>
                 <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
@@ -292,13 +340,29 @@ export default function CollectionPage() {
                 </span>
               )}
             </div>
-            {searchQuery.trim().length > 0 && searchQuery.trim().length < MIN_SEARCH_LENGTH && (
-              <p className="mt-1 text-xs text-amber-400/80">
-                {MIN_SEARCH_LENGTH - searchQuery.trim().length} more {MIN_SEARCH_LENGTH - searchQuery.trim().length === 1 ? "character" : "characters"} to search
-              </p>
-            )}
+            <button
+              type="button"
+              onClick={() => setFiltersExpanded((v) => !v)}
+              className="flex shrink-0 items-center gap-1.5 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700"
+              aria-expanded={filtersExpanded}
+            >
+              Filters
+              {hasActiveFilters && (
+                <span className="flex h-2 w-2 shrink-0 rounded-full bg-blue-500" aria-hidden />
+              )}
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={filtersExpanded ? "rotate-180" : ""}>
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
           </div>
+          {searchQuery.trim().length > 0 && searchQuery.trim().length < MIN_SEARCH_LENGTH && (
+            <p className="mb-3 mt-1 text-xs text-amber-400/80">
+              {MIN_SEARCH_LENGTH - searchQuery.trim().length} more {MIN_SEARCH_LENGTH - searchQuery.trim().length === 1 ? "character" : "characters"} to search
+            </p>
+          )}
 
+          {filtersExpanded && (
+            <>
           {/* Linha 1: controles principais */}
           <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
 
@@ -473,6 +537,8 @@ export default function CollectionPage() {
           <div className="mt-3 border-t border-gray-800 pt-3">
             <AttributesFilter selected={selectedAttributes} onChange={setSelectedAttributes} />
           </div>
+            </>
+          )}
 
           {/* Active filter chips */}
           {hasActiveFilters && (

@@ -3,14 +3,16 @@ import type { Card } from "./card";
 /** GET /v1/collections/me – item in user's collection */
 export interface CollectionItem {
   collectionId: string;
-  cardId: string;
+  /** Backend may return cardUuid or cardId depending on version */
+  cardUuid?: string;
+  cardId?: string;
   quantity: number;
   card: Card;
 }
 
 /** GET /v1/collections/me response */
 export interface CollectionResponse {
-  collection: { id: string; userId: string };
+  collection: { id: string; userId: string; isPublic?: boolean };
   items: CollectionItem[];
 }
 
@@ -18,7 +20,8 @@ export interface CollectionResponse {
 export interface CollectionItemResponse {
   quantity: number;
   collectionId: string;
-  cardId: string;
+  cardUuid?: string;
+  cardId?: string;
   card: Card;
 }
 

@@ -1,3 +1,23 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes bounce-once {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.animate-bounce-once {
+  animation: bounce-once 0.5s ease-out;
+}
+
+@keyframes tremble {
+  0%, 100% { transform: translateX(0); }
+  10% { transform: translateX(-4px); }
+  30% { transform: translateX(4px); }
+  50% { transform: translateX(-4px); }
+  70% { transform: translateX(4px); }
+  90% { transform: translateX(-2px); }
+}
+.animate-tremble {
+  animation: tremble 2s ease-in-out;
+}

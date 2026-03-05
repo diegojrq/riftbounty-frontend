@@ -5,9 +5,15 @@ import type {
   CollectionStats,
 } from "@/types/collection";
 
-/** GET /v1/collections/me – returns user's collection (creates on first call) */
+/** GET /v1/collections/me – returns user's collection (creates on first call). Includes collection.isPublic. */
 export async function getCollection(): Promise<CollectionResponse> {
   const res = await apiGet<CollectionResponse>("/collections/me");
+  return res.data;
+}
+
+/** PATCH /v1/collections/me/visibility – set whether collection is visible on public profile. */
+export async function setCollectionVisibility(isPublic: boolean): Promise<{ isPublic: boolean }> {
+  const res = await apiPatch<{ isPublic: boolean }>("/collections/me/visibility", { isPublic });
   return res.data;
 }
 
@@ -22,12 +28,21 @@ export async function removeFromCollection(cardId: string): Promise<void> {
   await apiDelete("/collections/me/items/" + encodeURIComponent(cardId));
 }
 
-/** PATCH /v1/collections/me/items/:cardId – set quantity (min 1). Returns new quantity and card. */
-export async function updateQuantity(cardId: string, quantity: number): Promise<CollectionItemResponse> {
-  const res = await apiPatch<CollectionItemResponse>("/collections/me/items/" + encodeURIComponent(cardId), {
-    quantity,
-  });
+/** PATCH /v1/collections/me/items/:cardId – set quantity for a card in the collection. */
+export async function updateCollectionItem(
+  cardId: string,
+  payload: { quantity: number }
+): Promise<CollectionItemResponse> {
+  const res = await apiPatch<CollectionItemResponse>(
+    "/collections/me/items/" + encodeURIComponent(cardId),
+    payload
+  );
   return res.data;
+}
+
+/** Set quantity for a card in the collection. */
+export async function updateQuantity(cardId: string, quantity: number): Promise<CollectionItemResponse> {
+  return updateCollectionItem(cardId, { quantity });
 }
 
 /** GET /v1/collections/me/stats – collection statistics for authenticated user */

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 
 export default function LoginPage() {
@@ -18,6 +19,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login({ email, password });
+      toast.success("Signed in successfully. Welcome back!");
       router.push("/");
     } catch {
       setLoading(false);

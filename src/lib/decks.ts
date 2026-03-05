@@ -3,9 +3,9 @@ import type { Deck, DeckValidation } from "@/types/deck";
 
 const BASE = "/decks";
 
-/** GET /v1/decks – list current user's decks */
+/** GET /v1/decks – list current user's decks (with validation) */
 export async function getDecks(): Promise<Deck[]> {
-  const res = await apiGet<Deck[]>(BASE);
+  const res = await apiGet<Deck[]>(BASE, { validate: "true" });
   // backend retorna data como array direto; fallback para { items } por segurança
   return Array.isArray(res.data) ? res.data : ((res.data as { items?: Deck[] })?.items ?? []);
 }
@@ -34,67 +34,91 @@ export async function updateDeckName(deckId: string, name: string): Promise<Deck
   return res.data;
 }
 
+// All mutation functions below perform the action then always re-fetch with
+// validate=true so the builder always has fresh validation data.
+
 /** PUT /v1/decks/:id/legend — pass null to remove */
 export async function setLegend(deckId: string, cardId: string | null): Promise<Deck> {
-  const res = await apiPut<Deck>(`${BASE}/${encodeURIComponent(deckId)}/legend`, { cardId });
-  return res.data ?? getDeck(deckId, true);
+  await apiPut<Deck>(`${BASE}/${encodeURIComponent(deckId)}/legend`, { cardId });
+  return getDeck(deckId, true);
 }
 
 /** PUT /v1/decks/:id/champion — pass null to remove */
 export async function setChampion(deckId: string, cardId: string | null): Promise<Deck> {
-  const res = await apiPut<Deck>(`${BASE}/${encodeURIComponent(deckId)}/champion`, { cardId });
-  return res.data ?? getDeck(deckId, true);
+  await apiPut<Deck>(`${BASE}/${encodeURIComponent(deckId)}/champion`, { cardId });
+  return getDeck(deckId, true);
 }
 
 /** POST /v1/decks/:id/main – add or increment main card */
 export async function addMainCard(deckId: string, cardId: string, quantity = 1): Promise<Deck> {
-  const res = await apiPost<Deck>(`${BASE}/${encodeURIComponent(deckId)}/main`, { cardId, quantity });
-  return res.data ?? getDeck(deckId, true);
+  await apiPost<Deck>(`${BASE}/${encodeURIComponent(deckId)}/main`, { cardId, quantity });
+  return getDeck(deckId, true);
 }
 
 /** PATCH /v1/decks/:id/main/:cardId – set quantity */
 export async function setMainCardQuantity(deckId: string, cardId: string, quantity: number): Promise<Deck> {
-  const res = await apiPatch<Deck>(
+  await apiPatch<Deck>(
     `${BASE}/${encodeURIComponent(deckId)}/main/${encodeURIComponent(cardId)}`,
     { quantity }
   );
-  return res.data ?? getDeck(deckId, true);
+  return getDeck(deckId, true);
 }
 
 /** DELETE /v1/decks/:id/main/:cardId */
 export async function removeMainCard(deckId: string, cardId: string): Promise<Deck> {
-  const res = await apiDelete<Deck>(`${BASE}/${encodeURIComponent(deckId)}/main/${encodeURIComponent(cardId)}`);
-  return res.data ?? getDeck(deckId, true);
+  await apiDelete<Deck>(`${BASE}/${encodeURIComponent(deckId)}/main/${encodeURIComponent(cardId)}`);
+  return getDeck(deckId, true);
 }
 
 /** POST /v1/decks/:id/rune */
 export async function addRuneCard(deckId: string, cardId: string, quantity = 1): Promise<Deck> {
-  const res = await apiPost<Deck>(`${BASE}/${encodeURIComponent(deckId)}/rune`, { cardId, quantity });
-  return res.data ?? getDeck(deckId, true);
+  await apiPost<Deck>(`${BASE}/${encodeURIComponent(deckId)}/rune`, { cardId, quantity });
+  return getDeck(deckId, true);
 }
 
 /** PATCH /v1/decks/:id/rune/:cardId */
 export async function setRuneCardQuantity(deckId: string, cardId: string, quantity: number): Promise<Deck> {
-  const res = await apiPatch<Deck>(
+  await apiPatch<Deck>(
     `${BASE}/${encodeURIComponent(deckId)}/rune/${encodeURIComponent(cardId)}`,
     { quantity }
   );
-  return res.data ?? getDeck(deckId, true);
+  return getDeck(deckId, true);
 }
 
 /** DELETE /v1/decks/:id/rune/:cardId */
 export async function removeRuneCard(deckId: string, cardId: string): Promise<Deck> {
-  const res = await apiDelete<Deck>(`${BASE}/${encodeURIComponent(deckId)}/rune/${encodeURIComponent(cardId)}`);
-  return res.data ?? getDeck(deckId, true);
+  await apiDelete<Deck>(`${BASE}/${encodeURIComponent(deckId)}/rune/${encodeURIComponent(cardId)}`);
+  return getDeck(deckId, true);
 }
 
 /** PUT /v1/decks/:id/battlefields/:position (1, 2, or 3); pass null to clear */
 export async function setBattlefield(deckId: string, position: 1 | 2 | 3, cardId: string | null): Promise<Deck> {
-  const res = await apiPut<Deck>(
+  await apiPut<Deck>(
     `${BASE}/${encodeURIComponent(deckId)}/battlefields/${position}`,
     { cardId }
   );
-  return res.data ?? getDeck(deckId, true);
+  return getDeck(deckId, true);
+}
+
+/** POST /v1/decks/:id/sideboard */
+export async function addSideboardCard(deckId: string, cardId: string, quantity = 1): Promise<Deck> {
+  await apiPost<Deck>(`${BASE}/${encodeURIComponent(deckId)}/sideboard`, { cardId, quantity });
+  return getDeck(deckId, true);
+}
+
+/** PATCH /v1/decks/:id/sideboard/:cardId */
+export async function setSideboardCardQuantity(deckId: string, cardId: string, quantity: number): Promise<Deck> {
+  await apiPatch<Deck>(
+    `${BASE}/${encodeURIComponent(deckId)}/sideboard/${encodeURIComponent(cardId)}`,
+    { quantity }
+  );
+  return getDeck(deckId, true);
+}
+
+/** DELETE /v1/decks/:id/sideboard/:cardId */
+export async function removeSideboardCard(deckId: string, cardId: string): Promise<Deck> {
+  await apiDelete<Deck>(`${BASE}/${encodeURIComponent(deckId)}/sideboard/${encodeURIComponent(cardId)}`);
+  return getDeck(deckId, true);
 }
 
 /** DELETE /v1/decks/:id */

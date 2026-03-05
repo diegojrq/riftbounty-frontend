@@ -1,8 +1,10 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { apiPost } from "./api";
 import { getStoredUser, removeToken, setStoredUser, setToken } from "./auth";
+import { getProfile } from "./profile";
 import type { AuthResponse, LoginCredentials, RegisterPayload, User } from "@/types/auth";
 
 interface AuthState {
@@ -16,6 +18,7 @@ interface AuthContextValue extends AuthState {
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
   clearError: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -36,7 +39,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStoredUser(u);
       setUser(u);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed");
+      const msg = err instanceof Error ? err.message : "Sign in failed";
+      setError(msg);
+      toast.error(msg);
       throw err;
     }
   }, []);
@@ -50,7 +55,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStoredUser(u);
       setUser(u);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      const msg = err instanceof Error ? err.message : "Registration failed";
+      setError(msg);
+      toast.error(msg);
       throw err;
     }
   }, []);
@@ -58,6 +65,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     removeToken();
     setUser(null);
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const data = await getProfile();
+      setUser(data);
+      setStoredUser(data);
+    } catch {
+      // keep current user on failure
+    }
   }, []);
 
   useEffect(() => {
@@ -73,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     register,
     logout,
     clearError,
+    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

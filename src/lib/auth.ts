@@ -4,6 +4,8 @@
  * For better security later: use httpOnly cookie if the backend sends Set-Cookie.
  */
 
+import type { User } from "@/types/auth";
+
 const TOKEN_KEY = "riftbounty_access_token";
 const USER_KEY = "riftbounty_user";
 
@@ -23,17 +25,17 @@ export function removeToken(): void {
   localStorage.removeItem(USER_KEY);
 }
 
-export function setStoredUser(user: { id: string; email: string; displayName: string | null }): void {
+export function setStoredUser(user: User): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
-export function getStoredUser(): { id: string; email: string; displayName: string | null } | null {
+export function getStoredUser(): User | null {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(USER_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as { id: string; email: string; displayName: string | null };
+    return JSON.parse(raw) as User;
   } catch {
     return null;
   }

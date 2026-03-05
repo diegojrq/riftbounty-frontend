@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getDeck,
   updateDeckName,
@@ -14,10 +14,14 @@ import {
   addRuneCard,
   setRuneCardQuantity,
   removeRuneCard,
+  addSideboardCard,
+  setSideboardCardQuantity,
+  removeSideboardCard,
   setBattlefield,
   deleteDeck,
 } from "@/lib/decks";
 import { useAuth } from "@/lib/auth-context";
+import { getCollection } from "@/lib/collections";
 import { apiGet } from "@/lib/api";
 import { CardTile } from "@/components/cards/CardTile";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
@@ -32,45 +36,109 @@ function toQueryRecord(p: CardsQueryParams): Record<string, string | number | bo
 
 const DOMAINS = ["fury", "calm", "mind", "body", "chaos", "order"] as const;
 
+function CardWarning({ errors }: { errors: string[] }) {
+  const [pos, setPos] = useState<{ top: number; left: number; above: boolean } | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  if (!errors.length) return null;
+  const tip = errors.map(e => e.replace(/^(Main Deck|Rune Deck|Sideboard):\s*/i, "")).join("\n");
+
+  function handleMouseEnter() {
+    if (!ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const spaceAbove = r.top > 120;
+    setPos({
+      top: spaceAbove ? r.top - 8 : r.bottom + 8,
+      left: r.left + r.width / 2,
+      above: spaceAbove,
+    });
+  }
+
+  return (
+    <span
+      ref={ref}
+      className="ml-0.5 shrink-0 cursor-help"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => setPos(null)}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/>
+      </svg>
+      {pos && (
+        <div
+          className="pointer-events-none fixed z-[9999] w-max max-w-[240px] -translate-x-1/2 rounded-lg border border-amber-600/40 bg-gray-900 px-2.5 py-2 text-xs leading-snug text-amber-300 shadow-xl whitespace-pre-line"
+          style={{
+            top: pos.above ? pos.top : pos.top,
+            left: pos.left,
+            transform: `translateX(-50%) translateY(${pos.above ? "-100%" : "0%"})`,
+          }}
+        >
+          {tip}
+          <span
+            className="absolute left-1/2 -translate-x-1/2 border-4 border-transparent"
+            style={pos.above
+              ? { top: "100%", borderTopColor: "rgb(17 24 39)" }
+              : { bottom: "100%", borderBottomColor: "rgb(17 24 39)" }
+            }
+          />
+        </div>
+      )}
+    </span>
+  );
+}
+
 function CardPickerGrid({
-  picker, cards, deck,
-  onSetLegend, onSetChampion, onAddMain, onAddRune, onSetBattlefield,
+  picker, cards, deck, mainCount, runeCount, sideboardCount, collectionQtyByCardId,
+  onSetLegend, onSetChampion, onAddMain, onAddRune, onAddSideboard, onSetBattlefield, onPickBattlefield,
 }: {
   picker: PickerMode;
   cards: Card[];
   deck: Deck;
+  mainCount: number;
+  runeCount: number;
+  sideboardCount: number;
+  collectionQtyByCardId: Map<string, number>;
   onSetLegend: (c: Card) => void;
   onSetChampion: (c: Card) => void;
   onAddMain: (c: Card) => void;
   onAddRune: (c: Card) => void;
+  onAddSideboard: (c: Card) => void;
   onSetBattlefield: (pos: 1 | 2 | 3, c: Card) => void;
+  onPickBattlefield?: (c: Card) => void;
 }) {
+  // Combined qty: main + sideboard (counts toward the 3-copy limit)
   const mainQtyMap = new Map<string, number>();
   for (const item of deck.mainItems ?? []) {
     const id = item.card?.uuid ?? item.cardId;
-    if (id) mainQtyMap.set(id, item.quantity);
+    if (id) mainQtyMap.set(id, (mainQtyMap.get(id) ?? 0) + item.quantity);
   }
-  const runeQtyMap = new Map<string, number>();
-  for (const item of deck.runeItems ?? []) {
+  const sbQtyMap = new Map<string, number>();
+  for (const item of deck.sideboardItems ?? []) {
     const id = item.card?.uuid ?? item.cardId;
-    if (id) runeQtyMap.set(id, item.quantity);
+    if (id) sbQtyMap.set(id, (sbQtyMap.get(id) ?? 0) + item.quantity);
   }
 
-  const isBf = picker === "bf1" || picker === "bf2" || picker === "bf3";
+  const isBf = picker === "battlefields";
 
   return (
     <ul className={`grid list-none gap-2 overflow-y-auto ${
       isBf ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
     }`}>
       {cards.map((card) => {
-        const currentQty = picker === "rune"
-          ? (runeQtyMap.get(card.uuid) ?? 0)
-          : (mainQtyMap.get(card.uuid) ?? 0);
-        const maxQty = picker === "rune" ? 1 : 3;
-        const atLimit = (picker === "main" || picker === "rune") && currentQty >= maxQty;
+        const mainQty = mainQtyMap.get(card.uuid) ?? 0;
+        const sbQty = sbQtyMap.get(card.uuid) ?? 0;
+        const combinedQty = mainQty + sbQty;
+        // Main: max 39 total + max 3 per card (main+sb combined) | Sideboard: max 8 total + max 3 per card | Rune: max 12 total
+        const atLimit =
+          (picker === "main" && (mainCount >= 39 || combinedQty >= 3)) ||
+          (picker === "sideboard" && (sideboardCount >= 8 || combinedQty >= 3)) ||
+          (picker === "rune" && runeCount >= 12);
+
+        const inColl = picker === "legend" || picker === "champion" || picker === "battlefields" || picker === "main" || picker === "rune" || picker === "sideboard";
+        const owned = collectionQtyByCardId.get(card.uuid) ?? card.collectionQuantity ?? 0;
 
         return (
-          <li key={card.uuid}>
+          <li key={card.uuid} className="relative">
             <button
               type="button"
               disabled={atLimit}
@@ -81,9 +149,8 @@ function CardPickerGrid({
                 else if (picker === "champion") onSetChampion(card);
                 else if (picker === "main") onAddMain(card);
                 else if (picker === "rune") onAddRune(card);
-                else if (picker === "bf1") onSetBattlefield(1, card);
-                else if (picker === "bf2") onSetBattlefield(2, card);
-                else if (picker === "bf3") onSetBattlefield(3, card);
+                else if (picker === "sideboard") onAddSideboard(card);
+                else if (picker === "battlefields" && onPickBattlefield) onPickBattlefield(card);
               }}
             >
               <CardTile
@@ -91,7 +158,20 @@ function CardPickerGrid({
                 wrapperElement="div"
                 grayscaleWhenNotInCollection={atLimit}
                 inCollection={!atLimit}
+                battlefieldAsLandscape
               />
+              {inColl && (
+                <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 to-transparent px-2 py-3 pt-6 pointer-events-none">
+                  <div className="flex justify-end">
+                    <span
+                      title={`You have ${owned} in your collection`}
+                      className="flex size-10 shrink-0 items-center justify-center rounded-md border border-white/30 bg-black/70 text-sm font-bold tabular-nums text-white shadow"
+                    >
+                      ×{owned}
+                    </span>
+                  </div>
+                </div>
+              )}
             </button>
           </li>
         );
@@ -100,7 +180,7 @@ function CardPickerGrid({
   );
 }
 
-type PickerMode = "legend" | "champion" | "main" | "rune" | "bf1" | "bf2" | "bf3";
+type PickerMode = "legend" | "champion" | "battlefields" | "main" | "rune" | "sideboard";
 
 /** Retorna o próximo passo pendente do deck, na ordem de prioridade. */
 function getNextPicker(deck: Deck): PickerMode {
@@ -108,26 +188,37 @@ function getNextPicker(deck: Deck): PickerMode {
   const champion = deck.championCard ?? deck.champion;
   if (!legend) return "legend";
   if (!champion) return "champion";
+
   const bfs = deck.battlefields ?? [];
-  for (const pos of [1, 2, 3] as const) {
-    const bf = bfs.find((b) => b.position === pos);
-    if (!bf?.card) return `bf${pos}` as PickerMode;
+  const allBfsFilled = [1, 2, 3].every((pos) => bfs.find((b) => b.position === pos)?.card);
+  if (!allBfsFilled) return "battlefields";
+
+  // Build per-card error map from validation data
+  const cardErrors = new Map<string, true>();
+  for (const err of deck.validation?.errors ?? []) {
+    const match = err.match(/"([^"]+)"/);
+    if (match) cardErrors.set(match[1].toLowerCase(), true);
   }
+
+  const sectionHasErrors = (items: { card?: { name?: string } | null }[]) =>
+    items.some((i) => cardErrors.has(i.card?.name?.toLowerCase() ?? ""));
+
   const mainCount = deck.mainItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
-  if (mainCount < 40) return "main";
+  if (mainCount < 39 || sectionHasErrors(deck.mainItems ?? [])) return "main";
+
   const runeCount = deck.runeItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
-  if (runeCount < 12) return "rune";
-  return "main"; // deck completo — mantém main como default
+  if (runeCount < 12 || sectionHasErrors(deck.runeItems ?? [])) return "rune";
+
+  return "sideboard"; // suggest sideboard as final optional step
 }
 
 const PICKER_TITLES: Record<PickerMode, string> = {
-  legend: "Escolha sua Legend",
-  champion: "Escolha seu Champion",
-  bf1: "Escolha o Battlefield 1",
-  bf2: "Escolha o Battlefield 2",
-  bf3: "Escolha o Battlefield 3",
-  main: "Adicione cartas ao Main Deck",
-  rune: "Adicione Runas ao Rune Deck",
+  legend: "Choose your Legend",
+  champion: "Choose your Champion",
+  battlefields: "Choose Battlefields",
+  main: "Add cards to Main Deck",
+  rune: "Add Runes to Rune Deck",
+  sideboard: "Add cards to Sideboard",
 };
 
 export default function DeckBuilderPage() {
@@ -140,6 +231,7 @@ export default function DeckBuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
+  const [editingName, setEditingName] = useState(false);
   const [picker, setPicker] = useState<PickerMode | null>(null);
   const [pickerDomain, setPickerDomain] = useState<string | undefined>(undefined); // legend: single
   const [pickerDomains, setPickerDomains] = useState<string[]>([]); // main: multi
@@ -148,6 +240,19 @@ export default function DeckBuilderPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [cardsLoading, setCardsLoading] = useState(false);
   const [cardSearchQuery, setCardSearchQuery] = useState("");
+  const [showValidModal, setShowValidModal] = useState(false);
+  const [onlyInCollection, setOnlyInCollection] = useState(false);
+  const [collectionQtyByCardId, setCollectionQtyByCardId] = useState<Map<string, number>>(new Map());
+  const [battlefieldSlotBeingEdited, setBattlefieldSlotBeingEdited] = useState<1 | 2 | 3 | null>(null);
+  const prevValidRef = useRef<boolean | null>(null);
+
+  const firstEmptyBattlefieldSlot = useMemo((): 1 | 2 | 3 | null => {
+    const bfs = deck?.battlefields ?? [];
+    for (const pos of [1, 2, 3] as const) {
+      if (!bfs.find((b) => b.position === pos)?.card) return pos;
+    }
+    return null;
+  }, [deck?.battlefields]);
 
   const fetchDeck = useCallback(async () => {
     if (!deckId) return;
@@ -176,6 +281,20 @@ export default function DeckBuilderPage() {
     fetchDeck();
   }, [authLoading, user, router, fetchDeck]);
 
+  useEffect(() => {
+    if (!user) return;
+    getCollection()
+      .then((data) => {
+        const map = new Map<string, number>();
+        for (const it of data.items ?? []) {
+          const id = it.card?.uuid ?? it.cardId;
+          if (id) map.set(id, (map.get(id) ?? 0) + (it.quantity ?? 0));
+        }
+        setCollectionQtyByCardId(map);
+      })
+      .catch(() => setCollectionQtyByCardId(new Map()));
+  }, [user]);
+
   const fetchCards = useCallback(async () => {
     if (!picker) return;
     setCardsLoading(true);
@@ -190,35 +309,48 @@ export default function DeckBuilderPage() {
       if (picker === "legend") {
         params.type = "legend";
         if (pickerDomain) params.domain = pickerDomain;
+        if (onlyInCollection) params.inCollection = true;
       } else if (picker === "champion") {
         params.type = "champion";
         const legendCard = deck?.legendCard ?? deck?.legend;
         const legendSubtype = legendCard?.subtypes?.[0];
         if (legendSubtype) params.subtype = legendSubtype;
-      } else if (picker === "main") {
+        if (onlyInCollection) params.inCollection = true;
+      } else if (picker === "main" || picker === "sideboard") {
         if (pickerDomains.length > 0) params.domain = pickerDomains.join(",");
         if (pickerType) params.type = pickerType;
         if (pickerAttributes.length > 0) params.attribute = pickerAttributes.join(",");
+        if (onlyInCollection) params.inCollection = true;
       } else if (picker === "rune") {
         params.type = "Rune";
-      } else if (picker === "bf1" || picker === "bf2" || picker === "bf3") {
+        if (pickerDomains.length > 0) params.domain = pickerDomains.join(",");
+        if (onlyInCollection) params.inCollection = true;
+      } else if (picker === "battlefields") {
         params.type = "Battlefield";
+        if (onlyInCollection) params.inCollection = true;
       }
       const res = await apiGet<CardsListResponse>("/cards", toQueryRecord(params));
-      setCards(res.data.items ?? []);
+      let items = res.data.items ?? [];
+      if (picker === "main") {
+        items = items.filter((c) => {
+          const t = c.type?.toLowerCase() ?? "";
+          return t !== "rune" && t !== "legend";
+        });
+      }
+      setCards(items);
     } catch {
       setCards([]);
     } finally {
       setCardsLoading(false);
     }
-  }, [picker, pickerDomain, pickerDomains, pickerType, pickerAttributes, cardSearchQuery, deck]);
+  }, [picker, pickerDomain, pickerDomains, pickerType, pickerAttributes, cardSearchQuery, deck, onlyInCollection]);
 
   // Reseta filtros ao trocar o picker; para "main" pré-seleciona todos os domains da legend
   useEffect(() => {
     const legend = deck?.legendCard ?? deck?.legend;
     const legendDomains = legend?.cardDomains?.map((cd) => cd.domain.name.toLowerCase()) ?? [];
     setPickerDomain(undefined);
-    setPickerDomains(picker === "main" ? legendDomains : []);
+    setPickerDomains(picker === "main" || picker === "rune" || picker === "sideboard" ? legendDomains : []);
     setPickerType(undefined);
     setPickerAttributes([]);
     setCardSearchQuery("");
@@ -235,12 +367,67 @@ export default function DeckBuilderPage() {
     return () => clearTimeout(t);
   }, [picker, pickerDomain, pickerDomains, pickerType, pickerAttributes, cardSearchQuery, fetchCards]);
 
+  // Opens the modal only when deck transitions from invalid → valid during editing
+  useEffect(() => {
+    if (!deck) return;
+    const hasName = ((deck.name ?? nameDraft)?.trim() ?? "").length > 0;
+    const mainC = deck.mainItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
+    const runeC = deck.runeItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
+    const bfsLen = deck.battlefields?.length ?? 0;
+    const bfsOk = bfsLen === 3 && deck.battlefields?.every((b) => b.card ?? b.cardId);
+    const hasLegend = !!(deck.legendCard ?? deck.legend);
+    const hasChampion = !!(deck.championCard ?? deck.champion);
+    const structurallyComplete = mainC === 39 && runeC === 12 && bfsOk && hasLegend && hasChampion;
+    const noErrors = (deck.validation?.errors?.length ?? 0) === 0;
+    const noWarnings = (deck.validation?.warnings?.length ?? 0) === 0;
+    const validationValid = deck.validation?.valid === true;
+    const isValid = noErrors && noWarnings && (validationValid || structurallyComplete);
+    const prevWasTrue = prevValidRef.current === true;
+    // #region agent log
+    if (typeof fetch !== "undefined") {
+      fetch("http://127.0.0.1:7905/ingest/39ec0feb-1413-4bfb-b655-c647fc6b8a34", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "186c0c" },
+        body: JSON.stringify({
+          sessionId: "186c0c",
+          location: "decks/[id]/page.tsx:modal-effect",
+          message: "validity-check",
+          data: {
+            mainC,
+            runeC,
+            bfsLen,
+            bfsOk,
+            hasLegend,
+            hasChampion,
+            structurallyComplete,
+            hasName,
+            deckNameLen: (deck.name ?? "").length,
+            nameDraftLen: (nameDraft ?? "").length,
+            noErrors,
+            noWarnings,
+            validationValid,
+            isValid,
+            prevWasTrue,
+            willShowModal: isValid && !prevWasTrue,
+          },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
+    if (isValid && prevValidRef.current !== true) {
+      setShowValidModal(true);
+    }
+    prevValidRef.current = isValid;
+  }, [deck, nameDraft]);
+
   async function handleSaveName() {
     if (!deck || nameDraft === deck.name) return;
     setSavingName(true);
     try {
       const updated = await updateDeckName(deck.id, nameDraft);
       setDeck(updated);
+      setEditingName(false);
     } catch {
       // keep draft
     } finally {
@@ -268,7 +455,9 @@ export default function DeckBuilderPage() {
     try {
       const updated = await setChampion(deck.id, card.uuid);
       setDeck(updated);
-      setPicker(getNextPicker(updated));
+      const next = getNextPicker(updated);
+      setPicker(next);
+      if (next === "battlefields") setBattlefieldSlotBeingEdited(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to set champion");
     }
@@ -297,6 +486,16 @@ export default function DeckBuilderPage() {
     }
   }
 
+  async function handleAddSideboard(card: Card) {
+    if (!deck) return;
+    try {
+      const updated = await addSideboardCard(deck.id, card.uuid, 1);
+      setDeck(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add to sideboard");
+    }
+  }
+
   async function handleSetBattlefield(position: 1 | 2 | 3, card: Card) {
     if (!deck) return;
     try {
@@ -305,6 +504,14 @@ export default function DeckBuilderPage() {
       setPicker(getNextPicker(updated));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to set battlefield");
+    }
+  }
+
+  function handlePickBattlefield(card: Card) {
+    const pos = battlefieldSlotBeingEdited ?? firstEmptyBattlefieldSlot;
+    if (pos != null) {
+      handleSetBattlefield(pos, card);
+      setBattlefieldSlotBeingEdited(null);
     }
   }
 
@@ -337,30 +544,132 @@ export default function DeckBuilderPage() {
 
   const mainCount = deck?.mainItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const runeCount = deck?.runeItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
+  const sideboardCount = deck?.sideboardItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const validation = deck?.validation;
   const deckLegend = deck?.legendCard ?? deck?.legend;
   const deckChampion = deck?.championCard ?? deck?.champion;
 
+  const deckDomains = deckLegend?.cardDomains ?? [];
+  const hasName = ((editingName ? nameDraft : (deck?.name ?? nameDraft))?.trim() ?? "").length > 0;
+  const structurallyComplete =
+    mainCount === 39 &&
+    runeCount === 12 &&
+    (deck?.battlefields?.length ?? 0) === 3 &&
+    deck?.battlefields?.every((b) => b.card ?? b.cardId) &&
+    !!deckLegend &&
+    !!deckChampion;
+  const isDeckValid = !!(
+    (validation?.errors?.length ?? 0) === 0 &&
+    (validation?.warnings?.length ?? 0) === 0 &&
+    (validation?.valid === true || structurallyComplete)
+  );
+
+  // Map cardName (lowercase) → error messages, for inline warning icons
+  const cardErrorMap = new Map<string, string[]>();
+  for (const err of validation?.errors ?? []) {
+    const match = err.match(/"([^"]+)"/);
+    if (match) {
+      const key = match[1].toLowerCase();
+      cardErrorMap.set(key, [...(cardErrorMap.get(key) ?? []), err]);
+    }
+  }
+  // Structural errors = those that don't reference a specific card name
+  const structuralErrors = (validation?.errors ?? []).filter(e => !/"[^"]+"/.test(e));
+  const structuralWarnings = validation?.warnings ?? [];
+
+  // Whether each section has at least one card with a validation error
+  const mainHasErrors = (deck?.mainItems ?? []).some(
+    item => cardErrorMap.has(item.card?.name?.toLowerCase() ?? "")
+  );
+  const runeHasErrors = (deck?.runeItems ?? []).some(
+    item => cardErrorMap.has(item.card?.name?.toLowerCase() ?? "")
+  );
+  const sideboardHasErrors = (deck?.sideboardItems ?? []).some(
+    item => cardErrorMap.has(item.card?.name?.toLowerCase() ?? "")
+  );
+
   return (
     <div className="min-h-screen bg-gray-900">
-      <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-10 xl:px-12">
-        <div className="mb-6 flex items-center gap-4">
-          <Link href="/decks" className="text-gray-400 hover:text-white">← Decks</Link>
-          <input
-            type="text"
-            value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
-            onBlur={handleSaveName}
-            disabled={savingName}
-            className="rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-lg font-medium text-white"
-          />
-          <button
-            type="button"
-            onClick={handleDelete}
-            className="rounded bg-red-900/50 px-3 py-1.5 text-sm text-red-200 hover:bg-red-900/70"
+      {/* Modal deck válido */}
+      {showValidModal && deck && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setShowValidModal(false)}
+        >
+          <div
+            className="relative mx-4 w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 p-8 shadow-2xl text-center"
+            onClick={(e) => e.stopPropagation()}
           >
-            Delete deck
-          </button>
+            {/* Ícone de check */}
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/30">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+            </div>
+
+            <h2 className="mb-1 text-2xl font-bold text-white">Deck complete!</h2>
+            <p className="mb-6 text-sm text-gray-400">Your deck is ready to play.</p>
+
+            {/* Domains */}
+            {deckDomains.length > 0 && (
+              <div className="mb-8 flex items-center justify-center gap-4">
+                {deckDomains.map((cd) => (
+                  <div key={cd.domain.name} className="flex flex-col items-center gap-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/images/${cd.domain.name.toLowerCase()}.webp`}
+                      alt={cd.domain.name}
+                      className="h-16 w-16 object-contain drop-shadow-lg"
+                    />
+                    <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                      {cd.domain.name.charAt(0).toUpperCase() + cd.domain.name.slice(1)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Ações */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <button
+                type="button"
+                onClick={() => setShowValidModal(false)}
+                className="rounded-lg border border-gray-600 bg-gray-800 px-6 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+              >
+                Continue editing
+              </button>
+              <Link
+                href={`/decks/${deck.id}/view`}
+                className="rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+              >
+                View deck
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-10 xl:px-12">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <Link href="/decks" className="text-gray-400 hover:text-white">← Decks</Link>
+          <div className="flex items-center gap-3">
+            {isDeckValid && deck && (
+              <Link
+                href={`/decks/${deck.id}/view`}
+                className="flex items-center gap-1.5 rounded-lg border border-emerald-700 bg-emerald-900/30 px-3 py-1.5 text-sm font-medium text-emerald-400 transition-colors hover:bg-emerald-900/60 hover:text-emerald-300"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                View deck
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="rounded bg-red-900/50 px-3 py-1.5 text-sm text-red-200 hover:bg-red-900/70"
+            >
+              Delete deck
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -371,24 +680,137 @@ export default function DeckBuilderPage() {
           <p className="text-gray-400">Loading deck...</p>
         ) : !deck ? null : (
           <div className="flex flex-col gap-6 lg:flex-row">
-            {/* Coluna esquerda: lista de cartas (70%) */}
+            {/* Left column: card list (70%) */}
             <div className="flex flex-col rounded-lg border border-gray-700 bg-gray-800/50 p-4 min-h-[400px] lg:w-[70%] lg:shrink-0">
+              {/* Top section: deck name + steps */}
+              <div className="mb-4 border-b border-gray-700 pb-4">
+                <div className="mb-3 flex flex-col gap-1">
+                  <label htmlFor="deck-name" className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                    Deck name
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {editingName ? (
+                      <>
+                        <input
+                          id="deck-name"
+                          type="text"
+                          value={nameDraft}
+                          onChange={(e) => setNameDraft(e.target.value)}
+                          disabled={savingName}
+                          placeholder="Give your deck a name"
+                          className={`min-w-0 flex-1 rounded border px-3 py-2 text-base font-medium text-white placeholder:text-gray-500 ${
+                            !(nameDraft?.trim()) && (deck?.mainItems?.length ?? 0) > 0
+                              ? "border-amber-500 bg-amber-950/20 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/50"
+                              : "border-gray-600 bg-gray-800 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                          }`}
+                          onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveName}
+                          disabled={savingName || nameDraft === deck?.name}
+                          className="shrink-0 rounded border border-emerald-700 bg-emerald-900/40 px-3 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-900/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {savingName ? "…" : "Save"}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          id="deck-name"
+                          className={`min-w-0 flex-1 rounded border border-transparent px-3 py-2 text-base font-medium ${
+                            (deck?.name?.trim() ?? "") ? "text-white" : "text-gray-500"
+                          }`}
+                        >
+                          {(deck?.name?.trim() ?? "") || "No name"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingName(true);
+                            setNameDraft(deck?.name ?? "");
+                          }}
+                          className="shrink-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
+                        >
+                          Edit Name
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {!(nameDraft?.trim()) && editingName && (deck?.mainItems?.length ?? 0) > 0 && (
+                    <p className="text-xs text-amber-400">Deck name is required</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium uppercase tracking-wider text-gray-500 shrink-0">Steps</span>
+                  <div className="flex flex-wrap gap-1">
+                    {(["legend", "champion", "battlefields", "main", "rune", "sideboard"] as PickerMode[]).map((mode) => {
+                      const labelMap: Record<PickerMode, string> = {
+                        legend: "Legend", champion: "Champion",
+                        battlefields: "Battlefields",
+                        main: "Main", rune: "Rune", sideboard: "SB",
+                      };
+                      const bfCount = deck?.battlefields?.filter((b) => b.card).length ?? 0;
+                      const errs = validation?.errors ?? [];
+                      const doneMap: Record<PickerMode, boolean> = {
+                        legend: !!deckLegend,
+                        champion: !!deckChampion,
+                        battlefields: bfCount === 3,
+                        main: mainCount === 39,
+                        rune: runeCount === 12,
+                        sideboard: sideboardCount > 0,
+                      };
+                      const bfHasWarn = errs.some((e) => /^battlefield/i.test(e));
+                      const warnMap: Record<PickerMode, boolean> = {
+                        legend: doneMap.legend && errs.some(e => /^legend/i.test(e)),
+                        champion: doneMap.champion && errs.some(e => /^champion/i.test(e)),
+                        battlefields: doneMap.battlefields && bfHasWarn,
+                        main: doneMap.main && (errs.some(e => /^main/i.test(e)) || mainHasErrors),
+                        rune: doneMap.rune && (errs.some(e => /^rune/i.test(e)) || runeHasErrors),
+                        sideboard: doneMap.sideboard && (errs.some(e => /^sideboard/i.test(e)) || sideboardHasErrors),
+                      };
+                      const active = picker === mode;
+                      const done = doneMap[mode];
+                      const warn = warnMap[mode];
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => { setPicker(mode); setCardSearchQuery(""); if (mode === "battlefields") setBattlefieldSlotBeingEdited(null); }}
+                          className={`rounded border px-2 py-0.5 text-xs font-medium transition-all ${
+                            active
+                              ? warn
+                                ? "border-amber-500 bg-amber-900/30 text-amber-300"
+                                : "border-blue-500 bg-blue-500/20 text-blue-300"
+                              : warn
+                              ? "border-amber-600 bg-amber-900/20 text-amber-400 hover:border-amber-500"
+                              : done
+                              ? "border-emerald-700 bg-emerald-900/20 text-emerald-400 hover:border-emerald-500"
+                              : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
+                          }`}
+                        >
+                          {warn && "⚠ "}{!warn && done && !active && "✓ "}{labelMap[mode]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
               {picker ? (
                 <>
-                  {/* Header do passo atual */}
-                  <div className="mb-4 flex items-center justify-between gap-3">
+                  {/* Current step header */}
+                  <div className="mb-4 flex items-center gap-3">
                     <div className="flex items-center gap-2.5">
-                      {/* Ícone do tipo */}
-                      {(picker === "legend" || picker === "champion" || picker === "main" || picker === "rune" ||
-                        picker === "bf1" || picker === "bf2" || picker === "bf3") && (() => {
+                      {/* Type icon */}
+                      {(() => {
                         const imgMap: Record<PickerMode, string> = {
                           legend: "/images/types/legend.webp",
                           champion: "/images/types/champion.webp",
-                          bf1: "/images/types/battlefields.webp",
-                          bf2: "/images/types/battlefields.webp",
-                          bf3: "/images/types/battlefields.webp",
+                          battlefields: "/images/types/battlefields.webp",
                           main: "/images/types/unit.webp",
                           rune: "/images/types/runes.webp",
+                          sideboard: "/images/types/unit.webp",
                         };
                         return (
                           /* eslint-disable-next-line @next/next/no-img-element */
@@ -400,143 +822,136 @@ export default function DeckBuilderPage() {
                           {PICKER_TITLES[picker]}
                         </h3>
                         <p className="text-xs text-gray-500">
-                          {picker === "main" && `${mainCount}/40 cartas`}
-                          {picker === "rune" && `${runeCount}/12 runas`}
-                          {picker === "legend" && "Obrigatório"}
-                          {picker === "champion" && "Obrigatório"}
-                          {(picker === "bf1" || picker === "bf2" || picker === "bf3") && "Obrigatório"}
+                          {picker === "main" && `${mainCount}/39 cards`}
+                          {picker === "rune" && `${runeCount}/12 runes`}
+                          {picker === "sideboard" && `${sideboardCount}/8 cards · Optional`}
+                          {picker === "legend" && "Required"}
+                          {picker === "champion" && "Required"}
+                          {picker === "battlefields" && "Required (3 slots)"}
                         </p>
                       </div>
                     </div>
-                    {/* Chips de navegação rápida */}
-                    <div className="flex flex-wrap justify-end gap-1">
-                      {(["legend", "champion", "bf1", "bf2", "bf3", "main", "rune"] as PickerMode[]).map((mode) => {
-                        const labelMap: Record<PickerMode, string> = {
-                          legend: "Legend", champion: "Champion",
-                          bf1: "BF 1", bf2: "BF 2", bf3: "BF 3",
-                          main: "Main", rune: "Rune",
-                        };
-                        const doneMap: Record<PickerMode, boolean> = {
-                          legend: !!deckLegend,
-                          champion: !!deckChampion,
-                          bf1: !!(deck.battlefields?.find((b) => b.position === 1)?.card),
-                          bf2: !!(deck.battlefields?.find((b) => b.position === 2)?.card),
-                          bf3: !!(deck.battlefields?.find((b) => b.position === 3)?.card),
-                          main: mainCount === 40,
-                          rune: runeCount === 12,
-                        };
-                        const active = picker === mode;
-                        const done = doneMap[mode];
-                        return (
-                          <button
-                            key={mode}
-                            type="button"
-                            onClick={() => { setPicker(mode); setCardSearchQuery(""); }}
-                            className={`rounded border px-2 py-0.5 text-xs font-medium transition-all ${
-                              active
-                                ? "border-blue-500 bg-blue-500/20 text-blue-300"
-                                : done
-                                ? "border-emerald-700 bg-emerald-900/20 text-emerald-400 hover:border-emerald-500"
-                                : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
-                            }`}
-                          >
-                            {done && !active ? "✓ " : ""}{labelMap[mode]}
-                          </button>
-                        );
-                      })}
-                    </div>
                   </div>
 
-                  {/* Filtros de Domain */}
-                  {(picker === "legend" || picker === "main") && (() => {
-                    const domainsToShow = picker === "main"
-                      ? (deckLegend?.cardDomains?.map((cd) => cd.domain.name.toLowerCase()) ?? [])
-                      : [...DOMAINS] as string[];
-                    if (domainsToShow.length === 0) return null;
-                    return (
-                      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-                        <span className="text-xs text-gray-500">Domain:</span>
-                        {/* "All" só aparece no legend picker */}
-                        {picker === "legend" && (
-                          <button
-                            type="button"
-                            onClick={() => setPickerDomain(undefined)}
-                            aria-pressed={pickerDomain === undefined}
-                            className={`h-7 rounded border-2 px-2 text-xs font-medium transition-all ${
-                              pickerDomain === undefined
-                                ? "border-white bg-gray-600 text-white"
-                                : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
-                            }`}
-                          >
-                            All
-                          </button>
-                        )}
-                        {domainsToShow.map((domain) => {
-                          const active = picker === "main"
-                            ? pickerDomains.includes(domain)
-                            : pickerDomain === domain;
-                          return (
-                            <button
-                              key={domain}
-                              type="button"
-                              onClick={() => {
-                                if (picker === "main") {
-                                  setPickerDomains((prev) => {
-                                    if (prev.includes(domain)) {
-                                      // Não permite deselecionar se for o único selecionado
-                                      if (prev.length === 1) return prev;
-                                      return prev.filter((d) => d !== domain);
+                  {/* Domain · Collection · Type — one row when applicable */}
+                  {(picker === "legend" || picker === "champion" || picker === "battlefields" || picker === "main" || picker === "rune" || picker === "sideboard") && (
+                    <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                      {/* Domain — not used for battlefields */}
+                      {picker !== "battlefields" && (() => {
+                        const isMultiDomain = picker === "main" || picker === "rune" || picker === "sideboard";
+                        const domainsToShow = isMultiDomain
+                          ? (deckLegend?.cardDomains?.map((cd) => cd.domain.name.toLowerCase()) ?? [])
+                          : [...DOMAINS] as string[];
+                        if (domainsToShow.length === 0) return null;
+                        return (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs text-gray-500">Domain:</span>
+                            {!isMultiDomain && (
+                              <button
+                                type="button"
+                                onClick={() => setPickerDomain(undefined)}
+                                aria-pressed={pickerDomain === undefined}
+                                className={`h-7 rounded border-2 px-2 text-xs font-medium transition-all ${
+                                  pickerDomain === undefined ? "border-white bg-gray-600 text-white" : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
+                                }`}
+                              >
+                                All
+                              </button>
+                            )}
+                            {domainsToShow.map((domain) => {
+                              const active = isMultiDomain ? pickerDomains.includes(domain) : pickerDomain === domain;
+                              return (
+                                <button
+                                  key={domain}
+                                  type="button"
+                                  onClick={() => {
+                                    if (isMultiDomain) {
+                                      setPickerDomains((prev) =>
+                                        prev.includes(domain) ? (prev.length === 1 ? prev : prev.filter((d) => d !== domain)) : [...prev, domain]
+                                      );
+                                    } else {
+                                      setPickerDomain((prev) => (prev === domain ? undefined : domain));
                                     }
-                                    return [...prev, domain];
-                                  });
-                                } else {
-                                  setPickerDomain((prev) => prev === domain ? undefined : domain);
-                                }
-                              }}
-                              aria-pressed={active}
-                              title={domain.charAt(0).toUpperCase() + domain.slice(1)}
-                              className={`flex h-7 w-7 items-center justify-center overflow-hidden rounded border-2 p-0.5 transition-all ${
-                                active
-                                  ? picker === "main" && pickerDomains.length === 1
-                                    ? "border-white bg-white/20 ring-1 ring-white/50 cursor-not-allowed opacity-70"
-                                    : "border-white bg-white/20 ring-1 ring-white/50"
-                                  : "border-gray-600 hover:border-gray-400"
+                                  }}
+                                  aria-pressed={active}
+                                  title={domain.charAt(0).toUpperCase() + domain.slice(1)}
+                                  className={`flex h-7 w-7 items-center justify-center overflow-hidden rounded border-2 p-0.5 transition-all ${
+                                    active
+                                      ? isMultiDomain && pickerDomains.length === 1
+                                        ? "border-white bg-white/20 ring-1 ring-white/50 cursor-not-allowed opacity-70"
+                                        : "border-white bg-white/20 ring-1 ring-white/50"
+                                      : "border-gray-600 hover:border-gray-400"
+                                  }`}
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={`/images/${domain}.webp`} alt={domain} className="h-full w-full object-contain" />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Type — main, sideboard */}
+                      {(picker === "main" || picker === "sideboard") && (
+                        <>
+                          <span className="h-4 w-px shrink-0 bg-gray-600" aria-hidden />
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs text-gray-500">Type:</span>
+                          {(["unit", "champion", "gear", "spell"] as const).map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setPickerType((prev) => (prev === t ? undefined : t))}
+                              aria-pressed={pickerType === t}
+                              className={`flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-medium transition-all ${
+                                pickerType === t ? "border-blue-500 bg-blue-500/20 text-blue-300" : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
                               }`}
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={`/images/${domain}.webp`} alt={domain} className="h-full w-full object-contain" />
+                              <img src={`/images/types/${t}.webp`} alt="" className="h-3.5 w-3.5 object-contain" />
+                              {t.charAt(0).toUpperCase() + t.slice(1)}
                             </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
+                          ))}
+                          </div>
+                        </>
+                      )}
 
-                  {/* Filtros de Type e Attributes — só para main */}
-                  {picker === "main" && (
-                    <div className="mb-3 space-y-2">
-                      {/* Type */}
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-xs text-gray-500">Type:</span>
-                        {(["unit", "champion", "gear", "spell"] as const).map((t) => (
+                      {/* Collection toggle — legend, champion, battlefields, main, rune, sideboard */}
+                      {(picker === "legend" || picker === "champion" || picker === "battlefields" || picker === "main" || picker === "rune" || picker === "sideboard") && (
+                        <>
+                          <span className="h-4 w-px shrink-0 bg-gray-600" aria-hidden />
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">Collection:</span>
                           <button
-                            key={t}
                             type="button"
-                            onClick={() => setPickerType((prev) => prev === t ? undefined : t)}
-                            aria-pressed={pickerType === t}
-                            className={`flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-medium transition-all ${
-                              pickerType === t
-                                ? "border-blue-500 bg-blue-500/20 text-blue-300"
-                                : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
+                            role="switch"
+                            aria-checked={onlyInCollection}
+                            onClick={() => setOnlyInCollection((v) => !v)}
+                            title={onlyInCollection ? "Showing only cards in your collection" : "Showing all cards"}
+                            className={`relative inline-flex h-6 w-10 shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-gray-900 ${
+                              onlyInCollection ? "bg-emerald-600" : "bg-gray-600"
                             }`}
                           >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={`/images/types/${t}.webp`} alt="" className="h-3.5 w-3.5 object-contain" />
-                            {t.charAt(0).toUpperCase() + t.slice(1)}
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 shrink-0 rounded-full bg-white shadow transition-transform ${
+                                onlyInCollection ? "translate-x-[18px]" : "translate-x-0.5"
+                              }`}
+                              style={{ marginTop: 2 }}
+                            />
                           </button>
-                        ))}
-                      </div>
-                      {/* Attributes */}
+                          <span className="text-xs text-gray-400">
+                            {onlyInCollection ? "My collection" : "All cards"}
+                          </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Attributes — main and sideboard, below the row */}
+                  {(picker === "main" || picker === "sideboard") && (
+                    <div className="mb-3">
                       <AttributesFilter selected={pickerAttributes} onChange={setPickerAttributes} />
                     </div>
                   )}
@@ -567,28 +982,34 @@ export default function DeckBuilderPage() {
                   ) : cards.length === 0 ? (
                     <p className="py-8 text-center text-gray-400">
                       {cardSearchQuery.trim().length >= 3
-                        ? "Nenhuma carta encontrada."
+                        ? "No cards found."
                         : picker === "main" || picker === "rune"
-                        ? "Digite o nome para buscar."
-                        : "Carregando..."}
+                        ? "Type a name to search."
+                        : "Loading..."}
                     </p>
                   ) : (
                     <CardPickerGrid
                       picker={picker}
                       cards={cards}
                       deck={deck}
+                      mainCount={mainCount}
+                      runeCount={runeCount}
+                      sideboardCount={sideboardCount}
                       onSetLegend={handleSetLegend}
                       onSetChampion={handleSetChampion}
                       onAddMain={handleAddMain}
                       onAddRune={handleAddRune}
+                      onAddSideboard={handleAddSideboard}
                       onSetBattlefield={handleSetBattlefield}
+                      onPickBattlefield={picker === "battlefields" ? handlePickBattlefield : undefined}
+                      collectionQtyByCardId={collectionQtyByCardId}
                     />
                   )}
                 </>
               ) : null}
             </div>
 
-            {/* Coluna direita: seções do deck (60%) */}
+            {/* Right column: deck sections (60%) */}
             <div className="flex min-w-0 flex-1 flex-col gap-4">
               {/* LEGEND & CHAMPION */}
               <section className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
@@ -598,12 +1019,22 @@ export default function DeckBuilderPage() {
                 <div className="flex gap-4">
                   {/* Legend slot */}
                   <div className="flex flex-1 flex-col gap-2">
-                    <span className="flex items-center gap-1 text-xs text-gray-500">
+                    <span className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                       Legend
                       {deckLegend ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><path d="M20 6 9 17l-5-5"/></svg>
                       ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-red-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-red-400 shrink-0"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                      )}
+                      {deckLegend && collectionQtyByCardId.size > 0 && (
+                        <span
+                          title={`In collection: ${collectionQtyByCardId.get(deckLegend.uuid) ?? 0} · In deck: 1`}
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
+                            (collectionQtyByCardId.get(deckLegend.uuid) ?? 0) >= 1 ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
+                          }`}
+                        >
+                          {(collectionQtyByCardId.get(deckLegend.uuid) ?? 0)}/1
+                        </span>
                       )}
                     </span>
                     {deckLegend ? (
@@ -640,12 +1071,22 @@ export default function DeckBuilderPage() {
 
                   {/* Champion slot */}
                   <div className="flex flex-1 flex-col gap-2">
-                    <span className="flex items-center gap-1 text-xs text-gray-500">
+                    <span className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                       Champion
                       {deckChampion ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><path d="M20 6 9 17l-5-5"/></svg>
                       ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-red-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-red-400 shrink-0"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                      )}
+                      {deckChampion && collectionQtyByCardId.size > 0 && (
+                        <span
+                          title={`In collection: ${collectionQtyByCardId.get(deckChampion.uuid) ?? 0} · In deck: 1`}
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
+                            (collectionQtyByCardId.get(deckChampion.uuid) ?? 0) >= 1 ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
+                          }`}
+                        >
+                          {(collectionQtyByCardId.get(deckChampion.uuid) ?? 0)}/1
+                        </span>
                       )}
                     </span>
                     {deckChampion ? (
@@ -709,18 +1150,33 @@ export default function DeckBuilderPage() {
                 <div className="space-y-2">
                   {([1, 2, 3] as const).map((pos) => {
                     const bf = deck.battlefields?.find((b) => b.position === pos);
+                    const bfCardId = bf?.card?.uuid ?? bf?.cardId;
+                    const owned = bfCardId ? (collectionQtyByCardId.get(bfCardId) ?? 0) : 0;
+                    const hasCollectionData = collectionQtyByCardId.size > 0;
                     return (
                       <div key={pos} className="flex items-center justify-between gap-2 rounded border border-gray-600 bg-gray-700/30 px-3 py-2">
                         {bf?.card ? (
-                          <CardHoverPreview card={bf.card}>
-                            <span className="flex-1 truncate text-sm text-blue-400 cursor-pointer">{bf.card.name}</span>
-                          </CardHoverPreview>
+                          <span className="flex min-w-0 flex-1 items-center gap-2">
+                            <CardHoverPreview card={bf.card} battlefieldAsLandscape>
+                              <span className="truncate text-sm text-blue-400 cursor-pointer">{bf.card.name}</span>
+                            </CardHoverPreview>
+                            {hasCollectionData && (
+                              <span
+                                title={`In collection: ${owned} · In deck: 1`}
+                                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
+                                  owned >= 1 ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
+                                }`}
+                              >
+                                {owned}/1
+                              </span>
+                            )}
+                          </span>
                         ) : (
                           <span className="flex-1 text-sm text-gray-600 italic">Empty</span>
                         )}
                         <button
                           type="button"
-                          onClick={() => setPicker(pos === 1 ? "bf1" : pos === 2 ? "bf2" : "bf3")}
+                          onClick={() => { setPicker("battlefields"); setBattlefieldSlotBeingEdited(pos); }}
                           className="rounded border border-gray-600 bg-gray-700/50 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 shrink-0"
                         >
                           {bf?.card ? "Change" : "Set battlefield"}
@@ -731,11 +1187,23 @@ export default function DeckBuilderPage() {
                 </div>
               </section>
 
-              {/* MAIN DECK (0/40) */}
+              {/* MAIN DECK (0/39) */}
               <section className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
                 <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  Main Deck ({mainCount}/40)
-                  {mainCount === 40 ? (
+                  {(deckLegend?.cardDomains ?? []).map((cd) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={cd.domain.name}
+                      src={`/images/${cd.domain.name.toLowerCase()}.webp`}
+                      alt={cd.domain.name}
+                      title={cd.domain.name.charAt(0).toUpperCase() + cd.domain.name.slice(1)}
+                      className="h-4 w-4 object-contain"
+                    />
+                  ))}
+                  Main Deck ({mainCount}/39)
+                  {mainCount === 39 && mainHasErrors ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                  ) : mainCount === 39 ? (
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
                   ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-red-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -787,19 +1255,36 @@ export default function DeckBuilderPage() {
                                     const cid = item.card?.uuid ?? item.cardId;
                                     const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
                                     const domainImgSrc = domain ? `/images/${domain}.webp` : null;
+                                    const cardErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
+                                    const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
+                                    const need = item.quantity;
+                                    const hasCollectionData = collectionQtyByCardId.size > 0;
                                     return (
                                       <>
                                         {item.card ? (
-                                          <CardHoverPreview card={item.card}>
-                                            <span className="flex items-center gap-1.5 text-sm text-blue-400 cursor-pointer">
-                                              {domainImgSrc && (
-                                                // eslint-disable-next-line @next/next/no-img-element
-                                                <img src={domainImgSrc} alt={domain} className="h-4 w-4 shrink-0 object-contain" />
-                                              )}
-                                              <span className="text-gray-500">×{item.quantity}</span>
-                                              {item.card.name}
-                                            </span>
-                                          </CardHoverPreview>
+                                          <span className="flex min-w-0 items-center gap-1.5">
+                                            <CardHoverPreview card={item.card} battlefieldAsLandscape>
+                                              <span className="flex items-center gap-1.5 text-sm text-blue-400 cursor-pointer">
+                                                {domainImgSrc && (
+                                                  // eslint-disable-next-line @next/next/no-img-element
+                                                  <img src={domainImgSrc} alt={domain} className="h-4 w-4 shrink-0 object-contain" />
+                                                )}
+                                                <span className="text-gray-500">×{item.quantity}</span>
+                                                {item.card.name}
+                                              </span>
+                                            </CardHoverPreview>
+                                            {hasCollectionData && (
+                                              <span
+                                                title={`In collection: ${owned} · In deck: ${need}`}
+                                                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
+                                                  owned >= need ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
+                                                }`}
+                                              >
+                                                {owned}/{need}
+                                              </span>
+                                            )}
+                                            <CardWarning errors={cardErrs} />
+                                          </span>
                                         ) : (
                                           <span className="text-sm text-gray-400">×{item.quantity} {item.cardId}</span>
                                         )}
@@ -845,7 +1330,7 @@ export default function DeckBuilderPage() {
                 <button
                   type="button"
                   onClick={() => setPicker("main")}
-                  disabled={mainCount > 39}
+                  disabled={mainCount > 38}
                   className="w-full rounded border border-gray-600 bg-gray-700/50 py-2.5 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-50"
                 >
                   + Add card
@@ -856,7 +1341,9 @@ export default function DeckBuilderPage() {
               <section className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
                 <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
                   Rune Deck ({runeCount}/12)
-                  {runeCount === 12 ? (
+                  {runeCount === 12 && runeHasErrors ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                  ) : runeCount === 12 ? (
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
                   ) : (
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-red-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -867,12 +1354,29 @@ export default function DeckBuilderPage() {
                     <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center justify-between gap-2">
                       {(() => {
                         const cid = item.card?.uuid ?? item.cardId;
+                        const runeErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
+                        const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
+                        const need = item.quantity;
+                        const hasCollectionData = collectionQtyByCardId.size > 0;
                         return (
                           <>
                             {item.card ? (
-                              <CardHoverPreview card={item.card}>
-                                <span className="text-blue-400 cursor-pointer">×{item.quantity} {item.card.name}</span>
-                              </CardHoverPreview>
+                              <span className="flex min-w-0 items-center gap-1">
+                                <CardHoverPreview card={item.card} battlefieldAsLandscape>
+                                  <span className="text-blue-400 cursor-pointer">×{item.quantity} {item.card.name}</span>
+                                </CardHoverPreview>
+                                {hasCollectionData && (
+                                  <span
+                                    title={`In collection: ${owned} · In deck: ${need}`}
+                                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
+                                      owned >= need ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
+                                    }`}
+                                  >
+                                    {owned}/{need}
+                                  </span>
+                                )}
+                                <CardWarning errors={runeErrs} />
+                              </span>
                             ) : (
                               <span>×{item.quantity} {item.cardId}</span>
                             )}
@@ -919,18 +1423,107 @@ export default function DeckBuilderPage() {
                 </button>
               </section>
 
-              {/* Validation */}
-              {validation && (
+              {/* SIDEBOARD (0/8) */}
+              <section className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+                <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  Sideboard ({sideboardCount}/8)
+                  <span className="ml-1 rounded border border-gray-600 bg-gray-700/50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 uppercase tracking-wide">Optional</span>
+                  {sideboardCount > 0 && sideboardHasErrors ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                  ) : sideboardCount > 0 && sideboardCount <= 8 ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
+                  ) : null}
+                </h2>
+                <ul className="mb-3 max-h-40 space-y-1 overflow-y-auto text-sm text-white">
+                  {(deck.sideboardItems ?? []).map((item, i) => {
+                    const cid = item.card?.uuid ?? item.cardId;
+                    const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
+                    const sbErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
+                    const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
+                    const need = item.quantity;
+                    const hasCollectionData = collectionQtyByCardId.size > 0;
+                    return (
+                      <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center justify-between gap-2">
+                        {item.card ? (
+                          <span className="flex min-w-0 items-center gap-1">
+                            <CardHoverPreview card={item.card} battlefieldAsLandscape>
+                              <span className="flex items-center gap-1.5 text-blue-400 cursor-pointer">
+                                {domain && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={`/images/${domain}.webp`} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" />
+                                )}
+                                <span className="text-gray-500">×{item.quantity}</span>
+                                {item.card.name}
+                              </span>
+                            </CardHoverPreview>
+                            {hasCollectionData && (
+                              <span
+                                title={`In collection: ${owned} · In deck: ${need}`}
+                                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
+                                  owned >= need ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
+                                }`}
+                              >
+                                {owned}/{need}
+                              </span>
+                            )}
+                            <CardWarning errors={sbErrs} />
+                          </span>
+                        ) : (
+                          <span>×{item.quantity} {item.cardId}</span>
+                        )}
+                        <span className="flex gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (item.quantity < 2) {
+                                try { setDeck(await removeSideboardCard(deck.id, cid)); } catch {}
+                              } else {
+                                try { setDeck(await setSideboardCardQuantity(deck.id, cid, item.quantity - 1)); } catch {}
+                              }
+                            }}
+                            className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 text-xs"
+                          >−</button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (sideboardCount > 7) return;
+                              try { setDeck(await setSideboardCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
+                            }}
+                            disabled={sideboardCount > 7}
+                            className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50 text-xs"
+                          >+</button>
+                          <button
+                            type="button"
+                            onClick={async () => { try { setDeck(await removeSideboardCard(deck.id, cid)); } catch {} }}
+                            className="rounded bg-red-900/50 px-1.5 text-red-200 hover:bg-red-900/70 text-xs"
+                          >×</button>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => setPicker("sideboard")}
+                  disabled={sideboardCount > 7}
+                  className="w-full rounded border border-gray-600 bg-gray-700/50 py-2.5 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+                >
+                  + Add to sideboard
+                </button>
+              </section>
+
+              {/* Validation — only structural errors (per-card errors shown inline) */}
+              {validation && (isDeckValid || structuralErrors.length > 0 || structuralWarnings.length > 0) && (
                 <section className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
                   <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">Validation</h2>
-                  {validation.valid && (validation.errors?.length ?? 0) === 0 && (validation.warnings?.length ?? 0) === 0 ? (
+                  {isDeckValid ? (
                     <p className="text-sm text-emerald-400">Deck is valid.</p>
                   ) : (
-                    <div className="space-y-2">
-                      {(validation.errors ?? []).map((msg, i) => (
+                    <div className="space-y-1.5">
+                      {structuralErrors.map((msg, i) => (
                         <p key={i} className="text-sm text-red-400">{msg}</p>
                       ))}
-                      {(validation.warnings ?? []).map((msg, i) => (
+                      {structuralWarnings.map((msg, i) => (
                         <p key={i} className="text-sm text-amber-400">{msg}</p>
                       ))}
                     </div>

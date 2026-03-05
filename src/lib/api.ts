@@ -39,6 +39,10 @@ export async function apiClient<T>(
   if (token) {
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
+  // Server-side only: backend exige API_KEY; no browser a chave fica só no proxy
+  if (typeof window === "undefined" && process.env.API_KEY) {
+    (headers as Record<string, string>)["X-API-Key"] = process.env.API_KEY;
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);

@@ -63,14 +63,23 @@ async function proxy(
   const payloadStr = body !== null ? ` | payload: ${JSON.stringify(body)}` : "";
 
   const headers: HeadersInit = {};
+  const forwardHeaders = [
+    "authorization",
+    "content-type",
+    "origin",
+    "referer",
+  ];
   request.headers.forEach((value, key) => {
-    if (
-      key.toLowerCase() === "authorization" ||
-      key.toLowerCase() === "content-type"
-    ) {
+    if (forwardHeaders.includes(key.toLowerCase())) {
       headers[key] = value;
     }
   });
+
+  // API key só no servidor: o browser nunca envia, só o proxy adiciona ao chamar o backend
+  const apiKey = process.env.API_KEY;
+  if (apiKey) {
+    (headers as Record<string, string>)["X-API-Key"] = apiKey;
+  }
 
   const res = await fetch(backendUrl, {
     method,

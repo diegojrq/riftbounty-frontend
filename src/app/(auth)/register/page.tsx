@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
+import { normalizeSlugInput, validateSlug } from "@/lib/slug";
 
 export default function RegisterPage() {
   const router = useRouter();
   const { register, error, clearError } = useAuth();
+  const [slug, setSlug] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,6 +22,11 @@ export default function RegisterPage() {
     e.preventDefault();
     clearError();
     setLocalError(null);
+    const slugErr = validateSlug(slug);
+    if (slugErr) {
+      setLocalError(slugErr);
+      return;
+    }
     if (password.length < 8) {
       setLocalError("Password must be at least 8 characters.");
       return;
@@ -32,8 +40,10 @@ export default function RegisterPage() {
       await register({
         email,
         password,
+        slug: normalizeSlugInput(slug.trim()),
         ...(displayName.trim() && { displayName: displayName.trim() }),
       });
+      toast.success("Account created successfully. Welcome!");
       router.push("/");
     } catch {
       setLoading(false);
@@ -51,6 +61,25 @@ export default function RegisterPage() {
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="slug" className="mb-1 block text-sm font-medium text-gray-700">
+            Username
+          </label>
+          <input
+            id="slug"
+            type="text"
+            required
+            minLength={3}
+            maxLength={30}
+            value={slug}
+            onChange={(e) => setSlug(normalizeSlugInput(e.target.value))}
+            className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            placeholder="my_username"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            3–30 characters: letters, numbers, underscores. Used in riftbounty.com/username
+          </p>
+        </div>
         <div>
           <label htmlFor="displayName" className="mb-1 block text-sm font-medium text-gray-700">
             Name (optional)
