@@ -41,11 +41,10 @@ export interface PublicProfileCard {
   uuid: string;
   scraperId?: string;
   name: string;
+  slug?: string;
   cardSet?: string;
   rarity?: string;
   type?: string;
-  imagePath?: string;
-  imageUrl?: string;
 }
 
 /** Item in publicCollection (GET /auth/profile/:slug) */
@@ -61,4 +60,13 @@ export interface PublicUser {
   slug: string;
   displayName: string | null;
   publicCollection?: PublicCollectionItem[];
+}
+
+/** Item in match result (GET /auth/profile/:slug/match) */
+export interface MatchItem {
+  cardUuid: string;
+  card: PublicProfileCard;
+  theirQuantity: number;
+  myQuantity: number;
+  need: number;
 }

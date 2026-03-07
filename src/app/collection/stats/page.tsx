@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { CollectionStats } from "@/components/collection/CollectionStats";
+import { BackLink } from "@/components/layout/BackLink";
 import { useAuth } from "@/lib/auth-context";
 
 export default function CollectionStatsPage() {
@@ -33,15 +33,8 @@ export default function CollectionStatsPage() {
   return (
     <div className="min-h-screen bg-gray-900">
       <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-10 xl:px-12">
-        <header className="mb-6 flex flex-wrap items-center gap-4 border-b border-gray-700 pb-4">
-          <h1 className="text-2xl font-bold text-white">Collection stats</h1>
-          <Link
-            href="/collection"
-            className="text-sm text-gray-400 hover:text-white hover:underline"
-          >
-            ← Back to collection
-          </Link>
-        </header>
+        <BackLink href="/collection" label="My Collection" />
+        <h1 className="mb-6 text-2xl font-bold text-white">Collection stats</h1>
         <CollectionStats />
       </div>
     </div>

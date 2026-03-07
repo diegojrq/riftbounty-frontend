@@ -8,10 +8,6 @@ export function Footer() {
           Games properties. Riot Games, and all associated properties are trademarks or
           registered trademarks of Riot Games, Inc.
         </p>
-        <p>
-          Planned features include connecting players for trading (wants and haves). We only
-          connect players—no trading functionality is implemented within the platform.
-        </p>
       </div>
     </footer>
   );

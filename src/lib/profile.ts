@@ -1,5 +1,5 @@
 import { apiGet, apiPatch } from "./api";
-import type { PublicUser, User } from "@/types/auth";
+import type { MatchItem, PublicUser, User } from "@/types/auth";
 
 /** Payload for PATCH /auth/me — all fields optional */
 export interface UpdateProfilePayload {
@@ -37,4 +37,10 @@ export async function checkSlugAvailable(slug: string): Promise<{ available: boo
 export async function getPublicProfile(slug: string): Promise<PublicUser> {
   const res = await apiGet<PublicUser>(`/auth/profile/${encodeURIComponent(slug)}`);
   return res.data;
+}
+
+/** GET /auth/profile/:slug/match — authenticated. Cards the other user has publicly that the caller has fewer of. */
+export async function getProfileMatch(slug: string): Promise<MatchItem[]> {
+  const res = await apiGet<{ match: MatchItem[] }>(`/auth/profile/${encodeURIComponent(slug)}/match`);
+  return res.data.match ?? [];
 }

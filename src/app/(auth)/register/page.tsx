@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { normalizeSlugInput, validateSlug } from "@/lib/slug";
 
+const inputClass = "w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
+
 export default function RegisterPage() {
   const router = useRouter();
   const { register, error, clearError } = useAuth();
@@ -54,15 +56,15 @@ export default function RegisterPage() {
 
   return (
     <div className="mx-auto max-w-md px-4 py-12">
-      <h1 className="mb-6 text-2xl font-bold">Create account</h1>
+      <h1 className="mb-6 text-2xl font-bold text-white">Create account</h1>
       {err && (
-        <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-4 rounded border border-red-700/50 bg-red-900/40 p-3 text-sm text-red-300">
           {err}
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="slug" className="mb-1 block text-sm font-medium text-gray-700">
+          <label htmlFor="slug" className="mb-1 block text-sm font-medium text-gray-300">
             Username
           </label>
           <input
@@ -73,7 +75,7 @@ export default function RegisterPage() {
             maxLength={30}
             value={slug}
             onChange={(e) => setSlug(normalizeSlugInput(e.target.value))}
-            className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={inputClass}
             placeholder="my_username"
           />
           <p className="mt-1 text-xs text-gray-500">
@@ -81,8 +83,8 @@ export default function RegisterPage() {
           </p>
         </div>
         <div>
-          <label htmlFor="displayName" className="mb-1 block text-sm font-medium text-gray-700">
-            Name (optional)
+          <label htmlFor="displayName" className="mb-1 block text-sm font-medium text-gray-300">
+            Name <span className="text-gray-500">(optional)</span>
           </label>
           <input
             id="displayName"
@@ -90,11 +92,11 @@ export default function RegisterPage() {
             maxLength={120}
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={inputClass}
           />
         </div>
         <div>
-          <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">
+          <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-300">
             Email
           </label>
           <input
@@ -103,12 +105,12 @@ export default function RegisterPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={inputClass}
           />
         </div>
         <div>
-          <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-700">
-            Password (min. 8 characters)
+          <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-300">
+            Password <span className="text-gray-500">(min. 8 characters)</span>
           </label>
           <input
             id="password"
@@ -117,11 +119,11 @@ export default function RegisterPage() {
             minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={inputClass}
           />
         </div>
         <div>
-          <label htmlFor="confirmPassword" className="mb-1 block text-sm font-medium text-gray-700">
+          <label htmlFor="confirmPassword" className="mb-1 block text-sm font-medium text-gray-300">
             Confirm password
           </label>
           <input
@@ -130,20 +132,20 @@ export default function RegisterPage() {
             required
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className={inputClass}
           />
         </div>
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="w-full rounded bg-emerald-600 px-4 py-2.5 font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
         >
           {loading ? "Creating account..." : "Register"}
         </button>
       </form>
-      <p className="mt-4 text-sm text-gray-600">
+      <p className="mt-4 text-sm text-gray-400">
         Already have an account?{" "}
-        <Link href="/login" className="text-blue-600 hover:underline">
+        <Link href="/login" className="text-emerald-400 hover:text-emerald-300 hover:underline">
           Sign in
         </Link>
       </p>

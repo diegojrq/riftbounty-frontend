@@ -1,11 +1,45 @@
 "use client";
 
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
 import { getCollectionStats } from "@/lib/collections";
+import { getCardImageUrl } from "@/lib/cards";
+import { CardImg } from "@/components/cards/CardImg";
 import type { CollectionStats as CollectionStatsType } from "@/types/collection";
 
-const DOMAIN_ORDER = ["Fury", "Calm", "Mind", "Body", "Chaos", "Order"];
+const DOMAIN_ORDER = ["fury", "calm", "mind", "body", "chaos", "order"];
+
+const DOMAIN_TOP_LABEL: Record<string, string> = {
+  fury:       "Anger issues?",
+  calm:       "Too calm...",
+  mind:       "Big brain energy",
+  body:       "What a physique!",
+  chaos:      "Absolute chaos",
+  order:      "Control freak",
+  colorless:  "No style points",
+};
+
+const DOMAIN_BOTTOM_LABEL: Record<string, string> = {
+  fury:       "Too chill for you",
+  calm:       "Stressed out today?",
+  mind:       "Not thinking much",
+  body:       "Skipping leg day?",
+  chaos:      "Too organized?",
+  order:      "A bit of a rebel",
+  colorless:  "At least you tried",
+};
+
+const TYPE_ICON: Record<string, string> = {
+  legend: "/images/types/legend.webp",
+  champion: "/images/types/champion.webp",
+  unit: "/images/types/unit.webp",
+  limit: "/images/types/unit.webp",
+  gear: "/images/types/gear.webp",
+  spell: "/images/types/spell.webp",
+  rune: "/images/types/runes.webp",
+  battlefield: "/images/types/battlefields.webp",
+  battlefields: "/images/types/battlefields.webp",
+};
 const DOMAIN_IMAGE_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
 
 const SET_DISPLAY_NAMES: Record<string, string> = {
@@ -31,32 +65,47 @@ function BarRow({
   value,
   sub,
   catalogTotal,
+  icon,
 }: {
   label: string;
   value: number;
   sub?: number;
   catalogTotal?: number;
+  icon?: React.ReactNode;
 }) {
-  /** Bar = proportion unique/total for this row (e.g. 35 unique · 80 total → 43.75%) */
+  /** Completion = unique / catalogTotal; fallback to unique / copies */
   const pct =
-    sub != null && sub > 0 ? (value / sub) * 100 : value > 0 ? 100 : 0;
+    catalogTotal != null && catalogTotal > 0
+      ? (value / catalogTotal) * 100
+      : sub != null && sub > 0
+        ? (value / sub) * 100
+        : value > 0
+          ? 100
+          : 0;
+
   return (
-    <div className="group flex flex-col gap-0.5">
-      <div className="flex items-baseline justify-between gap-2 text-xs">
-        <span className="truncate font-medium text-gray-300">
-          {label.includes(" (") ? label : formatLabel(label)}
-        </span>
-        <span className="shrink-0 tabular-nums text-gray-400">
-          {value} unique{sub != null ? ` · ${sub} total` : ""}
-          {catalogTotal != null && catalogTotal > 0 ? ` / ${catalogTotal} in catalog` : ""}
+    <div className="group space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          {icon}
+          <span className="truncate text-sm font-medium text-gray-200">
+            {label.includes(" (") ? label : formatLabel(label)}
+          </span>
+        </div>
+        <span className="shrink-0 text-xs font-semibold tabular-nums text-emerald-400">
+          {pct.toFixed(0)}%
         </span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-gray-700/80">
+      <div className="h-2 overflow-hidden rounded-full bg-gray-700/60">
         <div
           className="h-full rounded-full bg-emerald-500/90 transition-all duration-500 ease-out group-hover:bg-emerald-400"
           style={{ width: `${Math.min(pct, 100)}%` }}
         />
       </div>
+      <p className="text-[11px] tabular-nums text-gray-500">
+        {value}{catalogTotal != null ? ` / ${catalogTotal}` : ""} unique
+        {sub != null ? ` · ${sub} copies` : ""}
+      </p>
     </div>
   );
 }
@@ -109,8 +158,6 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
   const [stats, setStats] = useState<CollectionStatsType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [breakdownOpen, setBreakdownOpen] = useState(true);
-
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -151,21 +198,25 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
   if (!stats) return null;
 
   const byDomainOrdered = [...stats.byDomain].sort((a, b) => {
-    const i = DOMAIN_ORDER.indexOf(a.domain);
-    const j = DOMAIN_ORDER.indexOf(b.domain);
+    const i = DOMAIN_ORDER.indexOf(a.domain.toLowerCase());
+    const j = DOMAIN_ORDER.indexOf(b.domain.toLowerCase());
     if (i === -1 && j === -1) return a.domain.localeCompare(b.domain);
     if (i === -1) return 1;
     if (j === -1) return -1;
     return i - j;
   });
 
-  /** Domain with most unique cards (that has a rune image) for the circle */
-  const topDomain = stats.byDomain.length > 0
-    ? [...stats.byDomain]
-        .sort((a, b) => b.uniqueCards - a.uniqueCards)
-        .find((d) => DOMAIN_IMAGE_SLUGS.has(d.domain.toLowerCase())) ?? null
+  const sortedDomains = stats.byDomain.length > 0
+    ? [...stats.byDomain].filter((d) => DOMAIN_IMAGE_SLUGS.has(d.domain.toLowerCase()))
+    : [];
+
+  const topDomain = sortedDomains.length > 0
+    ? [...sortedDomains].sort((a, b) => b.uniqueCards - a.uniqueCards)[0]
     : null;
-  const topDomainSlug = topDomain ? topDomain.domain.toLowerCase() : null;
+
+  const bottomDomain = sortedDomains.length > 1
+    ? [...sortedDomains].sort((a, b) => a.uniqueCards - b.uniqueCards)[0]
+    : null;
 
   return (
     <section
@@ -175,9 +226,9 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
       <div className="relative">
       {/* Hero: completion + main numbers */}
       <div
-        className={`flex flex-wrap items-center gap-8 ${breakdown ? "mb-8" : ""}`}
+        className={`flex flex-wrap items-start gap-4 sm:gap-8 ${breakdown ? "mb-8" : ""}`}
       >
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4 sm:gap-6">
           <div className="relative flex size-24 shrink-0 items-center justify-center">
             <svg className="size-24 -rotate-90" viewBox="0 0 36 36">
               <path
@@ -210,23 +261,23 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
             </p>
           </div>
           {topDomain && (
-            <div className="flex shrink-0 items-center gap-3">
+            <div className="hidden w-full items-center gap-3 sm:flex sm:w-auto">
               <div
-                className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-gray-600 bg-gray-800 ring-2 ring-gray-700/80"
-                title={`Most unique in your collection: ${topDomain.domain} (${topDomain.uniqueCards} unique)`}
+                className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-emerald-700/60 bg-gray-800 ring-2 ring-emerald-600/30"
+                title={`Most unique: ${topDomain.domain} (${topDomain.uniqueCards})`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={`/images/${topDomain.domain.toLowerCase()}.webp`}
+                  src={`/images/domains/${topDomain.domain.toLowerCase()}.webp`}
                   alt={topDomain.domain}
                   className="size-14 object-cover"
                 />
               </div>
               <div>
-                <p className="text-sm font-medium uppercase tracking-wider text-gray-500">
-                  Most in collection
+                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-500">
+                  {DOMAIN_TOP_LABEL[topDomain.domain.toLowerCase()] ?? "Most in collection"}
                 </p>
-                <p className="mt-0.5 text-lg font-bold text-white tabular-nums">
+                <p className="mt-0.5 text-lg font-bold capitalize text-white">
                   {topDomain.domain}
                 </p>
                 <p className="mt-0.5 text-xs text-gray-400">
@@ -235,16 +286,41 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
               </div>
             </div>
           )}
+          {bottomDomain && (
+            <div className="hidden w-full items-center gap-3 sm:flex sm:w-auto">
+              <div
+                className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-red-800/50 bg-gray-800 ring-2 ring-red-700/20"
+                title={`Least unique: ${bottomDomain.domain} (${bottomDomain.uniqueCards})`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/images/domains/${bottomDomain.domain.toLowerCase()}.webp`}
+                  alt={bottomDomain.domain}
+                  className="size-14 object-cover opacity-60 grayscale"
+                />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-red-400">
+                  {DOMAIN_BOTTOM_LABEL[bottomDomain.domain.toLowerCase()] ?? "Least in collection"}
+                </p>
+                <p className="mt-0.5 text-lg font-bold capitalize text-white">
+                  {bottomDomain.domain}
+                </p>
+                <p className="mt-0.5 text-xs text-gray-400">
+                  {bottomDomain.uniqueCards} unique in your collection
+                </p>
+              </div>
+            </div>
+          )}
           {stats.mostOwnedCard && (
-            <div className="flex shrink-0 items-center gap-3">
+            <div className="hidden w-full items-center gap-3 sm:flex sm:w-auto">
               <div
                 className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-gray-600 bg-gray-800 ring-2 ring-gray-700/80"
                 title={stats.mostOwnedCard.card.name}
               >
-                {stats.mostOwnedCard.card.imageUrl ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={stats.mostOwnedCard.card.imageUrl}
+                {getCardImageUrl(stats.mostOwnedCard.card) ? (
+                  <CardImg
+                    src={getCardImageUrl(stats.mostOwnedCard.card)!}
                     alt={stats.mostOwnedCard.card.name}
                     className="size-full object-cover object-[center_10%] opacity-80"
                   />
@@ -280,108 +356,104 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
 
       {breakdown && (
       <>
-      {/* Collapsible divider + breakdown */}
       <div className="border-t border-gray-600 pt-4">
-        <button
-          type="button"
-          onClick={() => setBreakdownOpen((o) => !o)}
-          className="flex w-full items-center justify-between gap-2 rounded py-2 text-left text-sm font-medium text-gray-400 transition hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-          aria-expanded={breakdownOpen}
-        >
-          <span>Breakdown by set, domain, rarity & type</span>
-          <svg
-            className={`size-5 shrink-0 transition-transform ${breakdownOpen ? "rotate-180" : ""}`}
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </button>
-        {breakdownOpen && (
-          <div className="grid gap-6 pt-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-4">
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">By set</h3>
-          <div className="space-y-3">
-            {stats.bySet.length === 0 ? (
-              <p className="text-xs text-gray-500">No set data</p>
-            ) : (
-              stats.bySet.map((row) => (
-                <BarRow
-                  key={row.set}
-                  label={setDisplayName(row.set)}
-                  value={row.uniqueCards}
-                  sub={row.totalCopies}
-                  catalogTotal={row.catalogTotal}
-                />
-              ))
-            )}
+          <div className="grid gap-4 pt-2 sm:grid-cols-2 lg:grid-cols-4">
+            {(
+              [
+                {
+                  title: "By set",
+                  rows: stats.bySet.map((row) => (
+                    <BarRow
+                      key={row.set}
+                      label={setDisplayName(row.set)}
+                      value={row.uniqueCards}
+                      sub={row.totalCopies}
+                      catalogTotal={row.catalogTotal}
+                    />
+                  )),
+                  empty: "No set data",
+                },
+                {
+                  title: "By domain",
+                  rows: byDomainOrdered.map((row) => (
+                    <BarRow
+                      key={row.domain}
+                      label={row.domain}
+                      value={row.uniqueCards}
+                      sub={row.totalCopies}
+                      catalogTotal={row.catalogTotal}
+                      icon={
+                        DOMAIN_IMAGE_SLUGS.has(row.domain.toLowerCase()) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={`/images/domains/${row.domain.toLowerCase()}.webp`}
+                            alt={row.domain}
+                            className="h-4 w-4 shrink-0 rounded-full object-contain"
+                          />
+                        ) : undefined
+                      }
+                    />
+                  )),
+                  empty: "No domain data",
+                },
+                {
+                  title: "By rarity",
+                  rows: stats.byRarity.map((row) => (
+                    <BarRow
+                      key={row.rarity}
+                      label={row.rarity}
+                      value={row.uniqueCards}
+                      sub={row.totalCopies}
+                      catalogTotal={row.catalogTotal}
+                    />
+                  )),
+                  empty: "No rarity data",
+                },
+                {
+                  title: "By type",
+                  rows: stats.byType.map((row) => {
+                    const iconSrc = TYPE_ICON[row.type.toLowerCase()];
+                    return (
+                      <BarRow
+                        key={row.type}
+                        label={row.type}
+                        value={row.uniqueCards}
+                        sub={row.totalCopies}
+                        catalogTotal={row.catalogTotal}
+                        icon={
+                          iconSrc ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={iconSrc}
+                              alt={row.type}
+                              className="h-4 w-4 shrink-0 object-contain"
+                            />
+                          ) : undefined
+                        }
+                      />
+                    );
+                  }),
+                  empty: "No type data",
+                },
+              ] as { title: string; rows: React.ReactNode[]; empty: string }[]
+            ).map(({ title, rows, empty }) => (
+              <div
+                key={title}
+                className="rounded-xl border border-gray-700/50 bg-gray-900/60 p-5"
+              >
+                <h3 className="mb-4 border-b border-gray-700/60 pb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  {title}
+                </h3>
+                <div className="space-y-4">
+                  {rows.length === 0 ? (
+                    <p className="text-xs text-gray-500">{empty}</p>
+                  ) : (
+                    rows
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-
-        <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-4">
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">By domain</h3>
-          <div className="space-y-3">
-            {stats.byDomain.length === 0 ? (
-              <p className="text-xs text-gray-500">No domain data</p>
-            ) : (
-              byDomainOrdered.map((row) => (
-                <BarRow
-                  key={row.domain}
-                  label={row.domain}
-                  value={row.uniqueCards}
-                  sub={row.totalCopies}
-                  catalogTotal={row.catalogTotal}
-                />
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-4">
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">By rarity</h3>
-          <div className="space-y-3">
-            {stats.byRarity.length === 0 ? (
-              <p className="text-xs text-gray-500">No rarity data</p>
-            ) : (
-              stats.byRarity.map((row) => (
-                <BarRow
-                  key={row.rarity}
-                  label={row.rarity}
-                  value={row.uniqueCards}
-                  sub={row.totalCopies}
-                  catalogTotal={row.catalogTotal}
-                />
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-4">
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">By type</h3>
-          <div className="space-y-3">
-            {stats.byType.length === 0 ? (
-              <p className="text-xs text-gray-500">No type data</p>
-            ) : (
-              stats.byType.map((row) => (
-                <BarRow
-                  key={row.type}
-                  label={row.type}
-                  value={row.uniqueCards}
-                  sub={row.totalCopies}
-                  catalogTotal={row.catalogTotal}
-                />
-              ))
-            )}
-          </div>
-        </div>
-          </div>
-        )}
       </div>
       </>
       )}

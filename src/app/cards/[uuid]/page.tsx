@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { getCard } from "@/lib/cards";
+import { getCard, getCardImageUrl } from "@/lib/cards";
+import { CardImg } from "@/components/cards/CardImg";
+import { BackLink } from "@/components/layout/BackLink";
 import {
   addToCollection,
   removeFromCollection,
@@ -20,6 +22,16 @@ const SET_DISPLAY: Record<string, string> = {
 function formatLabel(s: string): string {
   if (!s) return s;
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function getCardDomains(card: Card): string[] {
+  const result: string[] = [];
+  if (card.domain) result.push(card.domain.toLowerCase());
+  if ((card as unknown as { domains?: string[] }).domains)
+    result.push(...((card as unknown as { domains: string[] }).domains).map((d) => d.toLowerCase()));
+  if ((card as unknown as { cardDomains?: { domain: { name: string } }[] }).cardDomains)
+    result.push(...((card as unknown as { cardDomains: { domain: { name: string } }[] }).cardDomains).map((cd) => cd.domain.name.toLowerCase()));
+  return [...new Set(result)];
 }
 
 export default function CardDetailPage() {
@@ -127,9 +139,7 @@ export default function CardDetailPage() {
     return (
       <div className="min-h-screen bg-gray-900">
         <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-10">
-          <Link href={backHref} className="text-sm text-gray-400 hover:text-white">
-            ← {backLabel}
-          </Link>
+          <BackLink href={backHref} label={backLabel} />
           <div className="mt-8 rounded-lg border border-red-900/50 bg-red-900/20 p-6 text-red-200">
             <p>{error ?? "Card not found."}</p>
             <button
@@ -152,23 +162,17 @@ export default function CardDetailPage() {
   return (
     <div className="min-h-screen bg-gray-900">
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-10">
-        <Link
-          href={backHref}
-          className="inline-block text-sm text-gray-400 hover:text-white"
-        >
-          ← {backLabel}
-        </Link>
+        <BackLink href={backHref} label={backLabel} />
 
-        <div className="mt-8 flex flex-col gap-8 sm:flex-row sm:items-start">
+        <div className="flex flex-col gap-8 sm:flex-row sm:items-start">
           {/* Card image */}
           <div className="w-full shrink-0 sm:w-80">
-            <div className="aspect-[2.5/3.5] w-full overflow-hidden rounded-xl border border-gray-600 bg-gray-800 shadow-xl">
-              {card.imageUrl ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={card.imageUrl}
+            <div className="mx-auto max-h-80 w-full max-w-[220px] overflow-hidden rounded-xl border border-gray-600 bg-gray-800 shadow-xl sm:max-h-none sm:max-w-none sm:aspect-[2.5/3.5]">
+              {getCardImageUrl(card) ? (
+                <CardImg
+                  src={getCardImageUrl(card)!}
                   alt={card.name}
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-cover sm:aspect-[2.5/3.5]"
                 />
               ) : (
                 <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-gray-500">
@@ -205,11 +209,14 @@ export default function CardDetailPage() {
                   {formatLabel(card.type)}
                 </span>
               )}
-              {card.domain && (
-                <span className="rounded-md border border-gray-600 bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-300">
-                  {formatLabel(card.domain)}
+              {getCardDomains(card).map((domain) => (
+                <span key={domain} className="flex items-center gap-1.5 rounded-md border border-gray-600 bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-300">
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                    <img src={`/images/domains/${domain}.webp`} alt={domain} className="h-full w-full object-contain" />
+                  </span>
+                  {formatLabel(domain)}
                 </span>
-              )}
+              ))}
             </div>
 
             {/* Stats row */}

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
+import { BackLink } from "@/components/layout/BackLink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getDeck,
@@ -22,17 +23,13 @@ import {
 } from "@/lib/decks";
 import { useAuth } from "@/lib/auth-context";
 import { getCollection } from "@/lib/collections";
-import { apiGet } from "@/lib/api";
+import { useCards } from "@/lib/cards-context";
+import { getCardImageUrl } from "@/lib/cards";
 import { CardTile } from "@/components/cards/CardTile";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
 import { AttributesFilter } from "@/components/filters/AttributesFilter";
 import type { Card } from "@/types/card";
-import type { CardsListResponse, CardsQueryParams } from "@/types/card";
 import type { Deck } from "@/types/deck";
-
-function toQueryRecord(p: CardsQueryParams): Record<string, string | number | boolean | undefined> {
-  return p as Record<string, string | number | boolean | undefined>;
-}
 
 const DOMAINS = ["fury", "calm", "mind", "body", "chaos", "order"] as const;
 
@@ -88,7 +85,7 @@ function CardWarning({ errors }: { errors: string[] }) {
 }
 
 function CardPickerGrid({
-  picker, cards, deck, mainCount, runeCount, sideboardCount, collectionQtyByCardId,
+  picker, cards, deck, mainCount, runeCount, sideboardCount, collectionQtyByCardId, addAnimations,
   onSetLegend, onSetChampion, onAddMain, onAddRune, onAddSideboard, onSetBattlefield, onPickBattlefield,
 }: {
   picker: PickerMode;
@@ -98,6 +95,7 @@ function CardPickerGrid({
   runeCount: number;
   sideboardCount: number;
   collectionQtyByCardId: Map<string, number>;
+  addAnimations: Map<string, string[]>;
   onSetLegend: (c: Card) => void;
   onSetChampion: (c: Card) => void;
   onAddMain: (c: Card) => void;
@@ -122,7 +120,7 @@ function CardPickerGrid({
 
   return (
     <ul className={`grid list-none gap-2 overflow-y-auto ${
-      isBf ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+      isBf ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3" : "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6"
     }`}>
       {cards.map((card) => {
         const mainQty = mainQtyMap.get(card.uuid) ?? 0;
@@ -136,6 +134,8 @@ function CardPickerGrid({
 
         const inColl = picker === "legend" || picker === "champion" || picker === "battlefields" || picker === "main" || picker === "rune" || picker === "sideboard";
         const owned = collectionQtyByCardId.get(card.uuid) ?? card.collectionQuantity ?? 0;
+
+        const cardAddKeys = addAnimations.get(card.uuid) ?? [];
 
         return (
           <li key={card.uuid} className="relative">
@@ -159,19 +159,35 @@ function CardPickerGrid({
                 grayscaleWhenNotInCollection={atLimit}
                 inCollection={!atLimit}
                 battlefieldAsLandscape
+                addKeys={cardAddKeys}
               />
-              {inColl && (
-                <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 to-transparent px-2 py-3 pt-6 pointer-events-none">
-                  <div className="flex justify-end">
+              <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 to-transparent px-2 py-3 pt-6">
+                <div className="flex items-end justify-between">
+                  {/* Preview button — left side */}
+                  <CardHoverPreview card={card}>
+                    <span
+                      className="flex size-7 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/60 text-gray-300 shadow transition-colors hover:border-white/40 hover:bg-black/80 hover:text-white"
+                      title="Preview card"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    </span>
+                  </CardHoverPreview>
+
+                  {/* Collection qty — right side */}
+                  {inColl && (
                     <span
                       title={`You have ${owned} in your collection`}
-                      className="flex size-10 shrink-0 items-center justify-center rounded-md border border-white/30 bg-black/70 text-sm font-bold tabular-nums text-white shadow"
+                      className="flex size-7 shrink-0 items-center justify-center rounded-md border border-white/30 bg-black/70 text-xs font-bold tabular-nums text-white shadow"
                     >
                       ×{owned}
                     </span>
-                  </div>
+                  )}
                 </div>
-              )}
+              </div>
             </button>
           </li>
         );
@@ -181,6 +197,68 @@ function CardPickerGrid({
 }
 
 type PickerMode = "legend" | "champion" | "battlefields" | "main" | "rune" | "sideboard";
+
+function DeckBuilderSkeleton() {
+  return (
+    <div className="min-h-screen bg-gray-900">
+      <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-10 xl:px-12">
+        {/* Back + actions row */}
+        <div className="mb-4 h-5 w-20 animate-pulse rounded bg-gray-700" />
+        <div className="mb-4 flex justify-end">
+          <div className="h-8 w-28 animate-pulse rounded-lg bg-gray-700/60" />
+        </div>
+        {/* Deck name + steps */}
+        <div className="mb-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+          <div className="mb-2 h-3 w-20 animate-pulse rounded bg-gray-700" />
+          <div className="mb-4 h-10 w-full animate-pulse rounded bg-gray-700/60" />
+          <div className="flex gap-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="h-6 w-20 animate-pulse rounded-full bg-gray-700/60" />
+            ))}
+          </div>
+        </div>
+        {/* Main grid */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[340px_1fr]">
+          {/* Left: legend + champion + battlefields */}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              {[1, 2].map((i) => (
+                <div key={i} className="aspect-[2.5/3.5] animate-pulse rounded-lg bg-gray-700/60" />
+              ))}
+            </div>
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+              <div className="mb-3 h-3 w-24 animate-pulse rounded bg-gray-700" />
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="mb-2 h-10 w-full animate-pulse rounded bg-gray-700/40" />
+              ))}
+            </div>
+          </div>
+          {/* Right: picker + deck list */}
+          <div className="space-y-4">
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+              <div className="mb-3 h-4 w-32 animate-pulse rounded bg-gray-700" />
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <div key={i} className="aspect-[2.5/3.5] animate-pulse rounded-lg bg-gray-700/40" />
+                ))}
+              </div>
+            </div>
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+              <div className="mb-3 h-4 w-24 animate-pulse rounded bg-gray-700" />
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="mb-2 flex items-center gap-3">
+                  <div className="h-8 w-8 animate-pulse rounded bg-gray-700/60" />
+                  <div className="h-4 flex-1 animate-pulse rounded bg-gray-700/40" />
+                  <div className="h-6 w-16 animate-pulse rounded bg-gray-700/40" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Retorna o próximo passo pendente do deck, na ordem de prioridade. */
 function getNextPicker(deck: Deck): PickerMode {
@@ -221,11 +299,55 @@ const PICKER_TITLES: Record<PickerMode, string> = {
   sideboard: "Add cards to Sideboard",
 };
 
+function getCardAttributes(card: Card): string[] {
+  if (card.attributes) {
+    if (Array.isArray(card.attributes)) return card.attributes as string[];
+    return Object.keys(card.attributes);
+  }
+  if (Array.isArray(card.cardAttributes)) {
+    return (card.cardAttributes as Array<{ attribute?: { name?: string }; name?: string }>)
+      .map((ca) => ca.attribute?.name ?? ca.name ?? "")
+      .filter(Boolean);
+  }
+  return [];
+}
+
+/** Extrai todos os nomes de domínio de uma carta, independente do formato da API */
+function getCardDomains(card: Card): string[] {
+  const result = new Set<string>();
+  if (typeof card.domain === "string" && card.domain) result.add(card.domain.toLowerCase());
+  if (Array.isArray(card.domains)) card.domains.forEach((d) => result.add(d.toLowerCase()));
+  if (Array.isArray(card.cardDomains)) {
+    (card.cardDomains as Array<{ domain: { name: string } }>).forEach((cd) =>
+      result.add(cd.domain.name.toLowerCase())
+    );
+  }
+  return [...result];
+}
+
+function cardMatchesDomains(card: Card, domains: string[]): boolean {
+  if (domains.length === 0) return true;
+  const cardDomains = getCardDomains(card);
+  return domains.some((d) => cardDomains.includes(d.toLowerCase()));
+}
+
+function cardHasSubtype(card: Card, subtype: string): boolean {
+  const lower = subtype.toLowerCase();
+  if (card.subtypes?.some((s) => s.toLowerCase() === lower)) return true;
+  if (Array.isArray(card.cardSubtypes)) {
+    return (card.cardSubtypes as Array<{ subtype?: { name?: string }; name?: string }>).some(
+      (cs) => ((cs?.subtype?.name ?? cs?.name ?? "")).toLowerCase() === lower
+    );
+  }
+  return false;
+}
+
 export default function DeckBuilderPage() {
   const router = useRouter();
   const params = useParams();
   const deckId = params?.id as string;
   const { user, loading: authLoading } = useAuth();
+  const { cards: allCards, loading: cardsLoading } = useCards();
   const [deck, setDeck] = useState<Deck | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -237,14 +359,47 @@ export default function DeckBuilderPage() {
   const [pickerDomains, setPickerDomains] = useState<string[]>([]); // main: multi
   const [pickerType, setPickerType] = useState<string | undefined>(undefined);
   const [pickerAttributes, setPickerAttributes] = useState<string[]>([]);
-  const [cards, setCards] = useState<Card[]>([]);
-  const [cardsLoading, setCardsLoading] = useState(false);
   const [cardSearchQuery, setCardSearchQuery] = useState("");
   const [showValidModal, setShowValidModal] = useState(false);
   const [onlyInCollection, setOnlyInCollection] = useState(false);
   const [collectionQtyByCardId, setCollectionQtyByCardId] = useState<Map<string, number>>(new Map());
   const [battlefieldSlotBeingEdited, setBattlefieldSlotBeingEdited] = useState<1 | 2 | 3 | null>(null);
+  const [mobilePickerOpen, setMobilePickerOpen] = useState(false);
+  const [addAnimations, setAddAnimations] = useState<Map<string, string[]>>(new Map());
   const prevValidRef = useRef<boolean | null>(null);
+  const pickerContainerRef = useRef<HTMLDivElement>(null);
+  const savedScrollRef = useRef<number>(0);
+
+  function flashCard(cardUuid: string) {
+    const key = `${cardUuid}-${Date.now()}-${Math.random()}`;
+    setAddAnimations((prev) => {
+      const next = new Map(prev);
+      next.set(cardUuid, [...(next.get(cardUuid) ?? []), key]);
+      return next;
+    });
+    setTimeout(() => {
+      setAddAnimations((prev) => {
+        const next = new Map(prev);
+        const arr = (next.get(cardUuid) ?? []).filter((k) => k !== key);
+        if (arr.length === 0) next.delete(cardUuid);
+        else next.set(cardUuid, arr);
+        return next;
+      });
+    }, 700);
+  }
+
+  function savePickerScroll() {
+    savedScrollRef.current = pickerContainerRef.current?.scrollTop ?? window.scrollY;
+  }
+  function restorePickerScroll() {
+    requestAnimationFrame(() => {
+      if (pickerContainerRef.current) {
+        pickerContainerRef.current.scrollTop = savedScrollRef.current;
+      } else {
+        window.scrollTo({ top: savedScrollRef.current });
+      }
+    });
+  }
 
   const firstEmptyBattlefieldSlot = useMemo((): 1 | 2 | 3 | null => {
     const bfs = deck?.battlefields ?? [];
@@ -295,77 +450,106 @@ export default function DeckBuilderPage() {
       .catch(() => setCollectionQtyByCardId(new Map()));
   }, [user]);
 
-  const fetchCards = useCallback(async () => {
-    if (!picker) return;
-    setCardsLoading(true);
-    try {
-      const params: CardsQueryParams = {
-        limit: picker === "legend" ? 50 : 100,
-        offset: 0,
-        sortBy: "collector_number",
-        order: "asc",
-        ...(cardSearchQuery.trim().length >= 3 && { name: cardSearchQuery.trim() }),
-      };
+  const filteredCards = useMemo(() => {
+    if (!picker || allCards.length === 0) return [];
+
+    const nameQuery = cardSearchQuery.trim().length >= 3 ? cardSearchQuery.trim().toLowerCase() : null;
+
+    const results = allCards.filter((card) => {
+      const type = card.type?.toLowerCase() ?? "";
+
       if (picker === "legend") {
-        params.type = "legend";
-        if (pickerDomain) params.domain = pickerDomain;
-        if (onlyInCollection) params.inCollection = true;
+        if (type !== "legend") return false;
+        if (pickerDomain && !cardMatchesDomains(card, [pickerDomain])) return false;
       } else if (picker === "champion") {
-        params.type = "champion";
+        if (type !== "champion") return false;
         const legendCard = deck?.legendCard ?? deck?.legend;
         const legendSubtype = legendCard?.subtypes?.[0];
-        if (legendSubtype) params.subtype = legendSubtype;
-        if (onlyInCollection) params.inCollection = true;
+        if (legendSubtype && !cardHasSubtype(card, legendSubtype)) return false;
       } else if (picker === "main" || picker === "sideboard") {
-        if (pickerDomains.length > 0) params.domain = pickerDomains.join(",");
-        if (pickerType) params.type = pickerType;
-        if (pickerAttributes.length > 0) params.attribute = pickerAttributes.join(",");
-        if (onlyInCollection) params.inCollection = true;
+        if (type === "rune" || type === "legend") return false;
+        if (!cardMatchesDomains(card, pickerDomains)) return false;
+        if (pickerType && type !== pickerType.toLowerCase()) return false;
+        if (pickerAttributes.length > 0) {
+          const attrs = getCardAttributes(card).map((a) => a.toLowerCase());
+          if (!pickerAttributes.some((a) => attrs.includes(a.toLowerCase()))) return false;
+        }
       } else if (picker === "rune") {
-        params.type = "Rune";
-        if (pickerDomains.length > 0) params.domain = pickerDomains.join(",");
-        if (onlyInCollection) params.inCollection = true;
+        if (type !== "rune") return false;
+        if (!cardMatchesDomains(card, pickerDomains)) return false;
       } else if (picker === "battlefields") {
-        params.type = "Battlefield";
-        if (onlyInCollection) params.inCollection = true;
+        if (type !== "battlefield") return false;
       }
-      const res = await apiGet<CardsListResponse>("/cards", toQueryRecord(params));
-      let items = res.data.items ?? [];
-      if (picker === "main") {
-        items = items.filter((c) => {
-          const t = c.type?.toLowerCase() ?? "";
-          return t !== "rune" && t !== "legend";
-        });
+
+      if (nameQuery) {
+        const nameMatch = card.name.toLowerCase().includes(nameQuery);
+        const subtypeMatch =
+          card.subtypes?.some((s) => s.toLowerCase().includes(nameQuery)) ||
+          (card.cardSubtypes as Array<{ subtype?: { name?: string }; name?: string }> | undefined)?.some(
+            (cs) => ((cs?.subtype?.name ?? cs?.name) ?? "").toLowerCase().includes(nameQuery)
+          );
+        const descriptionMatch = card.description?.toLowerCase().includes(nameQuery) ?? false;
+        if (!nameMatch && !subtypeMatch && !descriptionMatch) return false;
       }
-      setCards(items);
-    } catch {
-      setCards([]);
-    } finally {
-      setCardsLoading(false);
-    }
-  }, [picker, pickerDomain, pickerDomains, pickerType, pickerAttributes, cardSearchQuery, deck, onlyInCollection]);
+
+      if (onlyInCollection) {
+        const collQty = collectionQtyByCardId.get(card.uuid) ?? 0;
+        if (collQty === 0) return false;
+        // subtract copies already committed to main + sideboard + rune + legend + champion
+        const legendCard = deck?.legendCard ?? deck?.legend;
+        const championCard = deck?.championCard ?? deck?.champion;
+        const usedByLegend = legendCard && (legendCard as { uuid?: string }).uuid === card.uuid ? 1 : 0;
+        const usedByChampion = championCard && (championCard as { uuid?: string }).uuid === card.uuid ? 1 : 0;
+        const deckQty =
+          usedByLegend +
+          usedByChampion +
+          (deck.mainItems ?? []).reduce((sum, item) => {
+            const id = item.card?.uuid ?? item.cardId;
+            return sum + (id === card.uuid ? item.quantity : 0);
+          }, 0) +
+          (deck.sideboardItems ?? []).reduce((sum, item) => {
+            const id = item.card?.uuid ?? item.cardId;
+            return sum + (id === card.uuid ? item.quantity : 0);
+          }, 0) +
+          (deck.runeItems ?? []).reduce((sum, item) => {
+            const id = item.card?.uuid ?? item.cardId;
+            return sum + (id === card.uuid ? item.quantity : 0);
+          }, 0);
+        if (collQty - deckQty <= 0) return false;
+      }
+
+      return true;
+    });
+    return results;
+  }, [picker, allCards, deck, pickerDomain, pickerDomains, pickerType, pickerAttributes, cardSearchQuery, onlyInCollection, collectionQtyByCardId]);
 
   // Reseta filtros ao trocar o picker; para "main" pré-seleciona todos os domains da legend
   useEffect(() => {
-    const legend = deck?.legendCard ?? deck?.legend;
-    const legendDomains = legend?.cardDomains?.map((cd) => cd.domain.name.toLowerCase()) ?? [];
+    const isMultiDomain = picker === "main" || picker === "rune" || picker === "sideboard";
+    if (isMultiDomain) {
+      const deckLegendCard = deck?.legendCard ?? deck?.legend;
+      const legendUuid = deckLegendCard?.uuid;
+
+      // 1ª prioridade: card do deck API (tem cardDomains relacionais, mais confiável)
+      const domainsFromDeckApi = getCardDomains(deckLegendCard ?? {} as Card);
+
+      // 2ª prioridade: card do cache (pode ter dados legados/desatualizados)
+      const legendFromCache = legendUuid ? allCards.find((c) => c.uuid === legendUuid) : null;
+      const domainsFromCache = getCardDomains(legendFromCache ?? {} as Card);
+
+      // Usa deck API se tiver dados; caso contrário usa cache
+      const legendDomains = domainsFromDeckApi.length > 0 ? domainsFromDeckApi : domainsFromCache;
+      setPickerDomains(legendDomains);
+    } else {
+      setPickerDomains([]);
+    }
     setPickerDomain(undefined);
-    setPickerDomains(picker === "main" || picker === "rune" || picker === "sideboard" ? legendDomains : []);
     setPickerType(undefined);
     setPickerAttributes([]);
     setCardSearchQuery("");
-    if (!picker) setCards([]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picker]);
 
-  // Dispara busca ao alterar qualquer filtro
-  useEffect(() => {
-    if (!picker) return;
-    const trimmed = cardSearchQuery.trim();
-    if (trimmed.length > 0 && trimmed.length < 3) return;
-    const t = setTimeout(fetchCards, trimmed.length >= 3 ? 400 : 0);
-    return () => clearTimeout(t);
-  }, [picker, pickerDomain, pickerDomains, pickerType, pickerAttributes, cardSearchQuery, fetchCards]);
 
   // Opens the modal only when deck transitions from invalid → valid during editing
   useEffect(() => {
@@ -445,6 +629,7 @@ export default function DeckBuilderPage() {
       const updated = await setLegend(deck.id, card.uuid);
       setDeck(updated);
       setPicker(getNextPicker(updated));
+      setMobilePickerOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to set legend");
     }
@@ -458,6 +643,24 @@ export default function DeckBuilderPage() {
       const next = getNextPicker(updated);
       setPicker(next);
       if (next === "battlefields") setBattlefieldSlotBeingEdited(null);
+      setMobilePickerOpen(false);
+
+      // Auto-name deck as "Legend / Champion" when deck has no name yet
+      if (!(deck.name?.trim())) {
+        const legendObj = updated.legendCard ?? updated.legend;
+        const legendName = legendObj?.name ?? legendObj?.card?.name;
+        const championName = card.name;
+        if (legendName && championName) {
+          const autoName = `${legendName} / ${championName}`;
+          try {
+            const named = await updateDeckName(updated.id, autoName);
+            setDeck(named);
+            setNameDraft(autoName);
+          } catch {
+            // silent — user can name manually
+          }
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to set champion");
     }
@@ -465,11 +668,13 @@ export default function DeckBuilderPage() {
 
   async function handleAddMain(card: Card) {
     if (!deck) return;
+    savePickerScroll();
+    flashCard(card.uuid);
     try {
       const updated = await addMainCard(deck.id, card.uuid, 1);
       setDeck(updated);
-      // Mantém no main; avança só quando o deck estiver cheio
       setPicker(getNextPicker(updated));
+      restorePickerScroll();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add card");
     }
@@ -477,10 +682,13 @@ export default function DeckBuilderPage() {
 
   async function handleAddRune(card: Card) {
     if (!deck) return;
+    savePickerScroll();
+    flashCard(card.uuid);
     try {
       const updated = await addRuneCard(deck.id, card.uuid, 1);
       setDeck(updated);
       setPicker(getNextPicker(updated));
+      restorePickerScroll();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add rune");
     }
@@ -488,9 +696,12 @@ export default function DeckBuilderPage() {
 
   async function handleAddSideboard(card: Card) {
     if (!deck) return;
+    savePickerScroll();
+    flashCard(card.uuid);
     try {
       const updated = await addSideboardCard(deck.id, card.uuid, 1);
       setDeck(updated);
+      restorePickerScroll();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add to sideboard");
     }
@@ -501,7 +712,10 @@ export default function DeckBuilderPage() {
     try {
       const updated = await setBattlefield(deck.id, position, card.uuid);
       setDeck(updated);
-      setPicker(getNextPicker(updated));
+      const next = getNextPicker(updated);
+      setPicker(next);
+      // Auto-close mobile picker when all 3 BFs filled → moving to next step
+      if (next !== "battlefields") setMobilePickerOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to set battlefield");
     }
@@ -526,18 +740,14 @@ export default function DeckBuilderPage() {
   }
 
   if (authLoading || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-900">
-        <p className="text-gray-400">Loading...</p>
-      </div>
-    );
+    return <DeckBuilderSkeleton />;
   }
 
   if (!deckId || (!loading && !deck)) {
     return (
       <div className="min-h-screen bg-gray-900 px-4 py-8">
+        <BackLink href="/decks" label="My Decks" />
         <p className="text-gray-400">Deck not found.</p>
-        <Link href="/decks" className="mt-4 inline-block text-emerald-400 hover:underline">Back to decks</Link>
       </div>
     );
   }
@@ -617,7 +827,7 @@ export default function DeckBuilderPage() {
                   <div key={cd.domain.name} className="flex flex-col items-center gap-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={`/images/${cd.domain.name.toLowerCase()}.webp`}
+                      src={`/images/domains/${cd.domain.name.toLowerCase()}.webp`}
                       alt={cd.domain.name}
                       className="h-16 w-16 object-contain drop-shadow-lg"
                     />
@@ -650,8 +860,8 @@ export default function DeckBuilderPage() {
       )}
 
       <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-10 xl:px-12">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <Link href="/decks" className="text-gray-400 hover:text-white">← Decks</Link>
+        <BackLink href="/decks" label="My Decks" />
+        <div className="mb-4 flex items-center justify-end gap-4">
           <div className="flex items-center gap-3">
             {isDeckValid && deck && (
               <Link
@@ -677,124 +887,187 @@ export default function DeckBuilderPage() {
         )}
 
         {loading ? (
-          <p className="text-gray-400">Loading deck...</p>
+          <div className="space-y-4">
+            {/* Deck name + steps */}
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+              <div className="mb-2 h-3 w-20 animate-pulse rounded bg-gray-700" />
+              <div className="mb-4 h-10 w-full animate-pulse rounded bg-gray-700/60" />
+              <div className="flex gap-2">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="h-6 w-20 animate-pulse rounded-full bg-gray-700/60" />
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-[340px_1fr]">
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="aspect-[2.5/3.5] animate-pulse rounded-lg bg-gray-700/60" />
+                  ))}
+                </div>
+                <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+                  <div className="mb-3 h-3 w-24 animate-pulse rounded bg-gray-700" />
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="mb-2 h-10 w-full animate-pulse rounded bg-gray-700/40" />
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+                  <div className="mb-3 h-4 w-32 animate-pulse rounded bg-gray-700" />
+                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
+                    {Array.from({ length: 10 }).map((_, i) => (
+                      <div key={i} className="aspect-[2.5/3.5] animate-pulse rounded-lg bg-gray-700/40" />
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="mb-2 flex items-center gap-3">
+                      <div className="h-8 w-8 animate-pulse rounded bg-gray-700/60" />
+                      <div className="h-4 flex-1 animate-pulse rounded bg-gray-700/40" />
+                      <div className="h-6 w-16 animate-pulse rounded bg-gray-700/40" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         ) : !deck ? null : (
+          <>
+          {/* ── Deck name + Steps — sempre visíveis, fora do picker ── */}
+          <div className="mb-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+            <div className="mb-3 flex flex-col gap-1">
+              <label htmlFor="deck-name" className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                Deck name
+              </label>
+              <div className="flex items-center gap-2">
+                {editingName ? (
+                  <>
+                    <input
+                      id="deck-name"
+                      type="text"
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      disabled={savingName}
+                      placeholder="Give your deck a name"
+                      className={`min-w-0 flex-1 rounded border px-3 py-2 text-base font-medium text-white placeholder:text-gray-500 ${
+                        !(nameDraft?.trim()) && (deck?.mainItems?.length ?? 0) > 0
+                          ? "border-amber-500 bg-amber-950/20 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/50"
+                          : "border-gray-600 bg-gray-800 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                      }`}
+                      onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveName}
+                      disabled={savingName || nameDraft === deck?.name}
+                      className="shrink-0 rounded border border-emerald-700 bg-emerald-900/40 px-3 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-900/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {savingName ? "…" : "Save"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      id="deck-name"
+                      className={`min-w-0 flex-1 rounded border border-transparent px-3 py-2 text-base font-medium ${
+                        (deck?.name?.trim() ?? "") ? "text-white" : "text-gray-500"
+                      }`}
+                    >
+                      {(deck?.name?.trim() ?? "") || "No name"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingName(true);
+                        setNameDraft(deck?.name ?? "");
+                      }}
+                      className="shrink-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
+                    >
+                      Edit Name
+                    </button>
+                  </>
+                )}
+              </div>
+              {!(nameDraft?.trim()) && editingName && (deck?.mainItems?.length ?? 0) > 0 && (
+                <p className="text-xs text-amber-400">Deck name is required</p>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium uppercase tracking-wider text-gray-500 shrink-0">Steps</span>
+              <div className="flex flex-wrap gap-1">
+                {(["legend", "champion", "battlefields", "main", "rune", "sideboard"] as PickerMode[]).map((mode) => {
+                  const labelMap: Record<PickerMode, string> = {
+                    legend: "Legend", champion: "Champion",
+                    battlefields: "Battlefields",
+                    main: "Main", rune: "Rune", sideboard: "SB",
+                  };
+                  const bfCount = deck?.battlefields?.filter((b) => b.card).length ?? 0;
+                  const errs = validation?.errors ?? [];
+                  const doneMap: Record<PickerMode, boolean> = {
+                    legend: !!deckLegend,
+                    champion: !!deckChampion,
+                    battlefields: bfCount === 3,
+                    main: mainCount === 39,
+                    rune: runeCount === 12,
+                    sideboard: sideboardCount > 0,
+                  };
+                  const bfHasWarn = errs.some((e) => /^battlefield/i.test(e));
+                  const warnMap: Record<PickerMode, boolean> = {
+                    legend: doneMap.legend && errs.some(e => /^legend/i.test(e)),
+                    champion: doneMap.champion && errs.some(e => /^champion/i.test(e)),
+                    battlefields: doneMap.battlefields && bfHasWarn,
+                    main: doneMap.main && (errs.some(e => /^main/i.test(e)) || mainHasErrors),
+                    rune: doneMap.rune && (errs.some(e => /^rune/i.test(e)) || runeHasErrors),
+                    sideboard: doneMap.sideboard && (errs.some(e => /^sideboard/i.test(e)) || sideboardHasErrors),
+                  };
+                  const active = picker === mode;
+                  const done = doneMap[mode];
+                  const warn = warnMap[mode];
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => { setPicker(mode); setCardSearchQuery(""); if (mode === "battlefields") setBattlefieldSlotBeingEdited(null); setMobilePickerOpen(true); }}
+                      className={`rounded border px-2 py-0.5 text-xs font-medium transition-all ${
+                        active
+                          ? warn
+                            ? "border-amber-500 bg-amber-900/30 text-amber-300"
+                            : "border-blue-500 bg-blue-500/20 text-blue-300"
+                          : warn
+                          ? "border-amber-600 bg-amber-900/20 text-amber-400 hover:border-amber-500"
+                          : done
+                          ? "border-emerald-700 bg-emerald-900/20 text-emerald-400 hover:border-emerald-500"
+                          : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
+                      }`}
+                    >
+                      {warn && "⚠ "}{!warn && done && !active && "✓ "}{labelMap[mode]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-col gap-6 lg:flex-row">
-            {/* Left column: card list (70%) */}
-            <div className="flex flex-col rounded-lg border border-gray-700 bg-gray-800/50 p-4 min-h-[400px] lg:w-[70%] lg:shrink-0">
-              {/* Top section: deck name + steps */}
-              <div className="mb-4 border-b border-gray-700 pb-4">
-                <div className="mb-3 flex flex-col gap-1">
-                  <label htmlFor="deck-name" className="text-xs font-medium uppercase tracking-wider text-gray-500">
-                    Deck name
-                  </label>
-                  <div className="flex items-center gap-2">
-                    {editingName ? (
-                      <>
-                        <input
-                          id="deck-name"
-                          type="text"
-                          value={nameDraft}
-                          onChange={(e) => setNameDraft(e.target.value)}
-                          disabled={savingName}
-                          placeholder="Give your deck a name"
-                          className={`min-w-0 flex-1 rounded border px-3 py-2 text-base font-medium text-white placeholder:text-gray-500 ${
-                            !(nameDraft?.trim()) && (deck?.mainItems?.length ?? 0) > 0
-                              ? "border-amber-500 bg-amber-950/20 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/50"
-                              : "border-gray-600 bg-gray-800 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
-                          }`}
-                          onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleSaveName}
-                          disabled={savingName || nameDraft === deck?.name}
-                          className="shrink-0 rounded border border-emerald-700 bg-emerald-900/40 px-3 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-900/60 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {savingName ? "…" : "Save"}
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <span
-                          id="deck-name"
-                          className={`min-w-0 flex-1 rounded border border-transparent px-3 py-2 text-base font-medium ${
-                            (deck?.name?.trim() ?? "") ? "text-white" : "text-gray-500"
-                          }`}
-                        >
-                          {(deck?.name?.trim() ?? "") || "No name"}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingName(true);
-                            setNameDraft(deck?.name ?? "");
-                          }}
-                          className="shrink-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
-                        >
-                          Edit Name
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {!(nameDraft?.trim()) && editingName && (deck?.mainItems?.length ?? 0) > 0 && (
-                    <p className="text-xs text-amber-400">Deck name is required</p>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-medium uppercase tracking-wider text-gray-500 shrink-0">Steps</span>
-                  <div className="flex flex-wrap gap-1">
-                    {(["legend", "champion", "battlefields", "main", "rune", "sideboard"] as PickerMode[]).map((mode) => {
-                      const labelMap: Record<PickerMode, string> = {
-                        legend: "Legend", champion: "Champion",
-                        battlefields: "Battlefields",
-                        main: "Main", rune: "Rune", sideboard: "SB",
-                      };
-                      const bfCount = deck?.battlefields?.filter((b) => b.card).length ?? 0;
-                      const errs = validation?.errors ?? [];
-                      const doneMap: Record<PickerMode, boolean> = {
-                        legend: !!deckLegend,
-                        champion: !!deckChampion,
-                        battlefields: bfCount === 3,
-                        main: mainCount === 39,
-                        rune: runeCount === 12,
-                        sideboard: sideboardCount > 0,
-                      };
-                      const bfHasWarn = errs.some((e) => /^battlefield/i.test(e));
-                      const warnMap: Record<PickerMode, boolean> = {
-                        legend: doneMap.legend && errs.some(e => /^legend/i.test(e)),
-                        champion: doneMap.champion && errs.some(e => /^champion/i.test(e)),
-                        battlefields: doneMap.battlefields && bfHasWarn,
-                        main: doneMap.main && (errs.some(e => /^main/i.test(e)) || mainHasErrors),
-                        rune: doneMap.rune && (errs.some(e => /^rune/i.test(e)) || runeHasErrors),
-                        sideboard: doneMap.sideboard && (errs.some(e => /^sideboard/i.test(e)) || sideboardHasErrors),
-                      };
-                      const active = picker === mode;
-                      const done = doneMap[mode];
-                      const warn = warnMap[mode];
-                      return (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => { setPicker(mode); setCardSearchQuery(""); if (mode === "battlefields") setBattlefieldSlotBeingEdited(null); }}
-                          className={`rounded border px-2 py-0.5 text-xs font-medium transition-all ${
-                            active
-                              ? warn
-                                ? "border-amber-500 bg-amber-900/30 text-amber-300"
-                                : "border-blue-500 bg-blue-500/20 text-blue-300"
-                              : warn
-                              ? "border-amber-600 bg-amber-900/20 text-amber-400 hover:border-amber-500"
-                              : done
-                              ? "border-emerald-700 bg-emerald-900/20 text-emerald-400 hover:border-emerald-500"
-                              : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
-                          }`}
-                        >
-                          {warn && "⚠ "}{!warn && done && !active && "✓ "}{labelMap[mode]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+            {/* Left column: card picker — full screen overlay on mobile, side column on lg+ */}
+            <div ref={pickerContainerRef} className={`flex flex-col rounded-lg border border-gray-700 p-4 min-h-[400px] lg:w-[70%] lg:shrink-0 lg:bg-gray-800/50 ${
+              mobilePickerOpen
+                ? "fixed inset-0 z-50 overflow-y-auto bg-gray-900 lg:static lg:inset-auto lg:z-auto lg:overflow-visible"
+                : "hidden lg:flex"
+            }`}>
+              {/* Mobile-only close bar */}
+              <div className="mb-3 flex items-center justify-between border-b border-gray-700 pb-3 lg:hidden">
+                <span className="text-sm font-semibold text-white">Browse cards</span>
+                <button
+                  type="button"
+                  onClick={() => setMobilePickerOpen(false)}
+                  aria-label="Close picker"
+                  className="flex h-8 w-8 items-center justify-center rounded text-gray-400 hover:bg-gray-700 hover:text-white"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
               </div>
 
               {picker ? (
@@ -839,8 +1112,12 @@ export default function DeckBuilderPage() {
                       {/* Domain — not used for battlefields */}
                       {picker !== "battlefields" && (() => {
                         const isMultiDomain = picker === "main" || picker === "rune" || picker === "sideboard";
+                        const legendUuidForUI = deckLegend?.uuid;
+                        const legendCacheForUI = legendUuidForUI ? allCards.find((c) => c.uuid === legendUuidForUI) : null;
+                        const domainsFromDeckApiUI = getCardDomains(deckLegend ?? {} as Card);
+                        const domainsFromCacheUI = getCardDomains(legendCacheForUI ?? {} as Card);
                         const domainsToShow = isMultiDomain
-                          ? (deckLegend?.cardDomains?.map((cd) => cd.domain.name.toLowerCase()) ?? [])
+                          ? (domainsFromDeckApiUI.length > 0 ? domainsFromDeckApiUI : domainsFromCacheUI)
                           : [...DOMAINS] as string[];
                         if (domainsToShow.length === 0) return null;
                         return (
@@ -884,7 +1161,7 @@ export default function DeckBuilderPage() {
                                   }`}
                                 >
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={`/images/${domain}.webp`} alt={domain} className="h-full w-full object-contain" />
+                                  <img src={`/images/domains/${domain}.webp`} alt={domain} className="h-full w-full object-contain" />
                                 </button>
                               );
                             })}
@@ -979,18 +1256,14 @@ export default function DeckBuilderPage() {
                   </div>
                   {cardsLoading ? (
                     <p className="py-8 text-center text-gray-400">Loading cards...</p>
-                  ) : cards.length === 0 ? (
+                  ) : filteredCards.length === 0 ? (
                     <p className="py-8 text-center text-gray-400">
-                      {cardSearchQuery.trim().length >= 3
-                        ? "No cards found."
-                        : picker === "main" || picker === "rune"
-                        ? "Type a name to search."
-                        : "Loading..."}
+                      {cardSearchQuery.trim().length >= 3 ? "No cards found." : "No cards available."}
                     </p>
                   ) : (
                     <CardPickerGrid
                       picker={picker}
-                      cards={cards}
+                      cards={filteredCards}
                       deck={deck}
                       mainCount={mainCount}
                       runeCount={runeCount}
@@ -1003,14 +1276,34 @@ export default function DeckBuilderPage() {
                       onSetBattlefield={handleSetBattlefield}
                       onPickBattlefield={picker === "battlefields" ? handlePickBattlefield : undefined}
                       collectionQtyByCardId={collectionQtyByCardId}
+                      addAnimations={addAnimations}
                     />
                   )}
                 </>
               ) : null}
             </div>
 
+            {/* Mobile FAB — open card picker */}
+            {!mobilePickerOpen && (
+              <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 lg:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobilePickerOpen(true)}
+                  className="flex items-center gap-2 rounded-full border border-gray-600 bg-gray-800 px-5 py-3 text-sm font-semibold text-white shadow-2xl hover:bg-gray-700 active:scale-95"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                  Browse cards
+                  {picker && (
+                    <span className="ml-1 rounded border border-blue-500/50 bg-blue-500/20 px-1.5 py-0.5 text-xs text-blue-300">
+                      {picker === "legend" ? "Legend" : picker === "champion" ? "Champion" : picker === "battlefields" ? "BF" : picker === "main" ? "Main" : picker === "rune" ? "Rune" : "SB"}
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
+
             {/* Right column: deck sections (60%) */}
-            <div className="flex min-w-0 flex-1 flex-col gap-4">
+            <div className="flex min-w-0 flex-1 flex-col gap-4 pb-20 lg:pb-0">
               {/* LEGEND & CHAMPION */}
               <section className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
                 <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
@@ -1039,9 +1332,9 @@ export default function DeckBuilderPage() {
                     </span>
                     {deckLegend ? (
                       <div className="group relative w-full overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-lg aspect-[2.5/3.5]">
-                        {deckLegend.imageUrl ? (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img src={deckLegend.imageUrl} alt={deckLegend.name} className="absolute inset-0 h-full w-full object-cover" />
+                        {getCardImageUrl(deckLegend) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={getCardImageUrl(deckLegend)!} alt={deckLegend.name} className="absolute inset-0 h-full w-full object-cover" />
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center bg-gray-800 p-2 text-center">
                             <span className="text-xs text-gray-400">{deckLegend.name}</span>
@@ -1051,7 +1344,7 @@ export default function DeckBuilderPage() {
                           <span className="w-full truncate text-center text-xs font-medium text-white">{deckLegend.name}</span>
                           <button
                             type="button"
-                            onClick={() => setPicker("legend")}
+                            onClick={() => { setPicker("legend"); setMobilePickerOpen(true); }}
                             className="w-full rounded bg-gray-700/80 py-1 text-xs text-gray-200 hover:bg-gray-600"
                           >
                             Change
@@ -1061,7 +1354,7 @@ export default function DeckBuilderPage() {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setPicker("legend")}
+                        onClick={() => { setPicker("legend"); setMobilePickerOpen(true); }}
                         className="flex w-full aspect-[2.5/3.5] items-center justify-center rounded-lg border-2 border-dashed border-gray-600 bg-gray-800/50 text-sm text-gray-400 hover:border-gray-500 hover:text-gray-300"
                       >
                         Set legend
@@ -1091,9 +1384,9 @@ export default function DeckBuilderPage() {
                     </span>
                     {deckChampion ? (
                       <div className="group relative w-full overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-lg aspect-[2.5/3.5]">
-                        {deckChampion.imageUrl ? (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img src={deckChampion.imageUrl} alt={deckChampion.name} className="absolute inset-0 h-full w-full object-cover" />
+                        {getCardImageUrl(deckChampion) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={getCardImageUrl(deckChampion)!} alt={deckChampion.name} className="absolute inset-0 h-full w-full object-cover" />
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center bg-gray-800 p-2 text-center">
                             <span className="text-xs text-gray-400">{deckChampion.name}</span>
@@ -1103,7 +1396,7 @@ export default function DeckBuilderPage() {
                           <span className="w-full truncate text-center text-xs font-medium text-white">{deckChampion.name}</span>
                           <button
                             type="button"
-                            onClick={() => setPicker("champion")}
+                            onClick={() => { setPicker("champion"); setMobilePickerOpen(true); }}
                             className="w-full rounded bg-gray-700/80 py-1 text-xs text-gray-200 hover:bg-gray-600"
                           >
                             Change
@@ -1113,7 +1406,7 @@ export default function DeckBuilderPage() {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => deckLegend && setPicker("champion")}
+                        onClick={() => { if (deckLegend) { setPicker("champion"); setMobilePickerOpen(true); } }}
                         disabled={!deckLegend}
                         title={!deckLegend ? "Select a legend first" : "Set champion"}
                         className={`flex w-full aspect-[2.5/3.5] flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed text-sm transition-all ${
@@ -1176,7 +1469,7 @@ export default function DeckBuilderPage() {
                         )}
                         <button
                           type="button"
-                          onClick={() => { setPicker("battlefields"); setBattlefieldSlotBeingEdited(pos); }}
+                          onClick={() => { setPicker("battlefields"); setBattlefieldSlotBeingEdited(pos); setMobilePickerOpen(true); }}
                           className="rounded border border-gray-600 bg-gray-700/50 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 shrink-0"
                         >
                           {bf?.card ? "Change" : "Set battlefield"}
@@ -1194,7 +1487,7 @@ export default function DeckBuilderPage() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       key={cd.domain.name}
-                      src={`/images/${cd.domain.name.toLowerCase()}.webp`}
+                      src={`/images/domains/${cd.domain.name.toLowerCase()}.webp`}
                       alt={cd.domain.name}
                       title={cd.domain.name.charAt(0).toUpperCase() + cd.domain.name.slice(1)}
                       className="h-4 w-4 object-contain"
@@ -1254,9 +1547,15 @@ export default function DeckBuilderPage() {
                                   {(() => {
                                     const cid = item.card?.uuid ?? item.cardId;
                                     const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
-                                    const domainImgSrc = domain ? `/images/${domain}.webp` : null;
+                                    const domainImgSrc = domain ? `/images/domains/${domain}.webp` : null;
                                     const cardErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
                                     const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
+                                    const usedByLegend = deckLegend?.uuid === cid ? 1 : 0;
+                                    const usedByChampion = deckChampion?.uuid === cid ? 1 : 0;
+                                    const mainQty = (deck.mainItems ?? []).reduce((s, it) => s + ((it.card?.uuid ?? it.cardId) === cid ? it.quantity : 0), 0);
+                                    const sbQty = (deck.sideboardItems ?? []).reduce((s, it) => s + ((it.card?.uuid ?? it.cardId) === cid ? it.quantity : 0), 0);
+                                    const effectiveMax = Math.min(3, Math.max(0, owned - usedByLegend - usedByChampion));
+                                    const canIncreaseMain = (mainQty + sbQty) < effectiveMax && (mainQty + sbQty) < 3;
                                     const need = item.quantity;
                                     const hasCollectionData = collectionQtyByCardId.size > 0;
                                     return (
@@ -1275,7 +1574,7 @@ export default function DeckBuilderPage() {
                                             </CardHoverPreview>
                                             {hasCollectionData && (
                                               <span
-                                                title={`In collection: ${owned} · In deck: ${need}`}
+                                                title={`In collection: ${owned} · In deck: ${need}${usedByChampion || usedByLegend ? ` (${usedByLegend + usedByChampion} in legend/champion)` : ""}`}
                                                 className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
                                                   owned >= need ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
                                                 }`}
@@ -1303,10 +1602,10 @@ export default function DeckBuilderPage() {
                                           <button
                                             type="button"
                                             onClick={async () => {
-                                              if (item.quantity > 2) return;
+                                              if (!canIncreaseMain) return;
                                               try { setDeck(await setMainCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
                                             }}
-                                            disabled={item.quantity > 2}
+                                            disabled={!canIncreaseMain}
                                             className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50 text-xs"
                                           >+</button>
                                           <button
@@ -1329,7 +1628,7 @@ export default function DeckBuilderPage() {
                 })()}
                 <button
                   type="button"
-                  onClick={() => setPicker("main")}
+                  onClick={() => { setPicker("main"); setMobilePickerOpen(true); }}
                   disabled={mainCount > 38}
                   className="w-full rounded border border-gray-600 bg-gray-700/50 py-2.5 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-50"
                 >
@@ -1415,7 +1714,7 @@ export default function DeckBuilderPage() {
                 </ul>
                 <button
                   type="button"
-                  onClick={() => setPicker("rune")}
+                  onClick={() => { setPicker("rune"); setMobilePickerOpen(true); }}
                   disabled={runeCount > 11}
                   className="w-full rounded border border-gray-600 bg-gray-700/50 py-2.5 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-50"
                 >
@@ -1440,6 +1739,12 @@ export default function DeckBuilderPage() {
                     const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
                     const sbErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
                     const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
+                    const usedByLegend = deckLegend?.uuid === cid ? 1 : 0;
+                    const usedByChampion = deckChampion?.uuid === cid ? 1 : 0;
+                    const mainQty = (deck.mainItems ?? []).reduce((s, it) => s + ((it.card?.uuid ?? it.cardId) === cid ? it.quantity : 0), 0);
+                    const sbQty = (deck.sideboardItems ?? []).reduce((s, it) => s + ((it.card?.uuid ?? it.cardId) === cid ? it.quantity : 0), 0);
+                    const effectiveMax = Math.min(3, Math.max(0, owned - usedByLegend - usedByChampion));
+                    const canIncreaseSb = sideboardCount <= 7 && (mainQty + sbQty) < effectiveMax && (mainQty + sbQty) < 3;
                     const need = item.quantity;
                     const hasCollectionData = collectionQtyByCardId.size > 0;
                     return (
@@ -1450,7 +1755,7 @@ export default function DeckBuilderPage() {
                               <span className="flex items-center gap-1.5 text-blue-400 cursor-pointer">
                                 {domain && (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={`/images/${domain}.webp`} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" />
+                                  <img src={`/images/domains/${domain}.webp`} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" />
                                 )}
                                 <span className="text-gray-500">×{item.quantity}</span>
                                 {item.card.name}
@@ -1458,7 +1763,7 @@ export default function DeckBuilderPage() {
                             </CardHoverPreview>
                             {hasCollectionData && (
                               <span
-                                title={`In collection: ${owned} · In deck: ${need}`}
+                                title={`In collection: ${owned} · In deck: ${need}${usedByChampion || usedByLegend ? ` (${usedByLegend + usedByChampion} in legend/champion)` : ""}`}
                                 className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
                                   owned >= need ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
                                 }`}
@@ -1486,10 +1791,10 @@ export default function DeckBuilderPage() {
                           <button
                             type="button"
                             onClick={async () => {
-                              if (sideboardCount > 7) return;
+                              if (!canIncreaseSb) return;
                               try { setDeck(await setSideboardCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
                             }}
-                            disabled={sideboardCount > 7}
+                            disabled={!canIncreaseSb}
                             className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50 text-xs"
                           >+</button>
                           <button
@@ -1504,7 +1809,7 @@ export default function DeckBuilderPage() {
                 </ul>
                 <button
                   type="button"
-                  onClick={() => setPicker("sideboard")}
+                  onClick={() => { setPicker("sideboard"); setMobilePickerOpen(true); }}
                   disabled={sideboardCount > 7}
                   className="w-full rounded border border-gray-600 bg-gray-700/50 py-2.5 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-50"
                 >
@@ -1532,6 +1837,7 @@ export default function DeckBuilderPage() {
               )}
             </div>
           </div>
+          </>
         )}
 
       </div>

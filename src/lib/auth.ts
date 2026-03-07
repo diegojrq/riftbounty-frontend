@@ -6,11 +6,27 @@
 
 import type { User } from "@/types/auth";
 
-const TOKEN_KEY = "riftbounty_access_token";
-const USER_KEY = "riftbounty_user";
+const TOKEN_KEY = "rb_token";
+const USER_KEY = "rb_user";
+
+/** Migra chaves antigas para o padrão rb_* uma única vez */
+function migrateKeys(): void {
+  const legacy: Record<string, string> = {
+    riftbounty_access_token: TOKEN_KEY,
+    riftbounty_user: USER_KEY,
+  };
+  for (const [old, next] of Object.entries(legacy)) {
+    const val = localStorage.getItem(old);
+    if (val !== null) {
+      localStorage.setItem(next, val);
+      localStorage.removeItem(old);
+    }
+  }
+}
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
+  migrateKeys();
   return localStorage.getItem(TOKEN_KEY);
 }
 

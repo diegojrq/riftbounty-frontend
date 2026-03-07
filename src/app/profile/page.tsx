@@ -238,18 +238,66 @@ export default function ProfilePage() {
   const sectionCardClass =
     "overflow-hidden rounded-xl border border-gray-700 bg-gray-800";
 
-  if (authLoading || !user) {
+  if (authLoading || !user || loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-900">
-        <p className="text-gray-400">Loading...</p>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-900">
-        <p className="text-gray-400">Loading profile...</p>
+      <div className="min-h-screen bg-gray-900">
+        <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+          <div className="mb-6 h-8 w-24 animate-pulse rounded bg-gray-700" />
+          <div className="space-y-6">
+            {/* Name section */}
+            <div className="overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
+              <div className="border-b border-gray-700 px-5 py-4">
+                <div className="h-5 w-16 animate-pulse rounded bg-gray-700" />
+              </div>
+              <div className="space-y-4 p-5">
+                {[1, 2, 3].map((i) => (
+                  <div key={i}>
+                    <div className="mb-1.5 h-3 w-20 animate-pulse rounded bg-gray-700" />
+                    <div className="h-10 w-full animate-pulse rounded bg-gray-700/60" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Address section */}
+            <div className="overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
+              <div className="border-b border-gray-700 px-5 py-4">
+                <div className="h-5 w-20 animate-pulse rounded bg-gray-700" />
+              </div>
+              <div className="space-y-4 p-5">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="mb-1.5 h-3 w-24 animate-pulse rounded bg-gray-700" />
+                    <div className="h-10 w-full animate-pulse rounded bg-gray-700/60" />
+                  </div>
+                  <div>
+                    <div className="mb-1.5 h-3 w-28 animate-pulse rounded bg-gray-700" />
+                    <div className="h-10 w-full animate-pulse rounded bg-gray-700/60" />
+                  </div>
+                </div>
+                {[1, 2, 3].map((i) => (
+                  <div key={i}>
+                    <div className="mb-1.5 h-3 w-16 animate-pulse rounded bg-gray-700" />
+                    <div className="h-10 w-full animate-pulse rounded bg-gray-700/60" />
+                  </div>
+                ))}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="mb-1.5 h-3 w-16 animate-pulse rounded bg-gray-700" />
+                    <div className="h-10 w-full animate-pulse rounded bg-gray-700/60" />
+                  </div>
+                  <div>
+                    <div className="mb-1.5 h-3 w-12 animate-pulse rounded bg-gray-700" />
+                    <div className="h-10 w-full animate-pulse rounded bg-gray-700/60" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* Save button */}
+            <div className="flex justify-end">
+              <div className="h-10 w-28 animate-pulse rounded-lg bg-gray-700" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -257,12 +305,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-gray-900">
       <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
-        <Link
-          href="/decks"
-          className="mb-6 inline-block text-sm font-medium text-gray-400 transition hover:text-white"
-        >
-          ← My decks
-        </Link>
+
         <h1 className="mb-6 text-2xl font-bold text-white">Profile</h1>
         {error && (
           <div
@@ -295,7 +338,7 @@ export default function ProfilePage() {
                 <label htmlFor="profileSlug" className={labelClass}>
                   Username
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 sm:flex-nowrap">
                   <input
                     id="profileSlug"
                     type="text"
@@ -304,7 +347,7 @@ export default function ProfilePage() {
                       setSlug(normalizeSlugInput(e.target.value));
                       setSlugAvailability(null);
                     }}
-                    className={inputClass}
+                    className={`${inputClass} min-w-0 flex-1`}
                     placeholder="my_username"
                     minLength={3}
                     maxLength={30}

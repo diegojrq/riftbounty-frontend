@@ -60,11 +60,10 @@ export interface CollectionStatsMostOwnedCard {
     uuid: string;
     scraperId?: string;
     name: string;
+    slug?: string;
     cardSet?: string;
     rarity?: string;
     type?: string;
-    /** Card image URL when provided by the API */
-    imageUrl?: string;
   };
   quantity: number;
 }

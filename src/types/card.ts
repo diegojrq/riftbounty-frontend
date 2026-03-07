@@ -3,15 +3,24 @@
 export interface Card {
   /** Primary key (UUID). Identificador principal da carta. */
   uuid: string;
-  /** ID do scraper (legado); único, não é PK. */
+  /** ID do scraper (legado); único, não é PK. API retorna camelCase. */
   scraper_id?: string;
+  scraperId?: string;
   name: string;
+  description?: string;
+  altText?: string;
   slug?: string;
+  /** API retorna "set" ou "cardSet" dependendo do endpoint. */
   set?: string;
+  cardSet?: string;
   rarity?: string;
   orientation?: string;
+  /** API retorna "record_type" ou "recordType". */
   record_type?: string;
+  recordType?: string;
+  /** API retorna "domain" (string), "domains" (string[]) ou "cardDomains" (objetos). */
   domain?: string;
+  domains?: string[];
   illustrator?: string;
   cost?: string;
   /** Power as integer (1=C, 2=CC, 3=CCC) */
@@ -20,8 +29,6 @@ export interface Card {
   might?: number;
   cmc?: number;
   type?: string;
-  /** Ready-to-use image URL from API (backend /v1/assets/cards/ or DB fallback). */
-  imageUrl?: string;
   attributes?: string[] | Record<string, unknown>;
   subtypes?: string[];
   supertypes?: string[];
@@ -38,7 +45,7 @@ export interface Card {
   collectorNumber?: string;
 }
 
-/** GET /v1/cards response: items (cards with imageUrl, relations), totalCount. */
+/** GET /v1/cards response: items (cards with relations), totalCount. */
 export interface CardsListResponse {
   items: Card[];
   totalCount: number;

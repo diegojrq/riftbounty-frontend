@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/auth-context";
+import { CardsProvider } from "@/lib/cards-context";
 import { BackToTop } from "@/components/layout/BackToTop";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
@@ -28,6 +29,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased bg-gray-900">
         <AuthProvider>
+          <CardsProvider>
           <Header />
           <main className="min-h-screen">{children}</main>
           <Footer />
@@ -44,6 +46,7 @@ export default function RootLayout({
               },
             }}
           />
+          </CardsProvider>
         </AuthProvider>
       </body>
     </html>

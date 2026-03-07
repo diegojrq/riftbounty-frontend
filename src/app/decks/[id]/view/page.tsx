@@ -5,7 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { getDeck } from "@/lib/decks";
 import { useAuth } from "@/lib/auth-context";
+import { getCardImageUrl } from "@/lib/cards";
+import { CardImg } from "@/components/cards/CardImg";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
+import { BackLink } from "@/components/layout/BackLink";
 import type { Card } from "@/types/card";
 import type { Deck, DeckMainItem } from "@/types/deck";
 
@@ -47,11 +50,10 @@ function CardSlot({ card, label }: { card: Card | null | undefined; label: strin
 
       {card ? (
         <div className={`relative w-full overflow-hidden rounded-xl border border-gray-700 bg-gray-800 shadow-xl ${isLandscape ? "aspect-[3.5/2.5]" : "aspect-[2.5/3.5]"}`}>
-          {card.imageUrl ? (
+          {getCardImageUrl(card) ? (
             isLandscape ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={card.imageUrl}
+              <CardImg
+                src={getCardImageUrl(card)!}
                 alt={card.name}
                 style={{
                   position: "absolute", top: "50%", left: "50%",
@@ -60,8 +62,7 @@ function CardSlot({ card, label }: { card: Card | null | undefined; label: strin
                 }}
               />
             ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={card.imageUrl} alt={card.name} className="absolute inset-0 h-full w-full object-cover" />
+              <CardImg src={getCardImageUrl(card)!} alt={card.name} className="absolute inset-0 h-full w-full object-cover" />
             )
           ) : (
             <div className="absolute inset-0 flex items-center justify-center p-3 text-center">
@@ -85,8 +86,87 @@ function DomainBadge({ name }: { name: string }) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-2">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`/images/${name.toLowerCase()}.webp`} alt={name} className="h-8 w-8 object-contain" />
+      <img src={`/images/domains/${name.toLowerCase()}.webp`} alt={name} className="h-8 w-8 object-contain" />
       <span className="text-sm font-semibold capitalize text-gray-200">{name}</span>
+    </div>
+  );
+}
+
+function DeckViewSkeleton() {
+  return (
+    <div className="min-h-screen bg-gray-900">
+      {/* Header */}
+      <div className="border-b border-gray-800 bg-gray-900/95 px-4 py-4 sm:px-8">
+        <div className="mx-auto max-w-[1400px]">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-4">
+              <div className="h-4 w-20 animate-pulse rounded bg-gray-700" />
+              <div className="h-6 w-48 animate-pulse rounded bg-gray-700" />
+            </div>
+            <div className="h-9 w-24 animate-pulse rounded-lg bg-gray-700" />
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-[1400px] px-4 py-8 sm:px-8">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[320px_1fr]">
+
+          {/* Coluna esquerda */}
+          <div className="flex flex-col gap-6">
+            {/* Legend + Champion */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <div className="h-3 w-12 animate-pulse rounded bg-gray-700" />
+                <div className="aspect-[2.5/3.5] w-full animate-pulse rounded-xl bg-gray-700/60" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <div className="h-3 w-16 animate-pulse rounded bg-gray-700" />
+                <div className="aspect-[2.5/3.5] w-full animate-pulse rounded-xl bg-gray-700/60" />
+              </div>
+            </div>
+            {/* Battlefields */}
+            <div className="flex flex-col gap-2">
+              <div className="h-3 w-24 animate-pulse rounded bg-gray-700" />
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="aspect-[3.5/2.5] w-full animate-pulse rounded-lg bg-gray-700/60" />
+              ))}
+            </div>
+          </div>
+
+          {/* Coluna direita */}
+          <div className="flex flex-col gap-4">
+            {/* Legend & Champion row */}
+            <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
+              <div className="mb-3 h-3 w-28 animate-pulse rounded bg-gray-700" />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="h-14 animate-pulse rounded-lg bg-gray-700/60" />
+                <div className="h-14 animate-pulse rounded-lg bg-gray-700/60" />
+              </div>
+            </div>
+            {/* Main deck groups */}
+            {[40, 28, 20, 16].map((w, i) => (
+              <div key={i} className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="h-4 w-4 animate-pulse rounded bg-gray-700" />
+                  <div className={`h-3 animate-pulse rounded bg-gray-700`} style={{ width: `${w}%` }} />
+                </div>
+                <div className="space-y-1.5">
+                  {Array.from({ length: i === 0 ? 5 : i === 1 ? 4 : 3 }).map((_, j) => (
+                    <div key={j} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-6 animate-pulse rounded bg-gray-700/60" />
+                        <div className="h-3 w-32 animate-pulse rounded bg-gray-700/60" />
+                      </div>
+                      <div className="h-3 w-6 animate-pulse rounded bg-gray-700/40" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+        </div>
+      </div>
     </div>
   );
 }
@@ -119,18 +199,14 @@ export default function DeckViewPage() {
   }, [authLoading, user, router, fetchDeck]);
 
   if (authLoading || loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-900">
-        <p className="text-gray-400">Loading...</p>
-      </div>
-    );
+    return <DeckViewSkeleton />;
   }
 
   if (!deck) {
     return (
       <div className="min-h-screen bg-gray-900 px-4 py-8">
+        <BackLink href="/decks" label="My Decks" />
         <p className="text-gray-400">Deck not found.</p>
-        <Link href="/decks" className="mt-4 inline-block text-emerald-400 hover:underline">← My Decks</Link>
       </div>
     );
   }
@@ -149,10 +225,13 @@ export default function DeckViewPage() {
     <div className="min-h-screen bg-gray-900">
       {/* Header */}
       <div className="border-b border-gray-800 bg-gray-900/95 px-4 py-4 sm:px-8">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <Link href="/decks" className="text-gray-400 hover:text-white text-sm">← My Decks</Link>
-            <div className="flex items-center gap-3">
+        <div className="mx-auto max-w-[1400px]">
+          <BackLink href="/decks" label="My Decks" className="mb-2" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {domains.length > 0 && domains.map((cd) => (
+                <DomainBadge key={cd.domain.name} name={cd.domain.name} />
+              ))}
               <h1 className="text-xl font-bold text-white">{deck.name}</h1>
               {isValid && (
                 <span className="flex items-center gap-1 rounded-full border border-emerald-700 bg-emerald-900/30 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
@@ -161,20 +240,13 @@ export default function DeckViewPage() {
                 </span>
               )}
             </div>
-            {domains.length > 0 && (
-              <div className="flex items-center gap-2">
-                {domains.map((cd) => (
-                  <DomainBadge key={cd.domain.name} name={cd.domain.name} />
-                ))}
-              </div>
-            )}
+            <Link
+              href={`/decks/${deck.id}`}
+              className="shrink-0 rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+            >
+              ✎ Edit deck
+            </Link>
           </div>
-          <Link
-            href={`/decks/${deck.id}`}
-            className="rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-          >
-            ✎ Edit deck
-          </Link>
         </div>
       </div>
 
@@ -199,10 +271,10 @@ export default function DeckViewPage() {
                   const bf = deck.battlefields?.find((b) => b.position === pos);
                   return bf?.card ? (
                     <div key={pos} className="relative overflow-hidden rounded-lg border border-gray-700 bg-gray-800 aspect-[3.5/2.5]">
-                      {bf.card.imageUrl ? (
+                      {getCardImageUrl(bf.card) ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={bf.card.imageUrl}
+                          src={getCardImageUrl(bf.card)!}
                           alt={bf.card.name}
                           style={{
                             position: "absolute", top: "50%", left: "50%",
@@ -235,9 +307,9 @@ export default function DeckViewPage() {
                 {/* Legend */}
                 {deckLegend ? (
                   <div className="flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5">
-                    {deckLegend.imageUrl && (
+                    {getCardImageUrl(deckLegend) && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={deckLegend.imageUrl} alt={deckLegend.name} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
+                      <img src={getCardImageUrl(deckLegend)!} alt={deckLegend.name} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
                     )}
                     <div className="min-w-0">
                       <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Legend</p>
@@ -248,7 +320,7 @@ export default function DeckViewPage() {
                         <div className="mt-1 flex gap-1">
                           {domains.map((cd) => (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img key={cd.domain.name} src={`/images/${cd.domain.name.toLowerCase()}.webp`} alt={cd.domain.name} title={cd.domain.name} className="h-3.5 w-3.5 object-contain" />
+                            <img key={cd.domain.name} src={`/images/domains/${cd.domain.name.toLowerCase()}.webp`} alt={cd.domain.name} title={cd.domain.name} className="h-3.5 w-3.5 object-contain" />
                           ))}
                         </div>
                       )}
@@ -262,9 +334,9 @@ export default function DeckViewPage() {
                 {/* Champion */}
                 {deckChampion ? (
                   <div className="flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5">
-                    {deckChampion.imageUrl && (
+                    {getCardImageUrl(deckChampion) && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={deckChampion.imageUrl} alt={deckChampion.name} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
+                      <img src={getCardImageUrl(deckChampion)!} alt={deckChampion.name} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
                     )}
                     <div className="min-w-0">
                       <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Champion</p>
@@ -292,7 +364,7 @@ export default function DeckViewPage() {
                 <div className="mb-3 flex items-center gap-2">
                   {domains.map((cd) => (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img key={cd.domain.name} src={`/images/${cd.domain.name.toLowerCase()}.webp`} alt="" className="h-4 w-4 object-contain" />
+                    <img key={cd.domain.name} src={`/images/domains/${cd.domain.name.toLowerCase()}.webp`} alt="" className="h-4 w-4 object-contain" />
                   ))}
                   <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
                     Main Deck <span className="text-gray-500">({mainCount}/39)</span>
@@ -321,7 +393,7 @@ export default function DeckViewPage() {
                               <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
                                 {domain && (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={`/images/${domain}.webp`} alt="" className="h-3 w-3 shrink-0 object-contain" />
+                                  <img src={`/images/domains/${domain}.webp`} alt="" className="h-3 w-3 shrink-0 object-contain" />
                                 )}
                                 <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
                                 {item.card ? (
@@ -391,7 +463,7 @@ export default function DeckViewPage() {
                         <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
                           {domain && (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={`/images/${domain}.webp`} alt="" className="h-3 w-3 shrink-0 object-contain" />
+                            <img src={`/images/domains/${domain}.webp`} alt="" className="h-3 w-3 shrink-0 object-contain" />
                           )}
                           <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
                           {item.card ? (
@@ -428,7 +500,7 @@ export default function DeckViewPage() {
                           <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
                             {domain && (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={`/images/${domain}.webp`} alt="" className="h-3 w-3 shrink-0 object-contain" />
+                              <img src={`/images/domains/${domain}.webp`} alt="" className="h-3 w-3 shrink-0 object-contain" />
                             )}
                             <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
                             {item.card ? (

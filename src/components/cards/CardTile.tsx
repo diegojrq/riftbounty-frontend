@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import type { Card } from "@/types/card";
+import { getCardImageUrl } from "@/lib/cards";
+import { CardImg } from "@/components/cards/CardImg";
 
 interface CardTileProps {
   card: Card;
@@ -12,6 +14,8 @@ interface CardTileProps {
   linkToDetail?: boolean;
   /** When linkToDetail is true, add ?from=collection or ?from=cards so the detail page can show the right back link */
   detailFrom?: "collection" | "cards";
+  /** When provided, clicking the card opens a modal instead of navigating */
+  onOpenDetail?: () => void;
   /** On My collection page: show placeholder (no image) in grayscale */
   grayscaleWhenNoImage?: boolean;
   /** When true, card is shown in grayscale when not in collection */
@@ -21,6 +25,10 @@ interface CardTileProps {
   wrapperElement?: "li" | "div";
   /** When true, cards with type Battlefield use landscape aspect (only set on deck edit/view) */
   battlefieldAsLandscape?: boolean;
+  /** Keys of active add animations (one element rendered per key, allows stacking) */
+  addKeys?: string[];
+  /** Keys of active remove animations (one element rendered per key, allows stacking) */
+  removeKeys?: string[];
   onAdd?: () => void;
   onDecrease?: () => void;
 }
@@ -47,7 +55,6 @@ const landscapeClass = "aspect-[3.5/2.5]";
 const cardBaseClass =
   "group relative w-full overflow-hidden rounded-lg border border-gray-700/50 bg-gray-800 shadow-lg transition-all duration-200 ease-out hover:-translate-y-2 hover:shadow-xl hover:shadow-black/30";
 
-/** Set to true to hide card images (e.g. while waiting for Riot API key); backend may send imageUrl from other sources */
 const SUPPRESS_CARD_IMAGES = false;
 
 export function CardTile({
@@ -57,11 +64,14 @@ export function CardTile({
   showCollectionActions = false,
   linkToDetail = false,
   detailFrom,
+  onOpenDetail,
   grayscaleWhenNoImage = false,
   grayscaleWhenNotInCollection = false,
   actionDisabled = false,
   wrapperElement = "li",
   battlefieldAsLandscape = false,
+  addKeys = [],
+  removeKeys = [],
   onAdd,
   onDecrease,
 }: CardTileProps) {
@@ -70,14 +80,17 @@ export function CardTile({
   const canDecrease = inCollection && qty >= 1;
   const useGrayscale = grayscaleWhenNotInCollection && !inCollection;
   const isLandscape =
-    card.orientation?.toLowerCase() === "landscape" ||
-    (card.record_type?.toLowerCase().includes("battleground") ?? false) ||
-    (battlefieldAsLandscape && (card.type?.toLowerCase() === "battlefield"));
+    battlefieldAsLandscape && (
+      card.orientation?.toLowerCase() === "landscape" ||
+      (card.record_type?.toLowerCase().includes("battleground") ?? false) ||
+      card.type?.toLowerCase() === "battlefield"
+    );
   const cardClassName = `${cardBaseClass} ${isLandscape ? landscapeClass : portraitClass}`;
 
   const Wrapper = wrapperElement;
 
-  const showCardImage = card.imageUrl && !SUPPRESS_CARD_IMAGES;
+  const cardImageUrl = getCardImageUrl(card);
+  const showCardImage = !!cardImageUrl && !SUPPRESS_CARD_IMAGES;
 
   const imageNode = showCardImage ? (
     isLandscape ? (
@@ -87,9 +100,8 @@ export function CardTile({
        * - altura do img  = largura do container → calc(100% * 3.5/2.5) da altura do container
        * - centralizado e rotacionado 90° → visual preenche exatamente o container
        */
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={card.imageUrl}
+      <CardImg
+        src={cardImageUrl}
         alt={card.name}
         style={{
           position: "absolute",
@@ -103,9 +115,8 @@ export function CardTile({
         className={useGrayscale ? "grayscale" : ""}
       />
     ) : (
-      /* eslint-disable-next-line @next/next/no-img-element -- dynamic URLs from API */
-      <img
-        src={card.imageUrl}
+      <CardImg
+        src={cardImageUrl}
         alt={card.name}
         className={`absolute inset-0 h-full w-full object-cover transition-all duration-200 ease-out ${useGrayscale ? "grayscale" : ""}`}
       />
@@ -116,9 +127,40 @@ export function CardTile({
 
   return (
     <Wrapper className={cardClassName}>
+      {addKeys.map((key, i) => (
+        <div key={key} className="pointer-events-none">
+          <div className="animate-card-added absolute inset-0 z-20 rounded-lg bg-green-400/40 ring-2 ring-green-400" />
+          <div
+            className="animate-plus-one absolute inset-x-0 z-30 flex justify-center"
+            style={{ top: `calc(33% - ${i * 24}px)` }}
+          >
+            <span className="rounded-full bg-green-500 px-2 py-0.5 text-sm font-bold text-white shadow-lg">+1</span>
+          </div>
+        </div>
+      ))}
+      {removeKeys.map((key, i) => (
+        <div key={key} className="pointer-events-none">
+          <div className="animate-card-removed absolute inset-0 z-20 rounded-lg bg-red-400/40 ring-2 ring-red-400" />
+          <div
+            className="animate-minus-one absolute inset-x-0 z-30 flex justify-center"
+            style={{ top: `calc(33% + ${i * 24}px)` }}
+          >
+            <span className="rounded-full bg-red-500 px-2 py-0.5 text-sm font-bold text-white shadow-lg">−1</span>
+          </div>
+        </div>
+      ))}
       {showCardImage ? (
         <>
-          {linkToDetail ? (
+          {onOpenDetail ? (
+            <button
+              type="button"
+              onClick={onOpenDetail}
+              className="absolute inset-0 z-0 cursor-pointer"
+              aria-label={`View ${card.name} details`}
+            >
+              {imageNode}
+            </button>
+          ) : linkToDetail ? (
             <Link
               href={`/cards/${encodeURIComponent(card.uuid)}${detailFrom ? `?from=${detailFrom}` : ""}`}
               className="absolute inset-0 z-0"
@@ -133,7 +175,16 @@ export function CardTile({
             {showCollectionActions && (
               <div className="mt-2 flex flex-col gap-1">
                 <div className="flex justify-end">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-white/30 bg-black/70 text-sm font-bold tabular-nums text-white shadow">
+                  <span
+                    key={qty}
+                    className={`flex size-10 shrink-0 items-center justify-center rounded-md border text-sm font-bold tabular-nums text-white shadow transition-colors ${
+                      addKeys.length > 0
+                        ? "animate-card-added border-green-400 bg-green-700/80"
+                        : removeKeys.length > 0
+                        ? "animate-card-removed border-red-400 bg-red-700/80"
+                        : "border-white/30 bg-black/70"
+                    }`}
+                  >
                     ×{qty}
                   </span>
                 </div>
@@ -176,28 +227,45 @@ export function CardTile({
         </>
       ) : (
         <>
-          {linkToDetail ? (
+          {onOpenDetail ? (
+            <button
+              type="button"
+              onClick={onOpenDetail}
+              className="absolute inset-0 z-0 flex cursor-pointer flex-col items-center justify-center gap-1 bg-gray-800 p-4 text-center"
+              aria-label={`View ${card.name} details`}
+            >
+              <span className={`text-3xl text-gray-500 ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`} aria-hidden>🃏</span>
+              <p className="text-xs font-medium text-gray-400">No image</p>
+            </button>
+          ) : linkToDetail ? (
             <Link
               href={`/cards/${encodeURIComponent(card.uuid)}${detailFrom ? `?from=${detailFrom}` : ""}`}
               className="absolute inset-0 z-0 flex flex-col items-center justify-center gap-1 bg-gray-800 p-4 text-center"
               aria-label={`View ${card.name} details`}
             >
-              <span className={`text-3xl text-gray-500 ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`} aria-hidden>🖼️</span>
-              <p className="text-xs font-medium text-gray-400">Image unavailable.</p>
-              <p className="text-xs text-gray-500">Waiting for my well-deserved API key ;)</p>
+              <span className={`text-3xl text-gray-500 ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`} aria-hidden>🃏</span>
+              <p className="text-xs font-medium text-gray-400">No image</p>
             </Link>
           ) : (
             <div className={`absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gray-800 p-4 text-center ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`}>
-              <span className="text-3xl text-gray-500" aria-hidden>🖼️</span>
-              <p className="text-xs font-medium text-gray-400">Image unavailable.</p>
-              <p className="text-xs text-gray-500">Waiting for my well-deserved API key ;)</p>
+              <span className="text-3xl text-gray-500" aria-hidden>🃏</span>
+              <p className="text-xs font-medium text-gray-400">No image</p>
             </div>
           )}
           <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 to-transparent px-2 py-3 pt-6">
             {showCollectionActions && (
               <div className="mt-2 flex flex-col gap-1">
                 <div className="flex justify-end">
-                  <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-white/30 bg-black/70 text-sm font-bold tabular-nums text-white shadow">
+                  <span
+                    key={qty}
+                    className={`flex size-10 shrink-0 items-center justify-center rounded-md border text-sm font-bold tabular-nums text-white shadow transition-colors ${
+                      addKeys.length > 0
+                        ? "animate-card-added border-green-400 bg-green-700/80"
+                        : removeKeys.length > 0
+                        ? "animate-card-removed border-red-400 bg-red-700/80"
+                        : "border-white/30 bg-black/70"
+                    }`}
+                  >
                     ×{qty}
                   </span>
                 </div>

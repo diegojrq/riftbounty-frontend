@@ -21,3 +21,37 @@
 .animate-tremble {
   animation: tremble 2s ease-in-out;
 }
+
+@keyframes card-added-flash {
+  0%   { opacity: 0; transform: scale(1); }
+  25%  { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.04); }
+}
+.animate-card-added {
+  animation: card-added-flash 650ms ease-out forwards;
+}
+
+@keyframes plus-one-rise {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-28px) scale(1.2); }
+}
+.animate-plus-one {
+  animation: plus-one-rise 650ms ease-out forwards;
+}
+
+@keyframes card-removed-flash {
+  0%   { opacity: 0; transform: scale(1); }
+  25%  { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.04); }
+}
+.animate-card-removed {
+  animation: card-removed-flash 650ms ease-out forwards;
+}
+
+@keyframes minus-one-fall {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(28px) scale(1.2); }
+}
+.animate-minus-one {
+  animation: minus-one-fall 650ms ease-out forwards;
+}

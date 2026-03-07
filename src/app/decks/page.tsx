@@ -6,7 +6,35 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { createDeck, getDeck, getDecks } from "@/lib/decks";
 import { useAuth } from "@/lib/auth-context";
+import { getCardImageUrl } from "@/lib/cards";
+import { CardImg } from "@/components/cards/CardImg";
 import type { Deck } from "@/types/deck";
+
+function DecksSkeleton() {
+  return (
+    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <li key={i} className="overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
+          {/* Image strip */}
+          <div className="flex h-28 bg-gray-900">
+            <div className="h-full w-1/2 animate-pulse bg-gray-700/60" />
+            <div className="h-full w-1/2 animate-pulse bg-gray-700/40" />
+          </div>
+          {/* Info */}
+          <div className="px-4 py-3 space-y-2">
+            <div className="h-4 w-3/4 animate-pulse rounded bg-gray-700" />
+            <div className="flex gap-3">
+              <div className="h-3 w-16 animate-pulse rounded bg-gray-700/60" />
+              <div className="h-3 w-16 animate-pulse rounded bg-gray-700/60" />
+              <div className="h-3 w-16 animate-pulse rounded bg-gray-700/60" />
+            </div>
+            <div className="h-3 w-1/2 animate-pulse rounded bg-gray-700/40" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function DecksPage() {
   const router = useRouter();
@@ -65,8 +93,12 @@ export default function DecksPage() {
 
   if (authLoading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-900">
-        <p className="text-gray-400">Loading...</p>
+      <div className="min-h-screen bg-gray-900">
+        <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-10 xl:px-12">
+          <div className="mb-6 h-8 w-32 animate-pulse rounded bg-gray-700" />
+          <div className="mb-6 h-9 w-28 animate-pulse rounded bg-gray-700" />
+          <DecksSkeleton />
+        </div>
       </div>
     );
   }
@@ -92,7 +124,7 @@ export default function DecksPage() {
         </div>
 
         {loading ? (
-          <p className="text-gray-400">Loading decks...</p>
+          <DecksSkeleton />
         ) : decks.length === 0 ? (
           <p className="text-gray-400">
             No decks yet. Create one to start building.
@@ -126,10 +158,9 @@ export default function DecksPage() {
                   >
                     {/* Card images strip */}
                     <div className="relative flex h-28 bg-gray-900">
-                      {legend?.imageUrl ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={legend.imageUrl}
+                      {legend && getCardImageUrl(legend) ? (
+                        <CardImg
+                          src={getCardImageUrl(legend)!}
                           alt={legend.name}
                           className="h-full w-1/2 object-cover object-top"
                         />
@@ -138,10 +169,9 @@ export default function DecksPage() {
                           <span className="px-2 text-center text-xs text-gray-500">{legend?.name ?? "No Legend"}</span>
                         </div>
                       )}
-                      {champion?.imageUrl ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={champion.imageUrl}
+                      {champion && getCardImageUrl(champion) ? (
+                        <CardImg
+                          src={getCardImageUrl(champion)!}
                           alt={champion.name}
                           className="h-full w-1/2 object-cover object-top"
                         />
@@ -166,21 +196,6 @@ export default function DecksPage() {
                           </span>
                         )}
                       </div>
-                      {/* Domain icons */}
-                      {domains.length > 0 && (
-                        <div className="absolute left-2 top-2 flex gap-1">
-                          {domains.map((cd) => (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              key={cd.domain.name}
-                              src={`/images/${cd.domain.name.toLowerCase()}.webp`}
-                              alt={cd.domain.name}
-                              title={cd.domain.name}
-                              className="h-6 w-6 rounded-full border border-gray-600 bg-gray-900 object-contain p-0.5 backdrop-blur-sm"
-                            />
-                          ))}
-                        </div>
-                      )}
                     </div>
 
                     {/* Info */}
@@ -196,6 +211,20 @@ export default function DecksPage() {
                           {legend && <span className="truncate">{legend.name}</span>}
                           {legend && champion && <span>·</span>}
                           {champion && <span className="truncate">{champion.name}</span>}
+                        </div>
+                      )}
+                      {domains.length > 0 && (
+                        <div className="mt-2 flex gap-1">
+                          {domains.map((cd) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              key={cd.domain.name}
+                              src={`/images/domains/${cd.domain.name.toLowerCase()}.webp`}
+                              alt={cd.domain.name}
+                              title={cd.domain.name}
+                              className="h-5 w-5 rounded-full border border-gray-600 bg-gray-900 object-contain p-0.5"
+                            />
+                          ))}
                         </div>
                       )}
                     </div>
