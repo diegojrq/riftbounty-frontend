@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import type { Card } from "@/types/card";
 import { getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
@@ -160,14 +159,6 @@ export function CardTile({
             >
               {imageNode}
             </button>
-          ) : linkToDetail ? (
-            <Link
-              href={`/cards/${encodeURIComponent(card.uuid)}${detailFrom ? `?from=${detailFrom}` : ""}`}
-              className="absolute inset-0 z-0"
-              aria-label={`View ${card.name} details`}
-            >
-              {imageNode}
-            </Link>
           ) : (
             imageNode
           )}
@@ -237,15 +228,6 @@ export function CardTile({
               <span className={`text-3xl text-gray-500 ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`} aria-hidden>🃏</span>
               <p className="text-xs font-medium text-gray-400">No image</p>
             </button>
-          ) : linkToDetail ? (
-            <Link
-              href={`/cards/${encodeURIComponent(card.uuid)}${detailFrom ? `?from=${detailFrom}` : ""}`}
-              className="absolute inset-0 z-0 flex flex-col items-center justify-center gap-1 bg-gray-800 p-4 text-center"
-              aria-label={`View ${card.name} details`}
-            >
-              <span className={`text-3xl text-gray-500 ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`} aria-hidden>🃏</span>
-              <p className="text-xs font-medium text-gray-400">No image</p>
-            </Link>
           ) : (
             <div className={`absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gray-800 p-4 text-center ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`}>
               <span className="text-3xl text-gray-500" aria-hidden>🃏</span>

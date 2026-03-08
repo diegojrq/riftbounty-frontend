@@ -346,6 +346,7 @@ export default function TradeDetailPage() {
   const [showPicker, setShowPicker] = useState(false);
   const [msgSending, setMsgSending] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const actionInProgressRef = useRef(false);
 
   const fetchTrade = useCallback(async () => {
     if (!tradeId) return;
@@ -401,10 +402,16 @@ export default function TradeDetailPage() {
   const theirItems = (amInitiator ? trade.recipientItems : trade.initiatorItems) ?? [];
 
   /* ── actions ── */
-
   async function withBusy(fn: () => Promise<void>) {
+    if (actionInProgressRef.current) return;
+    actionInProgressRef.current = true;
     setBusy(true);
-    try { await fn(); } finally { setBusy(false); }
+    try {
+      await fn();
+    } finally {
+      actionInProgressRef.current = false;
+      setBusy(false);
+    }
   }
 
   async function handleAddCard(card: Card) {

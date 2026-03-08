@@ -84,7 +84,7 @@ function normalizeTrade(raw: Record<string, any>): Trade {
     };
   });
 
-  return {
+  const out: Trade = {
     id: raw.id,
     status,
     initiatorId,
@@ -100,11 +100,27 @@ function normalizeTrade(raw: Record<string, any>): Trade {
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
+  if (typeof process !== "undefined" && process.env.NODE_ENV === "development") {
+    if (!out.id || !out.status || !out.initiatorSlug || !out.recipientSlug) {
+      console.error("[trades] normalizeTrade missing required fields", { raw, out });
+    }
+  }
+  return out;
 }
 
 export interface ListTradesParams {
   status?: TradeStatusFilter;
   role?: TradeRoleFilter;
+}
+
+// Count item rows (not total card quantity). Prefer backend-provided counts when present.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isInitiatorItem(i: any, initiatorId: string): boolean {
+  return i.side === "initiator" || (i.offeredByUserId ?? i.userId) === initiatorId;
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isRecipientItem(i: any, initiatorId: string): boolean {
+  return i.side === "recipient" || ((i.offeredByUserId ?? i.userId) !== initiatorId && i.side !== "initiator");
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -113,20 +129,18 @@ function normalizeSummary(raw: any): TradeSummary {
   const recipient = (raw.recipient ?? {}) as RawUser;
   const initiatorId: string = raw.initiatorId ?? initiator.id ?? "";
 
-  // Derive counts: prefer pre-computed fields, fall back to counting items[]
+  // Derive counts: prefer pre-computed fields, fall back to counting item rows
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const items: any[] = raw.items ?? [];
   const initiatorItemCount: number =
-    raw.initiatorItemCount ??
-    items.filter((i) => (i.offeredByUserId ?? i.userId) === initiatorId || i.side === "initiator").length;
+    raw.initiatorItemCount ?? items.filter((i) => isInitiatorItem(i, initiatorId)).length;
   const recipientItemCount: number =
-    raw.recipientItemCount ??
-    items.filter((i) => (i.offeredByUserId ?? i.userId) !== initiatorId && i.side !== "initiator" || i.side === "recipient").length;
+    raw.recipientItemCount ?? items.filter((i) => isRecipientItem(i, initiatorId)).length;
 
   const status = (raw.status as string).toUpperCase() as TradeStatus;
   const recipientSlug: string = raw.recipientSlug ?? (raw.recipient as RawUser | undefined)?.slug ?? "";
 
-  return {
+  const out: TradeSummary = {
     id: raw.id,
     status,
     initiatorSlug: raw.initiatorSlug ?? initiator.slug ?? "",
@@ -139,6 +153,12 @@ function normalizeSummary(raw: any): TradeSummary {
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
   };
+  if (typeof process !== "undefined" && process.env.NODE_ENV === "development") {
+    if (!out.id || !out.status || out.initiatorSlug == null || out.recipientSlug == null) {
+      console.error("[trades] normalizeSummary missing required fields", { raw, out });
+    }
+  }
+  return out;
 }
 
 /** GET /v1/trades — lista meus trades com filtros opcionais */
@@ -163,6 +183,9 @@ export async function getTrade(id: string): Promise<Trade> {
   const res = await apiGet<any>(`${BASE}/${encodeURIComponent(id)}`);
   // Backend may return a single object or an array with one item
   const raw = Array.isArray(res.data) ? res.data[0] : res.data;
+  if (raw == null) {
+    throw new Error("Trade not found");
+  }
   return normalizeTrade(raw);
 }
 
@@ -170,6 +193,7 @@ export async function getTrade(id: string): Promise<Trade> {
 export async function createTrade(payload: CreateTradePayload): Promise<Trade> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res = await apiPost<any>(BASE, payload);
+  if (res.data == null) throw new Error("Unexpected empty response");
   return normalizeTrade(res.data);
 }
 
@@ -217,6 +241,7 @@ export async function sendTradeMessage(tradeId: string, message: string): Promis
 export async function submitTrade(tradeId: string): Promise<Trade> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res = await apiPost<any>(`${BASE}/${encodeURIComponent(tradeId)}/submit`, {});
+  if (res.data == null) throw new Error("Unexpected empty response");
   return normalizeTrade(res.data);
 }
 
@@ -224,6 +249,7 @@ export async function submitTrade(tradeId: string): Promise<Trade> {
 export async function acceptTrade(tradeId: string): Promise<Trade> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res = await apiPost<any>(`${BASE}/${encodeURIComponent(tradeId)}/accept`, {});
+  if (res.data == null) throw new Error("Unexpected empty response");
   return normalizeTrade(res.data);
 }
 
@@ -231,6 +257,7 @@ export async function acceptTrade(tradeId: string): Promise<Trade> {
 export async function rejectTrade(tradeId: string): Promise<Trade> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res = await apiPost<any>(`${BASE}/${encodeURIComponent(tradeId)}/reject`, {});
+  if (res.data == null) throw new Error("Unexpected empty response");
   return normalizeTrade(res.data);
 }
 

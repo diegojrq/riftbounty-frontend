@@ -41,12 +41,36 @@ export async function DELETE(
   return proxy(request, await params, "DELETE");
 }
 
+const ALLOWED_PATH_PREFIXES = ["auth", "cards", "trades", "collections", "decks"];
+
+function validatePath(segments: string[]): string {
+  if (!segments?.length) return "";
+  const first = segments[0]?.toLowerCase();
+  if (!first || !ALLOWED_PATH_PREFIXES.includes(first)) {
+    throw new Error("Invalid path prefix");
+  }
+  for (const seg of segments) {
+    if (seg === ".." || seg.includes("/")) {
+      throw new Error("Invalid path segment");
+    }
+  }
+  return segments.join("/");
+}
+
 async function proxy(
   request: NextRequest,
   params: { path: string[] },
   method: string
 ) {
-  const pathSegment = params.path?.join("/") ?? "";
+  let pathSegment: string;
+  try {
+    pathSegment = validatePath(params.path ?? []);
+  } catch {
+    return NextResponse.json(
+      { status: "error", message: "Invalid request path" },
+      { status: 400 }
+    );
+  }
   const backendBase = getBackendUrl();
   const search = request.nextUrl.search;
   const backendUrl = `${backendBase}/${pathSegment}${search}`;

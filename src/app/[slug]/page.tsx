@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { BackLink } from "@/components/layout/BackLink";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getPublicProfile, getProfileMatch } from "@/lib/profile";
 import { createTrade, listTrades, addTradeItem, updateTradeItem, removeTradeItem, submitTrade, getTrade } from "@/lib/trades";
+import { toast } from "sonner";
 import type { TradeSummary, Trade, TradeItem } from "@/types/trade";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
 import { useAuth } from "@/lib/auth-context";
@@ -137,9 +138,11 @@ interface BasketPanelProps {
   isMyTurn?: boolean;
   /** Map of cardUuid → existing TradeItem for my side of the active trade (for diff on submit) */
   originalItemsMap?: Map<string, TradeItem>;
+  /** Called when counter-offer submit fails so the page can refetch trade and re-sync basket */
+  onCounterSubmitError?: (tradeId: string) => void;
 }
 
-function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty, onRemove, onClear, cardCacheMap, scraperIdMap, activeTrade, activeTradeDetail, isMyTurn, originalItemsMap }: BasketPanelProps & { cardCacheMap: Map<string, Card>; scraperIdMap: Map<string, Card> }) {
+function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty, onRemove, onClear, cardCacheMap, scraperIdMap, activeTrade, activeTradeDetail, isMyTurn, originalItemsMap, onCounterSubmitError }: BasketPanelProps & { cardCacheMap: Map<string, Card>; scraperIdMap: Map<string, Card> }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -242,27 +245,36 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
     setError(null);
     try {
       if (isCounterMode && activeTrade) {
-        // Diff basket against original items:
-        // 1. Remove items that existed before but are no longer in basket
-        if (originalItemsMap) {
-          for (const [uuid, original] of originalItemsMap) {
-            if (!basket.has(uuid)) {
-              await removeTradeItem(activeTrade.id, original.id);
+        try {
+          if (originalItemsMap) {
+            for (const [uuid, original] of originalItemsMap) {
+              if (!basket.has(uuid)) {
+                await removeTradeItem(activeTrade.id, original.id);
+              }
             }
           }
+        } catch (e) {
+          throw new Error(`Removing items: ${e instanceof Error ? e.message : "Failed"}`);
         }
-        // 2. Update changed quantities or add new items
-        for (const item of items) {
-          const original = originalItemsMap?.get(item.card.uuid);
-          if (original) {
-            if (original.quantity !== item.quantity) {
-              await updateTradeItem(activeTrade.id, original.id, item.quantity);
+        try {
+          for (const item of items) {
+            const original = originalItemsMap?.get(item.card.uuid);
+            if (original) {
+              if (original.quantity !== item.quantity) {
+                await updateTradeItem(activeTrade.id, original.id, item.quantity);
+              }
+            } else {
+              await addTradeItem(activeTrade.id, item.card.uuid, item.quantity);
             }
-          } else {
-            await addTradeItem(activeTrade.id, item.card.uuid, item.quantity);
           }
+        } catch (e) {
+          throw new Error(`Updating items: ${e instanceof Error ? e.message : "Failed"}`);
         }
-        await submitTrade(activeTrade.id);
+        try {
+          await submitTrade(activeTrade.id);
+        } catch (e) {
+          throw new Error(`Submit: ${e instanceof Error ? e.message : "Failed"}`);
+        }
         router.push(`/trades/${activeTrade.id}`);
       } else {
         const trade = await createTrade({
@@ -272,9 +284,13 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
         });
         router.push(`/trades/${trade.id}`);
       }
-    } catch {
-      setError(isCounterMode ? "Failed to submit counter offer. Please try again." : "Failed to create trade. Please try again.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to submit. Please try again.";
+      setError(message);
       setSubmitting(false);
+      if (isCounterMode && activeTrade && onCounterSubmitError) {
+        onCounterSubmitError(activeTrade.id);
+      }
     }
   }
 
@@ -508,30 +524,35 @@ export default function PublicProfilePage() {
   const [activeTrade, setActiveTrade] = useState<TradeSummary | null>(null);
   const [activeTradeDetail, setActiveTradeDetail] = useState<Trade | null>(null);
 
-  // When viewing another user's profile, check for any active trade between us
+  // When viewing another user's profile, check for any active trade between us (PENDING + COUNTERED only)
   useEffect(() => {
     if (!me || !user || me.slug === user.slug) return;
-    // Fetch all trades without status filter — match on frontend to avoid case issues
-    listTrades()
-      .then((all) => {
+    Promise.all([
+      listTrades({ status: "PENDING" }),
+      listTrades({ status: "COUNTERED" }),
+    ])
+      .then(([pending, countered]) => {
+        const all = [...pending, ...countered];
         const found = all.find(
           (t) =>
-            (t.status === "PENDING" || t.status === "COUNTERED") &&
-            (
-              (t.initiatorSlug === me.slug && t.recipientSlug === user.slug) ||
-              (t.initiatorSlug === user.slug && t.recipientSlug === me.slug)
-            )
+            (t.initiatorSlug === me.slug && t.recipientSlug === user.slug) ||
+            (t.initiatorSlug === user.slug && t.recipientSlug === me.slug)
         );
         setActiveTrade(found ?? null);
         if (found) {
           getTrade(found.id)
             .then((detail) => setActiveTradeDetail(detail))
-            .catch(() => {});
+            .catch((err) => {
+              toast.error(err instanceof Error ? err.message : "Could not load trade details.");
+              setActiveTradeDetail(null);
+            });
         } else {
           setActiveTradeDetail(null);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        toast.error(err instanceof Error ? err.message : "Could not load trade status.");
+      });
   }, [me, user]);
 
   /* ── Trade basket ──────────────────────────── */
@@ -708,6 +729,41 @@ export default function PublicProfilePage() {
     return new Map(myItems.map((item) => [item.card?.uuid ?? item.cardId, item]));
   }, [activeTradeDetail, activeTrade, me]);
 
+  const handleCounterSubmitError = useCallback(
+    (tradeId: string) => {
+      getTrade(tradeId)
+        .then((detail) => {
+          setActiveTradeDetail(detail);
+          if (!me) return;
+          const myItems =
+            detail.initiatorSlug === me.slug
+              ? detail.initiatorItems ?? []
+              : detail.recipientItems ?? [];
+          const matchQtyMap = new Map(match.map((m) => [m.cardUuid, m.theirQuantity]));
+          setBasket(
+            new Map(
+              myItems.map((item) => {
+                const card = item.card as PublicProfileCard;
+                const uuid = card.uuid ?? item.cardId;
+                const maxQty = matchQtyMap.get(uuid) ?? item.quantity;
+                return [
+                  uuid,
+                  {
+                    card: { ...card, uuid },
+                    quantity: item.quantity,
+                    maxQty,
+                    tradeItemId: item.id,
+                  },
+                ];
+              })
+            )
+          );
+        })
+        .catch(() => {});
+    },
+    [me, match]
+  );
+
   /* ── Loading / not found ─────────────────── */
   if (loading || authLoading) {
     return (
@@ -773,6 +829,7 @@ export default function PublicProfilePage() {
               activeTradeDetail={activeTradeDetail}
               isMyTurn={tradeIsMyTurn}
               originalItemsMap={originalItemsMap}
+              onCounterSubmitError={handleCounterSubmitError}
             />
           </div>
         </div>
@@ -1087,6 +1144,7 @@ export default function PublicProfilePage() {
                   activeTradeDetail={activeTradeDetail}
                   isMyTurn={tradeIsMyTurn}
                   originalItemsMap={originalItemsMap}
+                  onCounterSubmitError={handleCounterSubmitError}
                 />
               </div>
             </div>
