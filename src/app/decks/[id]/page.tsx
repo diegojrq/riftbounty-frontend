@@ -503,15 +503,15 @@ export default function DeckBuilderPage() {
         const deckQty =
           usedByLegend +
           usedByChampion +
-          (deck.mainItems ?? []).reduce((sum, item) => {
+          (deck?.mainItems ?? []).reduce((sum, item) => {
             const id = item.card?.uuid ?? item.cardId;
             return sum + (id === card.uuid ? item.quantity : 0);
           }, 0) +
-          (deck.sideboardItems ?? []).reduce((sum, item) => {
+          (deck?.sideboardItems ?? []).reduce((sum, item) => {
             const id = item.card?.uuid ?? item.cardId;
             return sum + (id === card.uuid ? item.quantity : 0);
           }, 0) +
-          (deck.runeItems ?? []).reduce((sum, item) => {
+          (deck?.runeItems ?? []).reduce((sum, item) => {
             const id = item.card?.uuid ?? item.cardId;
             return sum + (id === card.uuid ? item.quantity : 0);
           }, 0);
@@ -602,7 +602,7 @@ export default function DeckBuilderPage() {
     if (isValid && prevValidRef.current !== true) {
       setShowValidModal(true);
     }
-    prevValidRef.current = isValid;
+    prevValidRef.current = isValid ?? null;
   }, [deck, nameDraft]);
 
   async function handleSaveName() {
@@ -648,7 +648,7 @@ export default function DeckBuilderPage() {
       // Auto-name deck as "Legend / Champion" when deck has no name yet
       if (!(deck.name?.trim())) {
         const legendObj = updated.legendCard ?? updated.legend;
-        const legendName = legendObj?.name ?? legendObj?.card?.name;
+        const legendName = legendObj?.name ?? (legendObj as { card?: { name?: string } })?.card?.name;
         const championName = card.name;
         if (legendName && championName) {
           const autoName = `${legendName} / ${championName}`;

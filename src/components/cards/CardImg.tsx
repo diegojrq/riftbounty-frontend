@@ -23,8 +23,8 @@ export function CardImg({ src, alt, className, style }: CardImgProps) {
     }
   }
 
-  // eslint-disable-next-line @next/next/no-img-element
   return (
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={imgSrc}
       alt={alt}

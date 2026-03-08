@@ -17,8 +17,7 @@ interface CardCacheEntry {
 }
 
 function stripUserFields(card: Card): Card {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { inCollection: _ic, collectionQuantity: _cq, imageUrl: _iu, image_path: _ip, ...rest } = card as any;
+  const { inCollection: _ic, collectionQuantity: _cq, imageUrl: _iu, image_path: _ip, ...rest } = card as Card & { imageUrl?: string; image_path?: string };
   return rest;
 }
 

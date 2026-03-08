@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { createTrade } from "@/lib/trades";
@@ -14,7 +14,7 @@ interface DraftItem {
   quantity: number;
 }
 
-export default function NewTradePage() {
+function NewTradeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
@@ -230,5 +230,21 @@ export default function NewTradePage() {
         />
       )}
     </div>
+  );
+}
+
+export default function NewTradePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-900">
+          <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+            <div className="h-8 w-40 animate-pulse rounded bg-gray-700" />
+          </div>
+        </div>
+      }
+    >
+      <NewTradeContent />
+    </Suspense>
   );
 }

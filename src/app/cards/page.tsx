@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CardTile } from "@/components/cards/CardTile";
 import { CardDetailModal } from "@/components/cards/CardDetailModal";
@@ -44,7 +44,7 @@ function getCardDomains(card: Card): string[] {
   return [...new Set(result)];
 }
 
-export default function CardsPage() {
+function CardsPageContent() {
   const { cards: allCards } = useCards();
   const searchParams = useSearchParams();
 
@@ -426,5 +426,13 @@ export default function CardsPage() {
         onClose={() => setDetailUuid(null)}
       />
     </div>
+  );
+}
+
+export default function CardsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-900" />}>
+      <CardsPageContent />
+    </Suspense>
   );
 }

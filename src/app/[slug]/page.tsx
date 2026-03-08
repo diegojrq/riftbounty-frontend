@@ -335,7 +335,7 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
               const cached = cardCacheMap.get(item.cardId) ?? scraperIdMap.get(item.cardId);
               const cardForPreview = (cached ?? item.card) as unknown as Card;
               const name = cached?.name ?? item.card?.name ?? item.cardId;
-              const domains = getCardDomains(cached ?? item.card);
+              const domains = getCardDomains((cached ?? item.card) as { domain?: string; domains?: string[]; cardDomains?: { domain: { name: string } }[] } | undefined);
               const rarity = (cached?.rarity ?? item.card?.rarity ?? "").toLowerCase().replace(/\s+/g, "");
               const rarityNorm = rarity === "overnumbered" ? "showcase" : rarity;
               return (
@@ -345,11 +345,13 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
                     <span className="flex min-w-0 cursor-default items-center gap-1">
                       <span className="flex gap-0.5">
                         {domains.map((d) => (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-3.5 w-3.5 object-contain" />
                         ))}
                       </span>
                       <span className="truncate text-xs text-blue-400">{name}</span>
                       {rarityNorm && (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img src={`/images/rarities/${rarityNorm}.svg`} alt={rarityNorm} className="h-3 w-3 shrink-0 opacity-60" />
                       )}
                     </span>

@@ -15,7 +15,7 @@ const BASE = "/trades";
 type RawUser = { id?: string; slug?: string; displayName?: string | null };
 type RawSender = { slug?: string; displayName?: string | null };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line
 function normalizeItem(raw: any, initiatorId: string): TradeItem {
   // Determine side: prefer explicit side field, else derive from offeredByUserId
   const side: "initiator" | "recipient" =
@@ -36,7 +36,7 @@ function normalizeItem(raw: any, initiatorId: string): TradeItem {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line
 function normalizeTrade(raw: Record<string, any>): Trade {
   // Support both flat (initiatorSlug) and nested (initiator.slug) shapes
   const initiator = (raw.initiator ?? {}) as RawUser;
@@ -54,7 +54,7 @@ function normalizeTrade(raw: Record<string, any>): Trade {
   const status = (raw.status as string).toUpperCase() as TradeStatus;
 
   // Items: flat array with offeredByUserId (or side field) → split by initiator/recipient
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const rawItems: any[] = raw.items ?? [];
   const normalizedItems = rawItems.map((i) => normalizeItem(i, initiatorId));
 
@@ -74,7 +74,7 @@ function normalizeTrade(raw: Record<string, any>): Trade {
     (status === "PENDING" ? recipientSlug : status === "COUNTERED" ? initiatorSlug : "");
 
   // Messages: sender may be nested (sender.slug / user.slug) or flat (senderSlug)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const messages: TradeMessage[] = (raw.messages ?? []).map((m: any) => {
     const sender = (m.sender ?? m.user ?? {}) as RawSender;
     return {
@@ -114,23 +114,23 @@ export interface ListTradesParams {
 }
 
 // Count item rows (not total card quantity). Prefer backend-provided counts when present.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line
 function isInitiatorItem(i: any, initiatorId: string): boolean {
   return i.side === "initiator" || (i.offeredByUserId ?? i.userId) === initiatorId;
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line
 function isRecipientItem(i: any, initiatorId: string): boolean {
   return i.side === "recipient" || ((i.offeredByUserId ?? i.userId) !== initiatorId && i.side !== "initiator");
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line
 function normalizeSummary(raw: any): TradeSummary {
   const initiator = (raw.initiator ?? {}) as RawUser;
   const recipient = (raw.recipient ?? {}) as RawUser;
   const initiatorId: string = raw.initiatorId ?? initiator.id ?? "";
 
   // Derive counts: prefer pre-computed fields, fall back to counting item rows
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const items: any[] = raw.items ?? [];
   const initiatorItemCount: number =
     raw.initiatorItemCount ?? items.filter((i) => isInitiatorItem(i, initiatorId)).length;
@@ -166,9 +166,9 @@ export async function listTrades(params?: ListTradesParams): Promise<TradeSummar
   const query: Record<string, string | undefined> = {};
   if (params?.status && params.status !== "all") query.status = params.status.toLowerCase();
   if (params?.role && params.role !== "all") query.role = params.role;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const res = await apiGet<any>(BASE, query);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const items: any[] = Array.isArray(res.data)
     ? res.data
     : Array.isArray(res.data?.items)
@@ -179,7 +179,7 @@ export async function listTrades(params?: ListTradesParams): Promise<TradeSummar
 
 /** GET /v1/trades/:id — detalhe completo com itens e mensagens */
 export async function getTrade(id: string): Promise<Trade> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const res = await apiGet<any>(`${BASE}/${encodeURIComponent(id)}`);
   // Backend may return a single object or an array with one item
   const raw = Array.isArray(res.data) ? res.data[0] : res.data;
@@ -191,7 +191,7 @@ export async function getTrade(id: string): Promise<Trade> {
 
 /** POST /v1/trades — cria e envia proposta */
 export async function createTrade(payload: CreateTradePayload): Promise<Trade> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const res = await apiPost<any>(BASE, payload);
   if (res.data == null) throw new Error("Unexpected empty response");
   return normalizeTrade(res.data);
@@ -239,7 +239,7 @@ export async function sendTradeMessage(tradeId: string, message: string): Promis
 
 /** POST /v1/trades/:id/submit — submete para o outro revisar */
 export async function submitTrade(tradeId: string): Promise<Trade> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const res = await apiPost<any>(`${BASE}/${encodeURIComponent(tradeId)}/submit`, {});
   if (res.data == null) throw new Error("Unexpected empty response");
   return normalizeTrade(res.data);
@@ -247,7 +247,7 @@ export async function submitTrade(tradeId: string): Promise<Trade> {
 
 /** POST /v1/trades/:id/accept — aceita → ACCEPTED */
 export async function acceptTrade(tradeId: string): Promise<Trade> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const res = await apiPost<any>(`${BASE}/${encodeURIComponent(tradeId)}/accept`, {});
   if (res.data == null) throw new Error("Unexpected empty response");
   return normalizeTrade(res.data);
@@ -255,7 +255,7 @@ export async function acceptTrade(tradeId: string): Promise<Trade> {
 
 /** POST /v1/trades/:id/reject — rejeita → REJECTED */
 export async function rejectTrade(tradeId: string): Promise<Trade> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const res = await apiPost<any>(`${BASE}/${encodeURIComponent(tradeId)}/reject`, {});
   if (res.data == null) throw new Error("Unexpected empty response");
   return normalizeTrade(res.data);
