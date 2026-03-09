@@ -105,11 +105,26 @@ async function proxy(
     (headers as Record<string, string>)["X-API-Key"] = apiKey;
   }
 
-  const res = await fetch(backendUrl, {
-    method,
-    headers,
-    body: body !== null ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(backendUrl, {
+      method,
+      headers,
+      body: body !== null ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(25000),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[proxy] ${method} /${pathSegment} → BACKEND_ERROR: ${msg}`);
+    return NextResponse.json(
+      {
+        status: "error",
+        message: "Could not reach backend. Check API_URL and network.",
+        detail: process.env.NODE_ENV === "development" ? msg : undefined,
+      },
+      { status: 502 }
+    );
+  }
 
   const resBody = await res.text();
   try {

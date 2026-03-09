@@ -84,10 +84,22 @@ npm start
 ### Deploy na Vercel
 
 1. Conecte o repositório ao [Vercel](https://vercel.com); o framework Next.js é detectado automaticamente.
-2. Configure as variáveis de ambiente no painel do projeto:
-   - **NEXT_PUBLIC_API_URL**: URL base da API (ex.: `https://sua-api.vercel.app/v1` ou o backend onde estiver rodando).
-3. (Opcional) **NEXT_PUBLIC_USE_API_PROXY**: `true` só faz sentido em desenvolvimento com proxy local; em produção deixe sem valor ou `false`.
-4. Faça o deploy; a Vercel usa `npm run build` e serve o app.
+2. Configure as variáveis de ambiente no painel do projeto (Settings → Environment Variables):
+   - **API_URL**: URL base do backend (ex.: `https://api.riftbounty.com/v1`). Usado no servidor e pelo proxy; o browser nunca vê essa URL.
+   - **API_KEY**: (se o backend exigir) mesma chave configurada no backend (header `X-API-Key`).
+3. Faça o deploy; a Vercel usa `npm run build` e serve o app.
+
+### Troubleshooting – backend na Vercel
+
+- **Testar se o backend está acessível**  
+  Abra no navegador: `https://seu-app.vercel.app/api/health`  
+  A resposta indica se `API_URL` está definida, se o backend respondeu e qual status (200 = ok; 502 = timeout ou backend inacessível).
+
+- **Onde ver os logs do proxy**  
+  No dashboard da Vercel: **Project → Logs** (ou **Deployments → [deploy] → Functions**). Cada requisição que passa pelo proxy (`/api/proxy/...`) gera uma linha `[proxy] GET /cards/... → 200`. Se der erro de conexão, aparece `[proxy] ... → BACKEND_ERROR: ...`.
+
+- **Backend não responde / 502**  
+  Confirme que `API_URL` está exatamente como o backend espera (ex.: `https://api.riftbounty.com/v1` com `/v1`). Se o backend exigir `X-API-Key`, defina `API_KEY` nas variáveis de ambiente da Vercel.
 
 ---
 
