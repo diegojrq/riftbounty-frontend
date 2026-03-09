@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/auth-context";
 import { CardsProvider } from "@/lib/cards-context";
@@ -28,6 +29,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased bg-gray-900">
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-S4M3QTYY4P"
+          strategy="afterInteractive"
+        />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-S4M3QTYY4P');`}
+        </Script>
         <AuthProvider>
           <CardsProvider>
           <Header />
