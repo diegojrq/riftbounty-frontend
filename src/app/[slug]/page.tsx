@@ -5,11 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import { BackLink } from "@/components/layout/BackLink";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getPublicProfile, getProfileMatch } from "@/lib/profile";
-import { createTrade, listTrades, addTradeItem, updateTradeItem, removeTradeItem, submitTrade, getTrade } from "@/lib/trades";
+import { createTrade, listTrades, addTradeItem, updateTradeItem, removeTradeItem, submitTrade, sendTradeMessage, getTrade } from "@/lib/trades";
 import { toast } from "sonner";
 import type { TradeSummary, Trade, TradeItem } from "@/types/trade";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
 import { useAuth } from "@/lib/auth-context";
+import { useLocale } from "@/lib/locale-context";
 import { useCards } from "@/lib/cards-context";
 import type { PublicUser, MatchItem, PublicProfileCard } from "@/types/auth";
 import type { Card } from "@/types/card";
@@ -144,6 +145,7 @@ interface BasketPanelProps {
 
 function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty, onRemove, onClear, cardCacheMap, scraperIdMap, activeTrade, activeTradeDetail, isMyTurn, originalItemsMap, onCounterSubmitError }: BasketPanelProps & { cardCacheMap: Map<string, Card>; scraperIdMap: Map<string, Card> }) {
   const router = useRouter();
+  const { t } = useLocale();
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -270,6 +272,13 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
         } catch (e) {
           throw new Error(`Updating items: ${e instanceof Error ? e.message : "Failed"}`);
         }
+        if (message.trim()) {
+          try {
+            await sendTradeMessage(activeTrade.id, message.trim());
+          } catch (e) {
+            throw new Error(`Message: ${e instanceof Error ? e.message : "Failed"}`);
+          }
+        }
         try {
           await submitTrade(activeTrade.id);
         } catch (e) {
@@ -300,7 +309,7 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
       <div className="flex items-center justify-between border-b border-gray-700 px-4 py-3">
         <div>
           <p className="text-sm font-semibold text-white">
-            {isCounterMode ? "Counter offer" : hasActiveTrade ? "Open trade" : "Request trade"}
+            {isCounterMode ? t("trades.counterOffer") : hasActiveTrade ? t("trades.openTrade") : t("trades.requestTrade")}
           </p>
           <p className="text-xs text-gray-400">
             {recipientDisplayName ?? `@${recipientSlug}`}
@@ -308,70 +317,110 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
           </p>
           {isCounterMode && (
             <p className="mt-0.5 text-[11px] text-amber-400/80">
-              Add cards and submit your counter
+              {t("trades.addCardsAndSubmitCounterMove")}
             </p>
           )}
           {hasActiveTrade && !isMyTurn && (
             <p className="mt-0.5 text-[11px] text-gray-500">
-              Waiting for @{recipientSlug} to respond
+              {t("trades.waitingFor", { slug: recipientSlug })}
             </p>
           )}
         </div>
         {items.length > 0 && (
           <button type="button" onClick={onClear} className="text-xs text-gray-600 hover:text-red-400">
-            Clear all
+            {t("common.clearAll")}
           </button>
         )}
       </div>
 
-      {/* What the other player already requested — shown whenever there's an active trade */}
-      {hasActiveTrade && theirRequestedItems.length > 0 && (
+      {/* What the other player already requested — grouped by set/type like the bottom section */}
+      {hasActiveTrade && theirRequestedGrouped.length > 0 && (
         <div className="border-b border-gray-700 px-3 py-2">
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            @{recipientSlug} asked for ({theirRequestedItems.length})
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            {t("trades.askedFor", { slug: recipientSlug, count: theirRequestedItems.length })}
           </p>
-          <ul className="space-y-1">
-            {theirRequestedItems.map((item) => {
-              const cached = cardCacheMap.get(item.cardId) ?? scraperIdMap.get(item.cardId);
-              const cardForPreview = (cached ?? item.card) as unknown as Card;
-              const name = cached?.name ?? item.card?.name ?? item.cardId;
-              const domains = getCardDomains((cached ?? item.card) as { domain?: string; domains?: string[]; cardDomains?: { domain: { name: string } }[] } | undefined);
-              const rarity = (cached?.rarity ?? item.card?.rarity ?? "").toLowerCase().replace(/\s+/g, "");
-              const rarityNorm = rarity === "overnumbered" ? "showcase" : rarity;
-              return (
-                <li key={item.id} className="flex items-center gap-1.5 py-0.5">
-                  <span className="text-xs text-gray-400 tabular-nums">×{item.quantity}</span>
-                  <CardHoverPreview card={cardForPreview}>
-                    <span className="flex min-w-0 cursor-default items-center gap-1">
-                      <span className="flex gap-0.5">
-                        {domains.map((d) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-3.5 w-3.5 object-contain" />
-                        ))}
-                      </span>
-                      <span className="truncate text-xs text-blue-400">{name}</span>
-                      {rarityNorm && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={`/images/rarities/${rarityNorm}.svg`} alt={rarityNorm} className="h-3 w-3 shrink-0 opacity-60" />
-                      )}
-                    </span>
-                  </CardHoverPreview>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="space-y-3">
+            {theirRequestedGrouped.map(({ set, label, types }) => (
+              <div key={set}>
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-gray-400">{label}</span>
+                  <div className="h-px flex-1 bg-gray-700" />
+                </div>
+                <div className="space-y-2 pl-2">
+                  {types.map(({ type, label: typeLabel, icon, items: typeItems }) => {
+                    const typeTotal = typeItems.reduce((s, i) => s + i.quantity, 0);
+                    return (
+                      <div key={type}>
+                        <div className="mb-0.5 flex items-center gap-1.5">
+                          {icon && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={icon} alt={typeLabel} className="h-3.5 w-3.5 object-contain opacity-70" />
+                          )}
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                            {typeLabel} <span className="text-gray-600">({typeTotal})</span>
+                          </span>
+                        </div>
+                        <ul className="space-y-0.5 pl-4">
+                          {typeItems.map((item) => {
+                            const cached = cardCacheMap.get(item.cardId) ?? scraperIdMap.get(item.cardId);
+                            const cardForPreview = (cached ?? item.card) as unknown as Card;
+                            const name = cached?.name ?? item.card?.name ?? item.cardId;
+                            const domains = getCardDomains((cached ?? item.card) as { domain?: string; domains?: string[]; cardDomains?: { domain: { name: string } }[] } | undefined);
+                            const rarity = (cached?.rarity ?? item.card?.rarity ?? "").toLowerCase().replace(/\s+/g, "");
+                            const rarityNorm = rarity === "overnumbered" ? "showcase" : rarity;
+                            return (
+                              <li key={item.id} className="flex items-center gap-1.5 py-0.5">
+                                <span className="text-xs text-gray-400 tabular-nums">×{item.quantity}</span>
+                                <CardHoverPreview card={cardForPreview}>
+                                  <span className="flex min-w-0 cursor-default items-center gap-1">
+                                    <span className="flex gap-0.5">
+                                      {domains.map((d) => (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-3.5 w-3.5 object-contain" />
+                                      ))}
+                                    </span>
+                                    <span className="truncate text-xs text-blue-400">{name}</span>
+                                    {rarityNorm && (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img src={`/images/rarities/${rarityNorm}.svg`} alt={rarityNorm} className="h-3 w-3 shrink-0 opacity-60" />
+                                    )}
+                                  </span>
+                                </CardHoverPreview>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       {/* My basket items — only shown when I can act (or no active trade) */}
       <div className={`flex-1 overflow-y-auto px-3 py-2 ${hasActiveTrade && !isMyTurn ? "hidden" : ""}`}>
+        {isCounterMode && (
+          <div className="mb-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              {items.length > 0
+                ? t("trades.pickFromCollectionCount", { slug: recipientSlug, count: totalQty })
+                : t("trades.pickFromCollection", { slug: recipientSlug })}
+            </p>
+            <p className="mt-0.5 text-[11px] text-amber-400/80">
+              {t("trades.addCardsAndSubmitCounterMove")}
+            </p>
+          </div>
+        )}
         {items.length === 0 ? (
           <div className="py-6 text-center">
             <p className="text-xs font-medium text-gray-500">
-              {isCounterMode ? `Add cards you want from @${recipientSlug}` : "Your request is empty"}
+              {isCounterMode ? t("trades.addCardsYouWantFrom", { slug: recipientSlug }) : t("trades.yourRequestEmpty")}
             </p>
             <p className="mt-1 text-[11px] text-gray-600">
-              Click <strong className="text-gray-500">+</strong> on any card to add it here
+              {t("trades.clickPlusToAdd")}
             </p>
           </div>
         ) : (
@@ -420,10 +469,10 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
                                 </span>
                               </CardHoverPreview>
                               <span className="flex shrink-0 items-center gap-0.5">
-                                <button type="button" onClick={() => onUpdateQty(card.uuid, quantity - 1)} className="flex h-5 w-5 items-center justify-center rounded bg-gray-700 text-xs text-gray-300 hover:bg-gray-600" aria-label="Decrease">−</button>
+                                <button type="button" onClick={() => onUpdateQty(card.uuid, quantity - 1)} className="flex h-5 w-5 items-center justify-center rounded bg-gray-700 text-xs text-gray-300 hover:bg-gray-600" aria-label={t("common.decrease")}>−</button>
                                 <span className={`w-8 text-center text-[10px] font-bold tabular-nums ${atMax ? "text-amber-400" : "text-gray-400"}`}>{quantity}/{maxQty}</span>
-                                <button type="button" onClick={() => onUpdateQty(card.uuid, quantity + 1)} disabled={atMax} className="flex h-5 w-5 items-center justify-center rounded bg-gray-700 text-xs text-gray-300 hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-30" aria-label="Increase">+</button>
-                                <button type="button" onClick={() => onRemove(card.uuid)} className="ml-0.5 flex h-5 w-5 items-center justify-center rounded text-gray-600 hover:bg-red-900/40 hover:text-red-400" aria-label="Remove">×</button>
+                                <button type="button" onClick={() => onUpdateQty(card.uuid, quantity + 1)} disabled={atMax} className="flex h-5 w-5 items-center justify-center rounded bg-gray-700 text-xs text-gray-300 hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-30" aria-label={t("common.increase")}>+</button>
+                                <button type="button" onClick={() => onRemove(card.uuid)} className="ml-0.5 flex h-5 w-5 items-center justify-center rounded text-gray-600 hover:bg-red-900/40 hover:text-red-400" aria-label={t("common.remove")}>×</button>
                               </span>
                             </li>
                           );
@@ -446,13 +495,13 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 py-2.5 text-sm font-semibold text-gray-300 transition hover:border-gray-500 hover:text-white"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-            View trade
+            {t("trades.viewTrade")}
           </a>
         ) : (
           <>
             {items.length > 0 && (
               <p className="text-center text-xs text-gray-500">
-                {items.length} type{items.length !== 1 ? "s" : ""} · {totalQty} card{totalQty !== 1 ? "s" : ""} total
+                {t("trades.typesTotal", { types: items.length, total: totalQty })}
               </p>
             )}
             <textarea
@@ -460,7 +509,7 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
               onChange={(e) => setMessage(e.target.value)}
               rows={2}
               disabled={submitting}
-              placeholder="Add a message… (optional)"
+              placeholder={t("trades.addMessageOptional")}
               className="w-full resize-none rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-white placeholder-gray-600 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/40 disabled:opacity-50"
             />
             {error && (
@@ -478,9 +527,9 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                   </svg>
-                  {isCounterMode ? "Submitting counter…" : "Creating…"}
+                  {isCounterMode ? t("trades.submittingCounter") : t("trades.creating")}
                 </>
-              ) : isCounterMode ? "Submit counter offer →" : "Send Trade →"}
+              ) : isCounterMode ? t("trades.submitCounterOffer") : t("trades.sendTrade")}
             </button>
           </>
         )}
@@ -494,6 +543,7 @@ export default function PublicProfilePage() {
   const params = useParams();
   const slug = typeof params.slug === "string" ? params.slug : "";
   const { user: me, loading: authLoading } = useAuth();
+  const { t } = useLocale();
   const { cards: cachedCards } = useCards();
 
   const cardCacheMap = useMemo(
@@ -545,7 +595,7 @@ export default function PublicProfilePage() {
           getTrade(found.id)
             .then((detail) => setActiveTradeDetail(detail))
             .catch((err) => {
-              toast.error(err instanceof Error ? err.message : "Could not load trade details.");
+              toast.error(err instanceof Error ? err.message : t("profile.couldNotLoadTradeDetails"));
               setActiveTradeDetail(null);
             });
         } else {
@@ -553,7 +603,7 @@ export default function PublicProfilePage() {
         }
       })
       .catch((err) => {
-        toast.error(err instanceof Error ? err.message : "Could not load trade status.");
+        toast.error(err instanceof Error ? err.message : t("profile.couldNotLoadTradeStatus"));
       });
   }, [me, user]);
 
@@ -786,12 +836,12 @@ export default function PublicProfilePage() {
     return (
       <div className="min-h-[50vh] bg-gray-900 px-4 py-12">
         <div className="mx-auto max-w-md text-center">
-          <h1 className="mb-2 text-2xl font-bold text-white">User not found</h1>
+          <h1 className="mb-2 text-2xl font-bold text-white">{t("profile.userNotFound")}</h1>
           <p className="mb-6 text-gray-400">
-            There is no profile for &quot;{slug}&quot; or the address is invalid.
+            {t("profile.noProfileFor", { slug })}
           </p>
           <Link href="/" className="inline-block rounded bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500">
-            Go home
+            {t("profile.goHome")}
           </Link>
         </div>
       </div>
@@ -813,7 +863,7 @@ export default function PublicProfilePage() {
           <div className="absolute bottom-0 left-0 right-0 max-h-[80dvh] overflow-y-auto rounded-t-2xl border-t border-gray-700 bg-gray-900 px-4 pb-6 pt-3">
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-gray-600" />
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-white">{activeTrade ? "Counter offer" : "Request trade"}</h2>
+              <h2 className="text-base font-semibold text-white">{activeTrade ? t("trades.counterOfferMobile") : t("trades.requestTradeMobile")}</h2>
               <button type="button" onClick={() => setBasketDrawerOpen(false)} className="flex h-8 w-8 items-center justify-center rounded text-gray-400 hover:bg-gray-800">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
               </button>
@@ -865,18 +915,18 @@ export default function PublicProfilePage() {
               <div className="border-b border-gray-700 px-5 py-4">
                 <div className="flex items-baseline justify-between gap-3">
                   <div>
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">Collection</h2>
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">{t("profile.collection")}</h2>
                     {showTradePanel ? (
                       !matchLoading && match.length > 0 && (
                         <p className="mt-0.5 text-xs text-gray-500">
-                          {filteredMatch.length} of {match.length} card{match.length !== 1 ? "s" : ""}
-                          <span className="ml-2 text-gray-600">· Click <span className="font-bold text-gray-500">+</span> to add to trade</span>
+                          {t("profile.ofCards", { filtered: filteredMatch.length, total: match.length })}
+                          <span className="ml-2 text-gray-600">· {t("profile.clickPlusToTrade")}</span>
                         </p>
                       )
                     ) : (
                       publicCollection.length > 0 && (
                         <p className="mt-0.5 text-xs text-gray-500">
-                          {filteredCollection.length} of {publicCollection.length} card{publicCollection.length !== 1 ? "s" : ""}
+                          {t("profile.ofCards", { filtered: filteredCollection.length, total: publicCollection.length })}
                         </p>
                       )
                     )}
@@ -886,7 +936,7 @@ export default function PublicProfilePage() {
                   <div className="mt-3 space-y-2">
                     <input
                       type="search"
-                      placeholder="Search by name…"
+                      placeholder={t("trades.searchByName")}
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -923,7 +973,7 @@ export default function PublicProfilePage() {
                             onClick={() => setSelectedRarities([])}
                             className="ml-1 text-[11px] text-gray-600 hover:text-gray-400"
                           >
-                            clear
+                            {t("profile.clear")}
                           </button>
                         )}
                       </div>
@@ -942,7 +992,7 @@ export default function PublicProfilePage() {
                           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                             <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
                           </svg>
-                          Missing only
+                          {t("profile.missingOnly")}
                         </button>
                       )}
                     </div>
@@ -962,7 +1012,7 @@ export default function PublicProfilePage() {
                 ) : filteredMatch.length > 0 ? (
                   <div className="px-4 py-3">
                     {search && match.length > 0 && (
-                      <p className="mb-2 text-xs text-gray-500">{filteredMatch.length} of {match.length} matching &quot;{search}&quot;</p>
+                      <p className="mb-2 text-xs text-gray-500">{t("profile.matching", { count: filteredMatch.length, total: match.length, search })}</p>
                     )}
                     <div className="space-y-4">
                       {groupedMatch.map(({ set, label, types }) => (
@@ -1019,7 +1069,7 @@ export default function PublicProfilePage() {
                                             </span>
                                           </CardHoverPreview>
                                           <span className="flex shrink-0 items-center gap-2">
-                                            <span className="text-[10px] tabular-nums text-gray-600">mine ×{item.myQuantity}</span>
+                                            <span className="text-[10px] tabular-nums text-gray-600">{t("profile.mine")} ×{item.myQuantity}</span>
                                             <button
                                               type="button"
                                               onClick={() => addToBasket(item.card, item.theirQuantity)}
@@ -1029,8 +1079,8 @@ export default function PublicProfilePage() {
                                                 : inBasket ? "border-green-500 bg-green-700/60 text-green-300 hover:bg-green-700"
                                                 : "border-green-700 bg-green-800/40 text-green-400 hover:bg-green-700/60"
                                               }`}
-                                              title={atMax ? `Max (${item.theirQuantity})` : inBasket ? `${basketItem!.quantity}/${item.theirQuantity}` : "Add to trade"}
-                                              aria-label="Add to trade"
+                                              title={atMax ? t("trades.maxQuantity", { count: item.theirQuantity }) : inBasket ? `${basketItem!.quantity}/${item.theirQuantity}` : t("trades.addToTrade")}
+                                              aria-label={t("trades.addToTrade")}
                                             >
                                               <IconPlus className="size-3" />
                                             </button>
@@ -1051,8 +1101,8 @@ export default function PublicProfilePage() {
                   <div className="px-6 py-8 text-center">
                     <p className="text-sm text-gray-500">
                       {search
-                        ? `No cards match "${search}".`
-                        : <>No cards found — <span className="font-medium text-gray-300">@{user.slug}</span> has no cards you could trade for.</>
+                        ? t("profile.noCardsMatchSearch", { search })
+                        : t("profile.noCardsFoundForTrade", { slug: user.slug })
                       }
                     </p>
                   </div>
@@ -1062,7 +1112,7 @@ export default function PublicProfilePage() {
                 publicCollection.length > 0 ? (
                   <div className="px-4 py-3">
                     {filteredCollection.length === 0 ? (
-                      <p className="py-6 text-center text-sm text-gray-500">No cards match your search.</p>
+                      <p className="py-6 text-center text-sm text-gray-500">{t("profile.noCardsMatchSearchGeneric")}</p>
                     ) : (
                       <div className="space-y-4">
                         {groupedCollection.map(({ set, label, types }) => (
@@ -1121,7 +1171,7 @@ export default function PublicProfilePage() {
                   </div>
                 ) : (
                   <div className="px-6 py-8 text-center">
-                    <p className="text-sm text-gray-500">No public collection to show.</p>
+                    <p className="text-sm text-gray-500">{t("profile.noPublicCollection")}</p>
                   </div>
                 )
               )}
@@ -1155,13 +1205,13 @@ export default function PublicProfilePage() {
 
         {!me && !isOwnProfile && (
           <div className="mt-4 rounded-lg border border-gray-700 bg-gray-800/50 px-5 py-4 text-sm text-gray-400">
-            <Link href="/login" className="font-medium text-emerald-400 hover:underline">Log in</Link>{" "}
-            to see which cards from this collection you could trade for.
+            <Link href="/login" className="font-medium text-emerald-400 hover:underline">{t("profile.logIn")}</Link>{" "}
+            {t("profile.logInToSeeCards")}
           </div>
         )}
 
         <div className="mt-6">
-          <BackLink href="/" label="Home" className="" />
+          <BackLink href="/" label={t("back.home")} className="" />
         </div>
       </div>
 
@@ -1171,12 +1221,12 @@ export default function PublicProfilePage() {
           type="button"
           onClick={() => setBasketDrawerOpen(true)}
           className="fixed bottom-6 right-4 z-40 flex items-center gap-2 rounded-full border border-emerald-700 bg-emerald-600 py-3 pl-4 pr-5 text-sm font-semibold text-white shadow-xl transition hover:bg-emerald-500 md:hidden"
-          aria-label="Open trade basket"
+          aria-label={t("trades.openTradeBasket")}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
           </svg>
-          Trade
+          {t("profile.trade")}
           {basketCount > 0 && (
             <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-white px-1 text-xs font-bold text-emerald-700">
               {basketCount}

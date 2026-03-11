@@ -5,6 +5,7 @@
  */
 
 import { getToken } from "./auth";
+import { getLocale } from "./locale";
 import type { ApiSuccess } from "@/types/api";
 
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -34,6 +35,7 @@ export async function apiClient<T>(
   const token = typeof window !== "undefined" ? getToken() : null;
   const headers: HeadersInit = {
     "Content-Type": "application/json",
+    "Accept-Language": getLocale(),
     ...options.headers,
   };
   if (token) {

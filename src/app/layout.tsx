@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { Toaster } from "sonner";
+import { LocaleProvider } from "@/lib/locale-context";
 import { AuthProvider } from "@/lib/auth-context";
 import { CardsProvider } from "@/lib/cards-context";
 import { BackToTop } from "@/components/layout/BackToTop";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
+import { LangSync } from "@/components/layout/LangSync";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -36,6 +38,8 @@ export default function RootLayout({
         <Script id="gtag-init" strategy="afterInteractive">
           {`window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-S4M3QTYY4P');`}
         </Script>
+        <LocaleProvider>
+        <LangSync />
         <AuthProvider>
           <CardsProvider>
           <Header />
@@ -56,6 +60,7 @@ export default function RootLayout({
           />
           </CardsProvider>
         </AuthProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

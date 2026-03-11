@@ -43,6 +43,8 @@ export interface Card {
   /** Collector number (e.g. "SFD-109/221" or "19/296"). API pode enviar snake_case ou camelCase. */
   collector_number?: string;
   collectorNumber?: string;
+  /** Chave para imagem: nome do arquivo sem extensão (ex.: OGN-001-298). Usado em getCardImageUrl. */
+  image_key?: string;
 }
 
 /** GET /v1/cards response: items (cards with relations), totalCount. */

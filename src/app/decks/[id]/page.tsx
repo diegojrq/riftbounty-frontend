@@ -22,6 +22,7 @@ import {
   deleteDeck,
 } from "@/lib/decks";
 import { useAuth } from "@/lib/auth-context";
+import { useLocale } from "@/lib/locale-context";
 import { getCollection } from "@/lib/collections";
 import { useCards } from "@/lib/cards-context";
 import { getCardImageUrl } from "@/lib/cards";
@@ -104,6 +105,7 @@ function CardPickerGrid({
   onSetBattlefield: (pos: 1 | 2 | 3, c: Card) => void;
   onPickBattlefield?: (c: Card) => void;
 }) {
+  const { t } = useLocale();
   // Combined qty: main + sideboard (counts toward the 3-copy limit)
   const mainQtyMap = new Map<string, number>();
   for (const item of deck.mainItems ?? []) {
@@ -167,7 +169,7 @@ function CardPickerGrid({
                   <CardHoverPreview card={card}>
                     <span
                       className="flex size-7 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/60 text-gray-300 shadow transition-colors hover:border-white/40 hover:bg-black/80 hover:text-white"
-                      title="Preview card"
+                      title={t("decks.previewCard")}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -180,7 +182,7 @@ function CardPickerGrid({
                   {/* Collection qty — right side */}
                   {inColl && (
                     <span
-                      title={`You have ${owned} in your collection`}
+                      title={t("decks.youHaveInCollection", { count: owned })}
                       className="flex size-7 shrink-0 items-center justify-center rounded-md border border-white/30 bg-black/70 text-xs font-bold tabular-nums text-white shadow"
                     >
                       ×{owned}
@@ -290,15 +292,6 @@ function getNextPicker(deck: Deck): PickerMode {
   return "sideboard"; // suggest sideboard as final optional step
 }
 
-const PICKER_TITLES: Record<PickerMode, string> = {
-  legend: "Choose your Legend",
-  champion: "Choose your Champion",
-  battlefields: "Choose Battlefields",
-  main: "Add cards to Main Deck",
-  rune: "Add Runes to Rune Deck",
-  sideboard: "Add cards to Sideboard",
-};
-
 function getCardAttributes(card: Card): string[] {
   if (card.attributes) {
     if (Array.isArray(card.attributes)) return card.attributes as string[];
@@ -347,7 +340,17 @@ export default function DeckBuilderPage() {
   const params = useParams();
   const deckId = params?.id as string;
   const { user, loading: authLoading } = useAuth();
+  const { t } = useLocale();
   const { cards: allCards, loading: cardsLoading } = useCards();
+
+  const pickerTitles: Record<PickerMode, string> = useMemo(() => ({
+    legend: t("decks.chooseYourLegend"),
+    champion: t("decks.chooseChampion"),
+    battlefields: t("decks.chooseBattlefields"),
+    main: t("decks.addToMainDeck"),
+    rune: t("decks.addRunesToRuneDeck"),
+    sideboard: t("decks.addToSideboard"),
+  }), [t]);
   const [deck, setDeck] = useState<Deck | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -420,12 +423,12 @@ export default function DeckBuilderPage() {
       // Auto-abre o próximo passo pendente na primeira carga
       setPicker((prev) => prev ?? getNextPicker(d));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error loading deck");
+      setError(err instanceof Error ? err.message : t("decks.errorLoadingDeck"));
       setDeck(null);
     } finally {
       setLoading(false);
     }
-  }, [deckId]);
+  }, [deckId, t]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -631,7 +634,7 @@ export default function DeckBuilderPage() {
       setPicker(getNextPicker(updated));
       setMobilePickerOpen(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to set legend");
+      setError(e instanceof Error ? e.message : t("decks.failedToSetLegend"));
     }
   }
 
@@ -662,7 +665,7 @@ export default function DeckBuilderPage() {
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to set champion");
+      setError(e instanceof Error ? e.message : t("decks.failedToSetChampion"));
     }
   }
 
@@ -676,7 +679,7 @@ export default function DeckBuilderPage() {
       setPicker(getNextPicker(updated));
       restorePickerScroll();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add card");
+      setError(e instanceof Error ? e.message : t("decks.failedToAddCard"));
     }
   }
 
@@ -690,7 +693,7 @@ export default function DeckBuilderPage() {
       setPicker(getNextPicker(updated));
       restorePickerScroll();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add rune");
+      setError(e instanceof Error ? e.message : t("decks.failedToAddRune"));
     }
   }
 
@@ -703,7 +706,7 @@ export default function DeckBuilderPage() {
       setDeck(updated);
       restorePickerScroll();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add to sideboard");
+      setError(e instanceof Error ? e.message : t("decks.failedToAddSideboard"));
     }
   }
 
@@ -717,7 +720,7 @@ export default function DeckBuilderPage() {
       // Auto-close mobile picker when all 3 BFs filled → moving to next step
       if (next !== "battlefields") setMobilePickerOpen(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to set battlefield");
+      setError(e instanceof Error ? e.message : t("decks.failedToSetBattlefield"));
     }
   }
 
@@ -730,12 +733,12 @@ export default function DeckBuilderPage() {
   }
 
   async function handleDelete() {
-    if (!deck || !confirm("Delete this deck?")) return;
+    if (!deck || !confirm(t("decks.deleteDeckConfirm"))) return;
     try {
       await deleteDeck(deck.id);
       router.replace("/decks");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete");
+      setError(e instanceof Error ? e.message : t("decks.failedToDelete"));
     }
   }
 
@@ -746,8 +749,8 @@ export default function DeckBuilderPage() {
   if (!deckId || (!loading && !deck)) {
     return (
       <div className="min-h-screen bg-gray-900 px-4 py-8">
-        <BackLink href="/decks" label="My Decks" />
-        <p className="text-gray-400">Deck not found.</p>
+        <BackLink href="/decks" label={t("back.myDecks")} />
+        <p className="text-gray-400">{t("decks.deckNotFound")}</p>
       </div>
     );
   }
@@ -817,8 +820,8 @@ export default function DeckBuilderPage() {
               </svg>
             </div>
 
-            <h2 className="mb-1 text-2xl font-bold text-white">Deck complete!</h2>
-            <p className="mb-6 text-sm text-gray-400">Your deck is ready to play.</p>
+            <h2 className="mb-1 text-2xl font-bold text-white">{t("decks.deckComplete")}</h2>
+            <p className="mb-6 text-sm text-gray-400">{t("decks.deckReadyToPlay")}</p>
 
             {/* Domains */}
             {deckDomains.length > 0 && (
@@ -846,13 +849,13 @@ export default function DeckBuilderPage() {
                 onClick={() => setShowValidModal(false)}
                 className="rounded-lg border border-gray-600 bg-gray-800 px-6 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
               >
-                Continue editing
+                {t("decks.continueEditing")}
               </button>
               <Link
                 href={`/decks/${deck.id}/view`}
                 className="rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
               >
-                View deck
+                {t("decks.viewDeck")}
               </Link>
             </div>
           </div>
@@ -860,7 +863,7 @@ export default function DeckBuilderPage() {
       )}
 
       <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-10 xl:px-12">
-        <BackLink href="/decks" label="My Decks" />
+        <BackLink href="/decks" label={t("back.myDecks")} />
         <div className="mb-4 flex items-center justify-end gap-4">
           <div className="flex items-center gap-3">
             {isDeckValid && deck && (
@@ -869,7 +872,7 @@ export default function DeckBuilderPage() {
                 className="flex items-center gap-1.5 rounded-lg border border-emerald-700 bg-emerald-900/30 px-3 py-1.5 text-sm font-medium text-emerald-400 transition-colors hover:bg-emerald-900/60 hover:text-emerald-300"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                View deck
+                {t("decks.viewDeck")}
               </Link>
             )}
             <button
@@ -877,7 +880,7 @@ export default function DeckBuilderPage() {
               onClick={handleDelete}
               className="rounded bg-red-900/50 px-3 py-1.5 text-sm text-red-200 hover:bg-red-900/70"
             >
-              Delete deck
+              {t("decks.deleteDeck")}
             </button>
           </div>
         </div>
@@ -939,7 +942,7 @@ export default function DeckBuilderPage() {
           <div className="mb-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
             <div className="mb-3 flex flex-col gap-1">
               <label htmlFor="deck-name" className="text-xs font-medium uppercase tracking-wider text-gray-500">
-                Deck name
+                {t("decks.deckName")}
               </label>
               <div className="flex items-center gap-2">
                 {editingName ? (
@@ -950,7 +953,7 @@ export default function DeckBuilderPage() {
                       value={nameDraft}
                       onChange={(e) => setNameDraft(e.target.value)}
                       disabled={savingName}
-                      placeholder="Give your deck a name"
+                      placeholder={t("decks.giveDeckAName")}
                       className={`min-w-0 flex-1 rounded border px-3 py-2 text-base font-medium text-white placeholder:text-gray-500 ${
                         !(nameDraft?.trim()) && (deck?.mainItems?.length ?? 0) > 0
                           ? "border-amber-500 bg-amber-950/20 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/50"
@@ -964,7 +967,7 @@ export default function DeckBuilderPage() {
                       disabled={savingName || nameDraft === deck?.name}
                       className="shrink-0 rounded border border-emerald-700 bg-emerald-900/40 px-3 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-900/60 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {savingName ? "…" : "Save"}
+                      {savingName ? "…" : t("decks.save")}
                     </button>
                   </>
                 ) : (
@@ -975,7 +978,7 @@ export default function DeckBuilderPage() {
                         (deck?.name?.trim() ?? "") ? "text-white" : "text-gray-500"
                       }`}
                     >
-                      {(deck?.name?.trim() ?? "") || "No name"}
+                      {(deck?.name?.trim() ?? "") || t("decks.noName")}
                     </span>
                     <button
                       type="button"
@@ -985,23 +988,23 @@ export default function DeckBuilderPage() {
                       }}
                       className="shrink-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
                     >
-                      Edit Name
+                      {t("decks.editName")}
                     </button>
                   </>
                 )}
               </div>
               {!(nameDraft?.trim()) && editingName && (deck?.mainItems?.length ?? 0) > 0 && (
-                <p className="text-xs text-amber-400">Deck name is required</p>
+                <p className="text-xs text-amber-400">{t("decks.deckNameRequired")}</p>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium uppercase tracking-wider text-gray-500 shrink-0">Steps</span>
+              <span className="text-xs font-medium uppercase tracking-wider text-gray-500 shrink-0">{t("decks.steps")}</span>
               <div className="flex flex-wrap gap-1">
                 {(["legend", "champion", "battlefields", "main", "rune", "sideboard"] as PickerMode[]).map((mode) => {
                   const labelMap: Record<PickerMode, string> = {
-                    legend: "Legend", champion: "Champion",
-                    battlefields: "Battlefields",
-                    main: "Main", rune: "Rune", sideboard: "SB",
+                    legend: t("decks.stepsLegend"), champion: t("decks.stepsChampion"),
+                    battlefields: t("decks.stepsBattlefields"),
+                    main: t("decks.stepsMain"), rune: t("decks.stepsRune"), sideboard: t("decks.stepsSB"),
                   };
                   const bfCount = deck?.battlefields?.filter((b) => b.card).length ?? 0;
                   const errs = validation?.errors ?? [];
@@ -1059,11 +1062,11 @@ export default function DeckBuilderPage() {
             }`}>
               {/* Mobile-only close bar */}
               <div className="mb-3 flex items-center justify-between border-b border-gray-700 pb-3 lg:hidden">
-                <span className="text-sm font-semibold text-white">Browse cards</span>
+                <span className="text-sm font-semibold text-white">{t("decks.browseCards")}</span>
                 <button
                   type="button"
                   onClick={() => setMobilePickerOpen(false)}
-                  aria-label="Close picker"
+                  aria-label={t("decks.closePicker")}
                   className="flex h-8 w-8 items-center justify-center rounded text-gray-400 hover:bg-gray-700 hover:text-white"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -1092,15 +1095,15 @@ export default function DeckBuilderPage() {
                       })()}
                       <div>
                         <h3 className="text-base font-semibold text-white leading-tight">
-                          {PICKER_TITLES[picker]}
+                          {pickerTitles[picker]}
                         </h3>
                         <p className="text-xs text-gray-500">
-                          {picker === "main" && `${mainCount}/39 cards`}
-                          {picker === "rune" && `${runeCount}/12 runes`}
-                          {picker === "sideboard" && `${sideboardCount}/8 cards · Optional`}
-                          {picker === "legend" && "Required"}
-                          {picker === "champion" && "Required"}
-                          {picker === "battlefields" && "Required (3 slots)"}
+                          {picker === "main" && `${mainCount}/39 ${t("decks.cards")}`}
+                          {picker === "rune" && `${runeCount}/12 ${t("decks.runes")}`}
+                          {picker === "sideboard" && `${sideboardCount}/8 ${t("decks.cards")} · ${t("decks.optional")}`}
+                          {picker === "legend" && t("decks.required")}
+                          {picker === "champion" && t("decks.required")}
+                          {picker === "battlefields" && t("decks.requiredSlots")}
                         </p>
                       </div>
                     </div>
@@ -1122,7 +1125,7 @@ export default function DeckBuilderPage() {
                         if (domainsToShow.length === 0) return null;
                         return (
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-xs text-gray-500">Domain:</span>
+                            <span className="text-xs text-gray-500">{t("decks.domainLabel")}</span>
                             {!isMultiDomain && (
                               <button
                                 type="button"
@@ -1132,7 +1135,7 @@ export default function DeckBuilderPage() {
                                   pickerDomain === undefined ? "border-white bg-gray-600 text-white" : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
                                 }`}
                               >
-                                All
+                                {t("decks.all")}
                               </button>
                             )}
                             {domainsToShow.map((domain) => {
@@ -1174,7 +1177,7 @@ export default function DeckBuilderPage() {
                         <>
                           <span className="h-4 w-px shrink-0 bg-gray-600" aria-hidden />
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-xs text-gray-500">Type:</span>
+                            <span className="text-xs text-gray-500">{t("decks.typeLabel")}</span>
                           {(["unit", "champion", "gear", "spell"] as const).map((t) => (
                             <button
                               key={t}
@@ -1199,13 +1202,13 @@ export default function DeckBuilderPage() {
                         <>
                           <span className="h-4 w-px shrink-0 bg-gray-600" aria-hidden />
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">Collection:</span>
+                            <span className="text-xs text-gray-500">{t("decks.collectionLabel")}</span>
                           <button
                             type="button"
                             role="switch"
                             aria-checked={onlyInCollection}
                             onClick={() => setOnlyInCollection((v) => !v)}
-                            title={onlyInCollection ? "Showing only cards in your collection" : "Showing all cards"}
+                            title={onlyInCollection ? t("decks.showingOnlyInCollection") : t("decks.showingAllCards")}
                             className={`relative inline-flex h-6 w-10 shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-gray-900 ${
                               onlyInCollection ? "bg-emerald-600" : "bg-gray-600"
                             }`}
@@ -1218,7 +1221,7 @@ export default function DeckBuilderPage() {
                             />
                           </button>
                           <span className="text-xs text-gray-400">
-                            {onlyInCollection ? "My collection" : "All cards"}
+                            {onlyInCollection ? t("decks.myCollection") : t("decks.allCards")}
                           </span>
                           </div>
                         </>
@@ -1239,7 +1242,7 @@ export default function DeckBuilderPage() {
                         type="text"
                         value={cardSearchQuery}
                         onChange={(e) => setCardSearchQuery(e.target.value)}
-                        placeholder="Search by name..."
+                        placeholder={t("decks.searchByName")}
                         className="w-full rounded border border-gray-600 bg-gray-700 py-2 pl-3 pr-14 text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                       {cardSearchQuery.trim().length > 0 && cardSearchQuery.trim().length < 3 && (
@@ -1250,15 +1253,15 @@ export default function DeckBuilderPage() {
                     </div>
                     {cardSearchQuery.trim().length > 0 && cardSearchQuery.trim().length < 3 && (
                       <p className="mt-1 text-xs text-amber-400/80">
-                        {3 - cardSearchQuery.trim().length} more {3 - cardSearchQuery.trim().length === 1 ? "character" : "characters"} to search
+                        {t("decks.moreCharsToSearch", { count: 3 - cardSearchQuery.trim().length })}
                       </p>
                     )}
                   </div>
                   {cardsLoading ? (
-                    <p className="py-8 text-center text-gray-400">Loading cards...</p>
+                    <p className="py-8 text-center text-gray-400">{t("decks.loadingCards")}</p>
                   ) : filteredCards.length === 0 ? (
                     <p className="py-8 text-center text-gray-400">
-                      {cardSearchQuery.trim().length >= 3 ? "No cards found." : "No cards available."}
+                      {cardSearchQuery.trim().length >= 3 ? t("decks.noCardsFound") : t("decks.noCardsAvailable")}
                     </p>
                   ) : (
                     <CardPickerGrid
@@ -1292,10 +1295,10 @@ export default function DeckBuilderPage() {
                   className="flex items-center gap-2 rounded-full border border-gray-600 bg-gray-800 px-5 py-3 text-sm font-semibold text-white shadow-2xl hover:bg-gray-700 active:scale-95"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                  Browse cards
+                  {t("decks.browseCards")}
                   {picker && (
                     <span className="ml-1 rounded border border-blue-500/50 bg-blue-500/20 px-1.5 py-0.5 text-xs text-blue-300">
-                      {picker === "legend" ? "Legend" : picker === "champion" ? "Champion" : picker === "battlefields" ? "BF" : picker === "main" ? "Main" : picker === "rune" ? "Rune" : "SB"}
+                      {picker === "legend" ? t("decks.stepsLegend") : picker === "champion" ? t("decks.stepsChampion") : picker === "battlefields" ? t("decks.stepsBattlefields") : picker === "main" ? t("decks.stepsMain") : picker === "rune" ? t("decks.stepsRune") : t("decks.stepsSB")}
                     </span>
                   )}
                 </button>
@@ -1307,13 +1310,13 @@ export default function DeckBuilderPage() {
               {/* LEGEND & CHAMPION */}
               <section className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
                 <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  Legend &amp; Champion
+                  {t("decks.legendAndChampion")}
                 </h2>
                 <div className="flex gap-4">
                   {/* Legend slot */}
                   <div className="flex flex-1 flex-col gap-2">
                     <span className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
-                      Legend
+                      {t("decks.legend")}
                       {deckLegend ? (
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><path d="M20 6 9 17l-5-5"/></svg>
                       ) : (
@@ -1321,7 +1324,7 @@ export default function DeckBuilderPage() {
                       )}
                       {deckLegend && collectionQtyByCardId.size > 0 && (
                         <span
-                          title={`In collection: ${collectionQtyByCardId.get(deckLegend.uuid) ?? 0} · In deck: 1`}
+                          title={`${t("decks.inCollection")}: ${collectionQtyByCardId.get(deckLegend.uuid) ?? 0} · ${t("decks.inDeck")}: 1`}
                           className={`rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
                             (collectionQtyByCardId.get(deckLegend.uuid) ?? 0) >= 1 ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
                           }`}
@@ -1347,7 +1350,7 @@ export default function DeckBuilderPage() {
                             onClick={() => { setPicker("legend"); setMobilePickerOpen(true); }}
                             className="w-full rounded bg-gray-700/80 py-1 text-xs text-gray-200 hover:bg-gray-600"
                           >
-                            Change
+                            {t("decks.change")}
                           </button>
                         </div>
                       </div>
@@ -1357,7 +1360,7 @@ export default function DeckBuilderPage() {
                         onClick={() => { setPicker("legend"); setMobilePickerOpen(true); }}
                         className="flex w-full aspect-[2.5/3.5] items-center justify-center rounded-lg border-2 border-dashed border-gray-600 bg-gray-800/50 text-sm text-gray-400 hover:border-gray-500 hover:text-gray-300"
                       >
-                        Set legend
+                        {t("decks.setLegend")}
                       </button>
                     )}
                   </div>
@@ -1365,7 +1368,7 @@ export default function DeckBuilderPage() {
                   {/* Champion slot */}
                   <div className="flex flex-1 flex-col gap-2">
                     <span className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
-                      Champion
+                      {t("decks.champion")}
                       {deckChampion ? (
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><path d="M20 6 9 17l-5-5"/></svg>
                       ) : (
@@ -1373,7 +1376,7 @@ export default function DeckBuilderPage() {
                       )}
                       {deckChampion && collectionQtyByCardId.size > 0 && (
                         <span
-                          title={`In collection: ${collectionQtyByCardId.get(deckChampion.uuid) ?? 0} · In deck: 1`}
+                          title={`${t("decks.inCollection")}: ${collectionQtyByCardId.get(deckChampion.uuid) ?? 0} · ${t("decks.inDeck")}: 1`}
                           className={`rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
                             (collectionQtyByCardId.get(deckChampion.uuid) ?? 0) >= 1 ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
                           }`}
@@ -1399,7 +1402,7 @@ export default function DeckBuilderPage() {
                             onClick={() => { setPicker("champion"); setMobilePickerOpen(true); }}
                             className="w-full rounded bg-gray-700/80 py-1 text-xs text-gray-200 hover:bg-gray-600"
                           >
-                            Change
+                            {t("decks.change")}
                           </button>
                         </div>
                       </div>
@@ -1408,16 +1411,16 @@ export default function DeckBuilderPage() {
                         type="button"
                         onClick={() => { if (deckLegend) { setPicker("champion"); setMobilePickerOpen(true); } }}
                         disabled={!deckLegend}
-                        title={!deckLegend ? "Select a legend first" : "Set champion"}
+                        title={!deckLegend ? t("decks.selectLegendFirst") : t("decks.setChampion")}
                         className={`flex w-full aspect-[2.5/3.5] flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed text-sm transition-all ${
                           deckLegend
                             ? "border-gray-600 bg-gray-800/50 text-gray-400 hover:border-gray-500 hover:text-gray-300"
                             : "cursor-not-allowed border-gray-700 bg-gray-800/30 text-gray-600"
                         }`}
                       >
-                        <span>Set champion</span>
+                        <span>{t("decks.setChampion")}</span>
                         {!deckLegend && (
-                          <span className="text-xs text-gray-600">Requires legend</span>
+                          <span className="text-xs text-gray-600">{t("decks.requiresLegend")}</span>
                         )}
                       </button>
                     )}
@@ -1431,7 +1434,7 @@ export default function DeckBuilderPage() {
                   const bfCount = deck.battlefields?.filter((b) => b.card).length ?? 0;
                   return (
                     <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                      Battlefields ({bfCount}/3)
+                      {t("decks.stepsBattlefields")} ({bfCount}/3)
                       {bfCount === 3 ? (
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
                       ) : (
@@ -1455,7 +1458,7 @@ export default function DeckBuilderPage() {
                             </CardHoverPreview>
                             {hasCollectionData && (
                               <span
-                                title={`In collection: ${owned} · In deck: 1`}
+                                title={`${t("decks.inCollection")}: ${owned} · ${t("decks.inDeck")}: 1`}
                                 className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
                                   owned >= 1 ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
                                 }`}
@@ -1465,14 +1468,14 @@ export default function DeckBuilderPage() {
                             )}
                           </span>
                         ) : (
-                          <span className="flex-1 text-sm text-gray-600 italic">Empty</span>
+                          <span className="flex-1 text-sm text-gray-600 italic">{t("decks.empty")}</span>
                         )}
                         <button
                           type="button"
                           onClick={() => { setPicker("battlefields"); setBattlefieldSlotBeingEdited(pos); setMobilePickerOpen(true); }}
                           className="rounded border border-gray-600 bg-gray-700/50 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-700 shrink-0"
                         >
-                          {bf?.card ? "Change" : "Set battlefield"}
+                          {bf?.card ? t("decks.change") : t("decks.setBattlefield")}
                         </button>
                       </div>
                     );
@@ -1493,7 +1496,7 @@ export default function DeckBuilderPage() {
                       className="h-4 w-4 object-contain"
                     />
                   ))}
-                  Main Deck ({mainCount}/39)
+                  {t("decks.mainDeckLabel")} ({mainCount}/39)
                   {mainCount === 39 && mainHasErrors ? (
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
                   ) : mainCount === 39 ? (
@@ -1505,8 +1508,8 @@ export default function DeckBuilderPage() {
                 {(() => {
                   const TYPE_ORDER = ["legend", "champion", "unit", "limit", "gear", "spell", "rune", "battlefield", "other"];
                   const TYPE_LABEL: Record<string, string> = {
-                    legend: "Legend", champion: "Champion", unit: "Unit", limit: "Limit",
-                    gear: "Gear", spell: "Spell", rune: "Rune", battlefield: "Battlefield", other: "Other",
+                    legend: t("decks.typeLegend"), champion: t("decks.typeChampion"), unit: t("decks.typeUnit"), limit: t("decks.typeLimit"),
+                    gear: t("decks.typeGear"), spell: t("decks.typeSpell"), rune: t("decks.typeRune"), battlefield: t("decks.typeBattlefield"), other: t("decks.typeOther"),
                   };
                   const TYPE_IMAGE: Record<string, string> = {
                     legend: "/images/types/legend.webp",
@@ -1574,7 +1577,7 @@ export default function DeckBuilderPage() {
                                             </CardHoverPreview>
                                             {hasCollectionData && (
                                               <span
-                                                title={`In collection: ${owned} · In deck: ${need}${usedByChampion || usedByLegend ? ` (${usedByLegend + usedByChampion} in legend/champion)` : ""}`}
+                                                title={`${t("decks.inCollection")}: ${owned} · ${t("decks.inDeck")}: ${need}${usedByChampion || usedByLegend ? ` (${usedByLegend + usedByChampion} ${t("decks.inLegendChampion")})` : ""}`}
                                                 className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
                                                   owned >= need ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
                                                 }`}
@@ -1632,14 +1635,14 @@ export default function DeckBuilderPage() {
                   disabled={mainCount > 38}
                   className="w-full rounded border border-gray-600 bg-gray-700/50 py-2.5 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-50"
                 >
-                  + Add card
+                  {t("decks.addCardBtn")}
                 </button>
               </section>
 
               {/* RUNE DECK (0/12) */}
               <section className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
                 <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  Rune Deck ({runeCount}/12)
+                  {t("decks.runeDeckLabel")} ({runeCount}/12)
                   {runeCount === 12 && runeHasErrors ? (
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
                   ) : runeCount === 12 ? (
@@ -1666,7 +1669,7 @@ export default function DeckBuilderPage() {
                                 </CardHoverPreview>
                                 {hasCollectionData && (
                                   <span
-                                    title={`In collection: ${owned} · In deck: ${need}`}
+                                    title={`${t("decks.inCollection")}: ${owned} · ${t("decks.inDeck")}: ${need}`}
                                     className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
                                       owned >= need ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
                                     }`}
@@ -1718,15 +1721,15 @@ export default function DeckBuilderPage() {
                   disabled={runeCount > 11}
                   className="w-full rounded border border-gray-600 bg-gray-700/50 py-2.5 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-50"
                 >
-                  + Add rune
+                  {t("decks.addRuneBtn")}
                 </button>
               </section>
 
               {/* SIDEBOARD (0/8) */}
               <section className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
                 <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  Sideboard ({sideboardCount}/8)
-                  <span className="ml-1 rounded border border-gray-600 bg-gray-700/50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 uppercase tracking-wide">Optional</span>
+                  {t("decks.sideboardLabel")} ({sideboardCount}/8)
+                  <span className="ml-1 rounded border border-gray-600 bg-gray-700/50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 uppercase tracking-wide">{t("decks.optional")}</span>
                   {sideboardCount > 0 && sideboardHasErrors ? (
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
                   ) : sideboardCount > 0 && sideboardCount <= 8 ? (
@@ -1763,7 +1766,7 @@ export default function DeckBuilderPage() {
                             </CardHoverPreview>
                             {hasCollectionData && (
                               <span
-                                title={`In collection: ${owned} · In deck: ${need}${usedByChampion || usedByLegend ? ` (${usedByLegend + usedByChampion} in legend/champion)` : ""}`}
+                                title={`${t("decks.inCollection")}: ${owned} · ${t("decks.inDeck")}: ${need}${usedByChampion || usedByLegend ? ` (${usedByLegend + usedByChampion} ${t("decks.inLegendChampion")})` : ""}`}
                                 className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
                                   owned >= need ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
                                 }`}
@@ -1813,16 +1816,16 @@ export default function DeckBuilderPage() {
                   disabled={sideboardCount > 7}
                   className="w-full rounded border border-gray-600 bg-gray-700/50 py-2.5 text-sm text-gray-300 hover:bg-gray-700 disabled:opacity-50"
                 >
-                  + Add to sideboard
+                  {t("decks.addToSideboardBtn")}
                 </button>
               </section>
 
               {/* Validation — only structural errors (per-card errors shown inline) */}
               {validation && (isDeckValid || structuralErrors.length > 0 || structuralWarnings.length > 0) && (
                 <section className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
-                  <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">Validation</h2>
+                  <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">{t("decks.validation")}</h2>
                   {isDeckValid ? (
-                    <p className="text-sm text-emerald-400">Deck is valid.</p>
+                    <p className="text-sm text-emerald-400">{t("decks.deckIsValid")}</p>
                   ) : (
                     <div className="space-y-1.5">
                       {structuralErrors.map((msg, i) => (

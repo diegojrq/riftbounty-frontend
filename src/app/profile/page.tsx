@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { checkSlugAvailable, getProfile, updateProfile, type UpdateProfilePayload } from "@/lib/profile";
+import { useLocale } from "@/lib/locale-context";
 import type { User, UserAddress } from "@/types/auth";
 
 const BR_STATES = [
@@ -68,6 +69,7 @@ function toFormAddress(a: User["address"]): UserAddress {
 export default function ProfilePage() {
   const router = useRouter();
   const { user, loading: authLoading, refreshUser } = useAuth();
+  const { t } = useLocale();
   const [profile, setProfile] = useState<User | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [slug, setSlug] = useState("");
@@ -132,7 +134,7 @@ export default function ProfilePage() {
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Error loading profile");
+        setError(err instanceof Error ? err.message : t("profile.errorLoadingProfile"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -185,14 +187,14 @@ export default function ProfilePage() {
       const res = await checkSlugAvailable(normalizedSlug);
       setSlugAvailability(res.available);
       if (!res.available) {
-        const msg = "This slug is already taken.";
+        const msg = t("profile.slugTaken");
         focusErrorAndBounce(msg);
         toast.error(msg);
       } else {
-        toast.success("This username is available.");
+        toast.success(t("profile.slugAvailable"));
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not check availability";
+      const msg = err instanceof Error ? err.message : t("profile.checkAvailability");
       focusErrorAndBounce(msg);
       toast.error(msg);
     } finally {
@@ -210,7 +212,7 @@ export default function ProfilePage() {
       return;
     }
     if (slugMustBeChecked) {
-      const msg = "Check slug availability before saving.";
+      const msg = t("profile.checkSlugFirst");
       focusErrorAndBounce(msg);
       toast.error(msg);
       return;
@@ -220,9 +222,9 @@ export default function ProfilePage() {
       await updateProfile(buildPayload());
       await refreshUser();
       setSlugAvailability(true);
-      toast.success("Profile saved successfully.");
+      toast.success(t("profile.profileSaved"));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error saving";
+      const msg = err instanceof Error ? err.message : t("profile.errorLoadingProfile");
       focusErrorAndBounce(msg);
       toast.error(msg);
     } finally {
@@ -306,7 +308,7 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-gray-900">
       <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
 
-        <h1 className="mb-6 text-2xl font-bold text-white">Profile</h1>
+        <h1 className="mb-6 text-2xl font-bold text-white">{t("profile.profile")}</h1>
         {error && (
           <div
             ref={errorRef}
@@ -318,12 +320,12 @@ export default function ProfilePage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <section className={sectionCardClass}>
             <div className="border-b border-gray-700 px-5 py-4">
-              <h2 className="text-lg font-semibold text-white">Name</h2>
+              <h2 className="text-lg font-semibold text-white">{t("profile.nameSection")}</h2>
             </div>
             <div className="space-y-4 p-5">
               <div>
                 <label htmlFor="profileEmail" className={labelClass}>
-                  Email
+                  {t("profile.email")}
                 </label>
                 <input
                   id="profileEmail"
@@ -336,7 +338,7 @@ export default function ProfilePage() {
               </div>
               <div>
                 <label htmlFor="profileSlug" className={labelClass}>
-                  Username
+                  {t("profile.username")}
                 </label>
                 <div className="flex flex-wrap gap-2 sm:flex-nowrap">
                   <input
@@ -358,22 +360,22 @@ export default function ProfilePage() {
                     disabled={!slugValid || slugChecking}
                     className="shrink-0 rounded bg-gray-600 px-3 py-2 text-sm font-medium text-white hover:bg-gray-500 disabled:opacity-50"
                   >
-                    {slugChecking ? "Checking…" : "Check availability"}
+                    {slugChecking ? t("profile.checking") : t("profile.checkAvailability")}
                   </button>
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
-                  3–30 characters: letters, numbers, underscores. Used in riftbounty.com/username
+                  {t("profile.slugHint")}
                   {slugAvailability === true && (
-                    <span className="ml-2 text-emerald-400">· Available</span>
+                    <span className="ml-2 text-emerald-400">· {t("profile.available")}</span>
                   )}
                   {slugAvailability === false && (
-                    <span className="ml-2 text-red-400">· Taken</span>
+                    <span className="ml-2 text-red-400">· {t("profile.taken")}</span>
                   )}
                 </p>
               </div>
               <div>
                 <label htmlFor="displayName" className={labelClass}>
-                  Display name
+                  {t("profile.displayName")}
                 </label>
                 <input
                   id="displayName"
@@ -389,15 +391,15 @@ export default function ProfilePage() {
           <section className={sectionCardClass}>
             <div className="border-b border-gray-700 px-5 py-4">
               <h2 className="text-lg font-semibold text-white">
-                Address
-                <span className="ml-1 rounded border border-gray-600 bg-gray-700/50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 uppercase tracking-wide">Optional</span>
+                {t("profile.addressSection")}
+                <span className="ml-1 rounded border border-gray-600 bg-gray-700/50 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 uppercase tracking-wide">{t("profile.addressOptional")}</span>
               </h2>
               <p className="mt-1 text-xs text-gray-500">
-                Your address helps match you with players near you.
+                {t("profile.addressHint")}
               </p>
               {addressLockedFromCep && (
                 <p className="mt-1 text-xs text-amber-400/90">
-                  Street, neighborhood, city and state were filled by postal code lookup and are read-only.
+                  {t("profile.addressLockedByCep")}
                 </p>
               )}
             </div>
@@ -405,7 +407,7 @@ export default function ProfilePage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="countryCode" className={labelClass}>
-                    Country (code)
+                    {t("profile.countryCode")}
                   </label>
                   <select
                     id="countryCode"
@@ -424,9 +426,9 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <label htmlFor="postalCode" className={labelClass}>
-                    Postal code (CEP)
+                    {t("profile.postalCode")}
                     {cepLoading && (
-                      <span className="ml-2 text-xs text-gray-500">Searching…</span>
+                      <span className="ml-2 text-xs text-gray-500">{t("profile.searchingCep")}</span>
                     )}
                   </label>
                   <input
@@ -446,7 +448,7 @@ export default function ProfilePage() {
               </div>
               <div>
                 <label htmlFor="street" className={labelClass}>
-                  Street
+                  {t("profile.street")}
                 </label>
                 <input
                   id="street"
@@ -463,7 +465,7 @@ export default function ProfilePage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="number" className={labelClass}>
-                    Number
+                    {t("profile.number")}
                   </label>
                   <input
                     id="number"
@@ -477,7 +479,7 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <label htmlFor="complement" className={labelClass}>
-                    Complement
+                    {t("profile.complement")}
                   </label>
                   <input
                     id="complement"
@@ -492,7 +494,7 @@ export default function ProfilePage() {
               </div>
               <div>
                 <label htmlFor="neighborhood" className={labelClass}>
-                  Neighborhood
+                  {t("profile.neighborhood")}
                 </label>
                 <input
                   id="neighborhood"
@@ -509,7 +511,7 @@ export default function ProfilePage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="city" className={labelClass}>
-                    City
+                    {t("profile.city")}
                   </label>
                   <input
                     id="city"
@@ -525,7 +527,7 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <label htmlFor="state" className={labelClass}>
-                    State
+                    {t("profile.state")}
                   </label>
                   <select
                     id="state"
@@ -554,7 +556,7 @@ export default function ProfilePage() {
               disabled={saving || slugMustBeChecked}
               className="rounded bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? t("profile.saving") : t("profile.save")}
             </button>
           </div>
         </form>

@@ -9,7 +9,8 @@
     "dev": "next dev -p 3011",
     "build": "next build",
     "start": "next start -p 3011",
-    "lint": "next lint"
+    "lint": "next lint",
+    "r2:upload": "node scripts/upload-r2.mjs"
   },
   "dependencies": {
     "next": "^15.0.0",

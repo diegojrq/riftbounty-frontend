@@ -13,6 +13,14 @@ export interface RangeSliderProps {
   step?: number;
   /** Show "Any" when max is at maxBound (default true) */
   showAnyLabel?: boolean;
+  /** Label for "any" when max is at maxBound (e.g. for i18n) */
+  anyLabel?: string;
+  minLabel?: string;
+  maxLabel?: string;
+  /** Aria suffix for min input (e.g. " minimum") */
+  minAriaSuffix?: string;
+  /** Aria suffix for max input (e.g. " maximum") */
+  maxAriaSuffix?: string;
 }
 
 export function RangeSlider({
@@ -24,6 +32,11 @@ export function RangeSlider({
   onChange,
   step = 1,
   showAnyLabel = true,
+  anyLabel = "Any",
+  minLabel = "Min",
+  maxLabel = "Max",
+  minAriaSuffix = " minimum",
+  maxAriaSuffix = " maximum",
 }: RangeSliderProps) {
   const id = useId();
   const minId = `${id}-min`;
@@ -48,12 +61,12 @@ export function RangeSlider({
           {label}
         </span>
         <span className="text-xs tabular-nums text-gray-400">
-          {valueMin} – {showAnyLabel && valueMax === maxBound ? "Any" : valueMax}
+          {valueMin} – {showAnyLabel && valueMax === maxBound ? anyLabel : valueMax}
         </span>
       </div>
       <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <label htmlFor={minId} className="w-8 shrink-0 text-[10px] text-gray-500">Min</label>
+          <label htmlFor={minId} className="w-8 shrink-0 text-[10px] text-gray-500">{minLabel}</label>
           <input
             id={minId}
             type="range"
@@ -63,12 +76,12 @@ export function RangeSlider({
             value={valueMin}
             onChange={(e) => onChange(clampMin(Number(e.target.value)), valueMax)}
             className={trackClass}
-            aria-label={`${label} minimum`}
+            aria-label={`${label}${minAriaSuffix}`}
           />
           <span className="w-5 shrink-0 text-right text-xs tabular-nums text-gray-400">{valueMin}</span>
         </div>
         <div className="flex items-center gap-2">
-          <label htmlFor={maxId} className="w-8 shrink-0 text-[10px] text-gray-500">Max</label>
+          <label htmlFor={maxId} className="w-8 shrink-0 text-[10px] text-gray-500">{maxLabel}</label>
           <input
             id={maxId}
             type="range"
@@ -78,10 +91,10 @@ export function RangeSlider({
             value={valueMax}
             onChange={(e) => onChange(valueMin, clampMax(Number(e.target.value)))}
             className={trackClass}
-            aria-label={`${label} maximum`}
+            aria-label={`${label}${maxAriaSuffix}`}
           />
           <span className="w-5 shrink-0 text-right text-xs tabular-nums text-gray-400">
-            {showAnyLabel && valueMax === maxBound ? "Any" : valueMax}
+            {showAnyLabel && valueMax === maxBound ? anyLabel : valueMax}
           </span>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { CardTile } from "@/components/cards/CardTile";
 import { CardDetailModal } from "@/components/cards/CardDetailModal";
 import { useCards } from "@/lib/cards-context";
+import { useLocale } from "@/lib/locale-context";
 import { RangeSlider } from "@/components/filters/RangeSlider";
 import { AttributesFilter } from "@/components/filters/AttributesFilter";
 import type { Card } from "@/types/card";
@@ -46,6 +47,7 @@ function getCardDomains(card: Card): string[] {
 
 function CardsPageContent() {
   const { cards: allCards } = useCards();
+  const { t } = useLocale();
   const searchParams = useSearchParams();
 
   // Seed filter state from URL query params (only on first render)
@@ -213,7 +215,7 @@ function CardsPageContent() {
             ))}
             <button type="button"
               onClick={() => setSelectedDomains((prev) => prev.includes("colorless") ? prev.filter((d) => d !== "colorless") : [...prev, "colorless"])}
-              aria-pressed={selectedDomains.includes("colorless")} title="Colorless"
+              aria-pressed={selectedDomains.includes("colorless")} title={t("cards.colorless")}
               className={`flex h-8 w-8 items-center justify-center rounded border-2 transition-all ${selectedDomains.includes("colorless") ? "border-white bg-white/20 ring-1 ring-white/50" : "border-gray-600 bg-gray-800 hover:border-gray-400"}`}>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><circle cx="12" cy="12" r="10"/><path d="M4.93 4.93 19.07 19.07"/></svg>
             </button>
@@ -247,7 +249,7 @@ function CardsPageContent() {
           <label htmlFor="home-filter-set" className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">Set</label>
           <select id="home-filter-set" value={selectedSet ?? ""} onChange={(e) => setSelectedSet(e.target.value || undefined)}
             className="rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-sm text-white">
-            <option value="">All sets</option>
+            <option value="">{t("cards.allSets")}</option>
             {SET_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
@@ -257,9 +259,9 @@ function CardsPageContent() {
       {/* Range sliders */}
       <div className="border-t border-gray-700 pt-3">
         <div className="grid grid-cols-1 gap-4 sm:flex sm:flex-wrap sm:gap-x-6 sm:gap-y-2">
-          <div className="w-full sm:w-44"><RangeSlider label="Energy" minBound={ENERGY_BOUNDS.min} maxBound={ENERGY_BOUNDS.max} valueMin={energyRange[0]} valueMax={energyRange[1]} onChange={(min, max) => setEnergyRange([min, max])} showAnyLabel /></div>
-          <div className="w-full sm:w-44"><RangeSlider label="Power" minBound={POWER_BOUNDS.min} maxBound={POWER_BOUNDS.max} valueMin={powerRange[0]} valueMax={powerRange[1]} onChange={(min, max) => setPowerRange([min, max])} showAnyLabel /></div>
-          <div className="w-full sm:w-44"><RangeSlider label="Might" minBound={MIGHT_BOUNDS.min} maxBound={MIGHT_BOUNDS.max} valueMin={mightRange[0]} valueMax={mightRange[1]} onChange={(min, max) => setMightRange([min, max])} showAnyLabel /></div>
+          <div className="w-full sm:w-44"><RangeSlider label={t("cards.energy")} minBound={ENERGY_BOUNDS.min} maxBound={ENERGY_BOUNDS.max} valueMin={energyRange[0]} valueMax={energyRange[1]} onChange={(min, max) => setEnergyRange([min, max])} showAnyLabel anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} /></div>
+          <div className="w-full sm:w-44"><RangeSlider label={t("cards.power")} minBound={POWER_BOUNDS.min} maxBound={POWER_BOUNDS.max} valueMin={powerRange[0]} valueMax={powerRange[1]} onChange={(min, max) => setPowerRange([min, max])} showAnyLabel anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} /></div>
+          <div className="w-full sm:w-44"><RangeSlider label={t("cards.might")} minBound={MIGHT_BOUNDS.min} maxBound={MIGHT_BOUNDS.max} valueMin={mightRange[0]} valueMax={mightRange[1]} onChange={(min, max) => setMightRange([min, max])} showAnyLabel anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} /></div>
         </div>
       </div>
 
@@ -270,7 +272,7 @@ function CardsPageContent() {
 
       {hasActiveFilters && (
         <button type="button" onClick={clearFilters} className="w-full rounded border border-gray-600 bg-gray-700/50 py-2 text-sm text-gray-300 hover:bg-gray-700 sm:w-auto sm:px-3 sm:py-1.5">
-          Clear all filters
+          {t("cards.clearAllFilters")}
         </button>
       )}
     </div>
@@ -278,16 +280,16 @@ function CardsPageContent() {
 
   const activeChips = hasActiveFilters && (
     <div className="mt-2.5 flex flex-wrap items-center gap-2">
-      <span className="text-xs font-medium uppercase tracking-wider text-gray-500">Active:</span>
-      {nameFilter && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">Search: {nameFilter}<button type="button" onClick={() => setSearchQuery("")} className="rounded-full p-0.5 hover:bg-gray-600" aria-label="Clear search"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
-      {selectedDomains.map((d) => <span key={d} className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">Domain: {d.charAt(0).toUpperCase() + d.slice(1)}<button type="button" onClick={() => setSelectedDomains((prev) => prev.filter((x) => x !== d))} className="rounded-full p-0.5 hover:bg-gray-600" aria-label="Clear domain"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>)}
-      {selectedRarity && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">Rarity: {selectedRarity.charAt(0).toUpperCase() + selectedRarity.slice(1)}<button type="button" onClick={() => setSelectedRarity(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label="Clear rarity"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
-      {selectedType && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">Type: {selectedType.charAt(0).toUpperCase() + selectedType.slice(1)}<button type="button" onClick={() => setSelectedType(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label="Clear type"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
-      {selectedSet && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">Set: {SET_OPTIONS.find((s) => s.value === selectedSet)?.label ?? selectedSet}<button type="button" onClick={() => setSelectedSet(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label="Clear set"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
-      {selectedAttributes.map((attr) => <span key={attr} className="inline-flex items-center gap-1 rounded-full bg-blue-900/60 px-2.5 py-0.5 text-xs text-blue-300">{attr}<button type="button" onClick={() => setSelectedAttributes(selectedAttributes.filter((a) => a !== attr))} className="rounded-full p-0.5 hover:bg-blue-800/60" aria-label={`Clear ${attr}`}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>)}
-      {(energyRange[0] > ENERGY_BOUNDS.min || energyRange[1] < ENERGY_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">Energy: {energyRange[0]}–{energyRange[1] === ENERGY_BOUNDS.max ? "Any" : energyRange[1]}<button type="button" onClick={() => setEnergyRange([ENERGY_BOUNDS.min, ENERGY_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label="Clear energy"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
-      {(powerRange[0] > POWER_BOUNDS.min || powerRange[1] < POWER_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">Power: {powerRange[0]}–{powerRange[1] === POWER_BOUNDS.max ? "Any" : powerRange[1]}<button type="button" onClick={() => setPowerRange([POWER_BOUNDS.min, POWER_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label="Clear power"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
-      {(mightRange[0] > MIGHT_BOUNDS.min || mightRange[1] < MIGHT_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">Might: {mightRange[0]}–{mightRange[1] === MIGHT_BOUNDS.max ? "Any" : mightRange[1]}<button type="button" onClick={() => setMightRange([MIGHT_BOUNDS.min, MIGHT_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label="Clear might"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
+      <span className="text-xs font-medium uppercase tracking-wider text-gray-500">{t("cards.active")}:</span>
+      {nameFilter && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.search")}: {nameFilter}<button type="button" onClick={() => setSearchQuery("")} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearSearch")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
+      {selectedDomains.map((d) => <span key={d} className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.domain")}: {d === "colorless" ? t("cards.colorless") : d.charAt(0).toUpperCase() + d.slice(1)}<button type="button" onClick={() => setSelectedDomains((prev) => prev.filter((x) => x !== d))} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearDomain")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>)}
+      {selectedRarity && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.rarity")}: {selectedRarity.charAt(0).toUpperCase() + selectedRarity.slice(1)}<button type="button" onClick={() => setSelectedRarity(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearRarity")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
+      {selectedType && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.type")}: {selectedType.charAt(0).toUpperCase() + selectedType.slice(1)}<button type="button" onClick={() => setSelectedType(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearType")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
+      {selectedSet && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.set")}: {SET_OPTIONS.find((s) => s.value === selectedSet)?.label ?? selectedSet}<button type="button" onClick={() => setSelectedSet(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearSet")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
+      {selectedAttributes.map((attr) => <span key={attr} className="inline-flex items-center gap-1 rounded-full bg-blue-900/60 px-2.5 py-0.5 text-xs text-blue-300">{attr}<button type="button" onClick={() => setSelectedAttributes(selectedAttributes.filter((a) => a !== attr))} className="rounded-full p-0.5 hover:bg-blue-800/60" aria-label={`${t("cards.clearSearch")} ${attr}`}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>)}
+      {(energyRange[0] > ENERGY_BOUNDS.min || energyRange[1] < ENERGY_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.energy")}: {energyRange[0]}–{energyRange[1] === ENERGY_BOUNDS.max ? t("cards.any") : energyRange[1]}<button type="button" onClick={() => setEnergyRange([ENERGY_BOUNDS.min, ENERGY_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearEnergy")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
+      {(powerRange[0] > POWER_BOUNDS.min || powerRange[1] < POWER_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.power")}: {powerRange[0]}–{powerRange[1] === POWER_BOUNDS.max ? t("cards.any") : powerRange[1]}<button type="button" onClick={() => setPowerRange([POWER_BOUNDS.min, POWER_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearPower")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
+      {(mightRange[0] > MIGHT_BOUNDS.min || mightRange[1] < MIGHT_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.might")}: {mightRange[0]}–{mightRange[1] === MIGHT_BOUNDS.max ? t("cards.any") : mightRange[1]}<button type="button" onClick={() => setMightRange([MIGHT_BOUNDS.min, MIGHT_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearMight")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
     </div>
   );
 
@@ -301,15 +303,15 @@ function CardsPageContent() {
           <div className="absolute bottom-[60px] left-0 right-0 max-h-[80dvh] overflow-y-auto rounded-t-2xl border-t border-gray-700 bg-gray-900 px-4 pb-6 pt-3">
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-gray-600" />
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-white">Filters</h2>
-              <button type="button" onClick={() => setDrawerOpen(false)} aria-label="Close filters" className="flex h-8 w-8 items-center justify-center rounded text-gray-400 hover:bg-gray-800 hover:text-white">
+              <h2 className="text-base font-semibold text-white">{t("cards.filters")}</h2>
+              <button type="button" onClick={() => setDrawerOpen(false)} aria-label={t("collection.closeFilters")} className="flex h-8 w-8 items-center justify-center rounded text-gray-400 hover:bg-gray-800 hover:text-white">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
               </button>
             </div>
             {filterContent}
             {activeChips && <div className="mt-4 border-t border-gray-700 pt-4">{activeChips}</div>}
             <button type="button" onClick={() => setDrawerOpen(false)} className="mt-5 w-full rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-500">
-              Show results
+              {t("cards.showResults")}
             </button>
           </div>
         </div>
@@ -318,7 +320,7 @@ function CardsPageContent() {
       {/* Header */}
       <div className="mx-auto w-full max-w-[1600px] px-4 pt-6 pb-3 sm:px-6 lg:px-10 xl:px-12">
         <header className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-gray-700 pb-3">
-          <h1 className="text-2xl font-bold text-white">Cards</h1>
+          <h1 className="text-2xl font-bold text-white">{t("cards.cardsTitle")}</h1>
         </header>
       </div>
 
@@ -331,7 +333,7 @@ function CardsPageContent() {
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden>
                 <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
               </span>
-              <input id="home-search-desktop" type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search card name..."
+              <input id="home-search-desktop" type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder={t("cards.searchCardNamePlaceholder")}
                 className="w-full rounded border border-gray-600 bg-gray-800 py-2 pl-9 pr-14 text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
               {searchQuery.trim().length > 0 && searchQuery.trim().length < MIN_SEARCH_LENGTH && (
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium tabular-nums text-amber-400">{searchQuery.trim().length}/{MIN_SEARCH_LENGTH}</span>
@@ -339,7 +341,7 @@ function CardsPageContent() {
             </div>
             <button type="button" onClick={() => setFiltersExpanded((v) => !v)}
               className="shrink-0 flex items-center gap-1.5 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700" aria-expanded={filtersExpanded}>
-              Filters
+              {t("cards.filters")}
               {hasActiveFilters && <span className="flex h-2 w-2 shrink-0 rounded-full bg-blue-500" aria-hidden />}
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={filtersExpanded ? "rotate-180" : ""} aria-hidden><path d="m6 9 6 6 6-6" /></svg>
             </button>
@@ -347,7 +349,7 @@ function CardsPageContent() {
 
           {searchQuery.trim().length > 0 && searchQuery.trim().length < MIN_SEARCH_LENGTH && (
             <p className="mb-3 mt-1 hidden text-xs text-amber-400/80 sm:block">
-              {MIN_SEARCH_LENGTH - searchQuery.trim().length} more {MIN_SEARCH_LENGTH - searchQuery.trim().length === 1 ? "character" : "characters"} to search
+              {MIN_SEARCH_LENGTH - searchQuery.trim().length === 1 ? t("cards.moreCharsToSearch", { count: 1 }) : t("cards.moreCharsToSearchPlural", { count: MIN_SEARCH_LENGTH - searchQuery.trim().length })}
             </p>
           )}
 
@@ -360,7 +362,7 @@ function CardsPageContent() {
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-700 bg-gray-900/95 px-3 py-2 backdrop-blur-sm sm:hidden">
         {searchQuery.trim().length > 0 && searchQuery.trim().length < MIN_SEARCH_LENGTH && (
           <p className="mb-1.5 text-center text-xs text-amber-400/80">
-            {MIN_SEARCH_LENGTH - searchQuery.trim().length} more character{MIN_SEARCH_LENGTH - searchQuery.trim().length !== 1 ? "s" : ""} to search
+            {MIN_SEARCH_LENGTH - searchQuery.trim().length === 1 ? t("cards.moreCharsToSearch", { count: 1 }) : t("cards.moreCharsToSearchPlural", { count: MIN_SEARCH_LENGTH - searchQuery.trim().length })}
           </p>
         )}
         <div className="flex items-center gap-2">
@@ -368,15 +370,15 @@ function CardsPageContent() {
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden>
               <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
             </span>
-            <input id="home-search-mobile" type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search card name..."
+            <input id="home-search-mobile" type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder={t("cards.searchCardNamePlaceholder")}
               className="w-full rounded border border-gray-600 bg-gray-800 py-2 pl-9 pr-3 text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
           <button type="button" onClick={() => setDrawerOpen(true)}
-            className="flex shrink-0 items-center gap-1.5 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700" aria-label="Open filters">
+            className="flex shrink-0 items-center gap-1.5 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700" aria-label={t("collection.openFilters")}>
             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/>
             </svg>
-            Filters
+            {t("cards.filters")}
             {hasActiveFilters && <span className="flex h-2 w-2 shrink-0 rounded-full bg-blue-500" aria-hidden />}
           </button>
         </div>
@@ -386,7 +388,7 @@ function CardsPageContent() {
       <div className="mx-auto w-full max-w-[1600px] px-4 py-5 pb-24 sm:pb-5 sm:px-6 lg:px-10 xl:px-12">
         {allCards.length === 0 ? (
           <>
-            <p className="mb-4 text-sm text-gray-400">Loading cards...</p>
+            <p className="mb-4 text-sm text-gray-400">{t("collection.loadingCards")}</p>
             <ul className="grid grid-cols-1 gap-5 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {Array.from({ length: 12 }).map((_, i) => (
                 <li key={i} className="aspect-[2.5/3.5] w-full overflow-hidden rounded-lg border border-gray-700/50 bg-gray-800">
@@ -396,12 +398,12 @@ function CardsPageContent() {
             </ul>
           </>
         ) : visibleCards.length === 0 ? (
-          <p className="text-gray-400">No cards found.</p>
+          <p className="text-gray-400">{t("cards.noCardsFound")}</p>
         ) : (
           <>
             <p className="mb-4 text-sm text-gray-400">
-              {`Showing ${visibleCards.length} of ${totalCount} cards`}
-              {hasMore && <span className="ml-1 text-gray-500">Scroll down to load more.</span>}
+              {t("cards.showingOf", { shown: visibleCards.length, total: totalCount })}
+              {hasMore && <span className="ml-1 text-gray-500">{t("cards.scrollDownToLoadMore")}</span>}
             </p>
             <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5">
               {visibleCards.map((card) => (

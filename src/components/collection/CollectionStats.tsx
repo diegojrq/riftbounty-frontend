@@ -3,31 +3,13 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getCollectionStats } from "@/lib/collections";
-import { getCardImageUrl } from "@/lib/cards";
+import { getCard, getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
+import { useLocale } from "@/lib/locale-context";
 import type { CollectionStats as CollectionStatsType } from "@/types/collection";
+import type { Card } from "@/types/card";
 
 const DOMAIN_ORDER = ["fury", "calm", "mind", "body", "chaos", "order"];
-
-const DOMAIN_TOP_LABEL: Record<string, string> = {
-  fury:       "Anger issues?",
-  calm:       "Too calm...",
-  mind:       "Big brain energy",
-  body:       "What a physique!",
-  chaos:      "Absolute chaos",
-  order:      "Control freak",
-  colorless:  "No style points",
-};
-
-const DOMAIN_BOTTOM_LABEL: Record<string, string> = {
-  fury:       "Too chill for you",
-  calm:       "Stressed out today?",
-  mind:       "Not thinking much",
-  body:       "Skipping leg day?",
-  chaos:      "Too organized?",
-  order:      "A bit of a rebel",
-  colorless:  "At least you tried",
-};
 
 const TYPE_ICON: Record<string, string> = {
   legend: "/images/types/legend.webp",
@@ -66,12 +48,16 @@ function BarRow({
   sub,
   catalogTotal,
   icon,
+  uniqueLabel = "unique",
+  copiesLabel = "copies",
 }: {
   label: string;
   value: number;
   sub?: number;
   catalogTotal?: number;
   icon?: React.ReactNode;
+  uniqueLabel?: string;
+  copiesLabel?: string;
 }) {
   /** Completion = unique / catalogTotal; fallback to unique / copies */
   const pct =
@@ -103,8 +89,8 @@ function BarRow({
         />
       </div>
       <p className="text-[11px] tabular-nums text-gray-500">
-        {value}{catalogTotal != null ? ` / ${catalogTotal}` : ""} unique
-        {sub != null ? ` · ${sub} copies` : ""}
+        {value}{catalogTotal != null ? ` / ${catalogTotal}` : ""} {uniqueLabel}
+        {sub != null ? ` · ${sub} ${copiesLabel}` : ""}
       </p>
     </div>
   );
@@ -155,9 +141,11 @@ function StatsSkeleton({ compact = false }: { compact?: boolean }) {
 }
 
 export function CollectionStats({ refreshTrigger = 0, breakdown = true }: CollectionStatsProps) {
+  const { t } = useLocale();
   const [stats, setStats] = useState<CollectionStatsType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mostOwnedFull, setMostOwnedFull] = useState<Card | null>(null);
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -165,16 +153,25 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
       const data = await getCollectionStats();
       setStats(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load stats");
+      setError(err instanceof Error ? err.message : t("collectionStats.failedToLoadStats"));
       setStats(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
   }, [load, refreshTrigger]);
+
+  useEffect(() => {
+    if (!stats?.mostOwnedCard) { setMostOwnedFull(null); return; }
+    const card = stats.mostOwnedCard.card;
+    if (getCardImageUrl(card)) { setMostOwnedFull(null); return; }
+    let cancelled = false;
+    getCard(card.uuid).then((full) => { if (!cancelled) setMostOwnedFull(full); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [stats?.mostOwnedCard]);
 
   if (loading && !stats) {
     return <StatsSkeleton compact={!breakdown} />;
@@ -189,7 +186,7 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
           onClick={load}
           className="mx-auto mt-3 block rounded bg-gray-600 px-3 py-1.5 text-sm hover:bg-gray-500"
         >
-          Try again
+          {t("collectionStats.tryAgain")}
         </button>
       </section>
     );
@@ -221,7 +218,7 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
   return (
     <section
       className="relative overflow-hidden rounded-xl border border-gray-700/60 bg-gray-800/40 p-6 shadow-lg"
-      aria-label="Collection statistics"
+      aria-label={t("collectionStats.ariaStats")}
     >
       <div className="relative">
       {/* Hero: completion + main numbers */}
@@ -251,20 +248,20 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
             </span>
           </div>
           <div>
-            <p className="text-sm font-medium uppercase tracking-wider text-gray-500">Completion</p>
+            <p className="text-sm font-medium uppercase tracking-wider text-gray-500">{t("collectionStats.completion")}</p>
             <p className="mt-0.5 text-2xl font-bold text-white tabular-nums">
               {stats.totalUniqueCards}
               <span className="text-gray-400 font-normal"> / {stats.totalInCatalog}</span>
             </p>
             <p className="mt-1 text-xs text-gray-400">
-              {stats.missingCount} missing · {stats.totalCopies} total copies
+              {stats.missingCount} {t("collectionStats.missing")} · {stats.totalCopies} {t("collectionStats.totalCopies")}
             </p>
           </div>
           {topDomain && (
             <div className="hidden w-full items-center gap-3 sm:flex sm:w-auto">
               <div
                 className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-emerald-700/60 bg-gray-800 ring-2 ring-emerald-600/30"
-                title={`Most unique: ${topDomain.domain} (${topDomain.uniqueCards})`}
+                title={t("collectionStats.tooltipMostUnique", { domain: topDomain.domain, count: topDomain.uniqueCards })}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -275,13 +272,13 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-emerald-500">
-                  {DOMAIN_TOP_LABEL[topDomain.domain.toLowerCase()] ?? "Most in collection"}
+                  {t(`collectionStats.domainTopLabel_${topDomain.domain.toLowerCase()}`)}
                 </p>
                 <p className="mt-0.5 text-lg font-bold capitalize text-white">
                   {topDomain.domain}
                 </p>
                 <p className="mt-0.5 text-xs text-gray-400">
-                  {topDomain.uniqueCards} unique in your collection
+                  {topDomain.uniqueCards} {t("collectionStats.uniqueInYourCollection")}
                 </p>
               </div>
             </div>
@@ -290,7 +287,7 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
             <div className="hidden w-full items-center gap-3 sm:flex sm:w-auto">
               <div
                 className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-red-800/50 bg-gray-800 ring-2 ring-red-700/20"
-                title={`Least unique: ${bottomDomain.domain} (${bottomDomain.uniqueCards})`}
+                title={t("collectionStats.tooltipLeastUnique", { domain: bottomDomain.domain, count: bottomDomain.uniqueCards })}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -301,26 +298,28 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-red-400">
-                  {DOMAIN_BOTTOM_LABEL[bottomDomain.domain.toLowerCase()] ?? "Least in collection"}
+                  {t(`collectionStats.domainBottomLabel_${bottomDomain.domain.toLowerCase()}`)}
                 </p>
                 <p className="mt-0.5 text-lg font-bold capitalize text-white">
                   {bottomDomain.domain}
                 </p>
                 <p className="mt-0.5 text-xs text-gray-400">
-                  {bottomDomain.uniqueCards} unique in your collection
+                  {bottomDomain.uniqueCards} {t("collectionStats.uniqueInYourCollection")}
                 </p>
               </div>
             </div>
           )}
-          {stats.mostOwnedCard && (
+          {stats.mostOwnedCard && (() => {
+            const mostOwnedImgUrl = getCardImageUrl(mostOwnedFull ?? stats.mostOwnedCard.card);
+            return (
             <div className="hidden w-full items-center gap-3 sm:flex sm:w-auto">
               <div
                 className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-gray-600 bg-gray-800 ring-2 ring-gray-700/80"
                 title={stats.mostOwnedCard.card.name}
               >
-                {getCardImageUrl(stats.mostOwnedCard.card) ? (
+                {mostOwnedImgUrl ? (
                   <CardImg
-                    src={getCardImageUrl(stats.mostOwnedCard.card)!}
+                    src={mostOwnedImgUrl}
                     alt={stats.mostOwnedCard.card.name}
                     className="size-full object-cover object-[center_10%] opacity-80"
                   />
@@ -330,17 +329,18 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
               </div>
               <div>
                 <p className="text-sm font-medium uppercase tracking-wider text-gray-500">
-                  Most owned card
+                  {t("collectionStats.mostOwnedCard")}
                 </p>
                 <p className="mt-0.5 text-lg font-bold text-white">
                   {stats.mostOwnedCard.card.name}
                 </p>
                 <p className="mt-0.5 text-xs text-gray-400">
-                  {stats.mostOwnedCard.quantity} {stats.mostOwnedCard.quantity === 1 ? "copy" : "copies"}
+                  {stats.mostOwnedCard.quantity} {stats.mostOwnedCard.quantity === 1 ? t("collectionStats.copy") : t("collectionStats.copies")}
                 </p>
               </div>
             </div>
-          )}
+            );
+          })()}
         </div>
       </div>
       {!breakdown && (
@@ -349,7 +349,7 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
             href="/collection/stats"
             className="text-sm text-emerald-400 hover:text-emerald-300 hover:underline"
           >
-            View full stats →
+            {t("collectionStats.viewFullStats")}
           </Link>
         </div>
       )}
@@ -361,7 +361,7 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
             {(
               [
                 {
-                  title: "By set",
+                  title: t("collectionStats.bySet"),
                   rows: stats.bySet.map((row) => (
                     <BarRow
                       key={row.set}
@@ -369,12 +369,14 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
                       value={row.uniqueCards}
                       sub={row.totalCopies}
                       catalogTotal={row.catalogTotal}
+                      uniqueLabel={t("collectionStats.unique")}
+                      copiesLabel={t("collectionStats.copies")}
                     />
                   )),
-                  empty: "No set data",
+                  empty: t("collectionStats.noSetData"),
                 },
                 {
-                  title: "By domain",
+                  title: t("collectionStats.byDomain"),
                   rows: byDomainOrdered.map((row) => (
                     <BarRow
                       key={row.domain}
@@ -382,6 +384,8 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
                       value={row.uniqueCards}
                       sub={row.totalCopies}
                       catalogTotal={row.catalogTotal}
+                      uniqueLabel={t("collectionStats.unique")}
+                      copiesLabel={t("collectionStats.copies")}
                       icon={
                         DOMAIN_IMAGE_SLUGS.has(row.domain.toLowerCase()) ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -394,10 +398,10 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
                       }
                     />
                   )),
-                  empty: "No domain data",
+                  empty: t("collectionStats.noDomainData"),
                 },
                 {
-                  title: "By rarity",
+                  title: t("collectionStats.byRarity"),
                   rows: stats.byRarity.map((row) => (
                     <BarRow
                       key={row.rarity}
@@ -405,12 +409,14 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
                       value={row.uniqueCards}
                       sub={row.totalCopies}
                       catalogTotal={row.catalogTotal}
+                      uniqueLabel={t("collectionStats.unique")}
+                      copiesLabel={t("collectionStats.copies")}
                     />
                   )),
-                  empty: "No rarity data",
+                  empty: t("collectionStats.noRarityData"),
                 },
                 {
-                  title: "By type",
+                  title: t("collectionStats.byType"),
                   rows: stats.byType.map((row) => {
                     const iconSrc = TYPE_ICON[row.type.toLowerCase()];
                     return (
@@ -420,6 +426,8 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
                         value={row.uniqueCards}
                         sub={row.totalCopies}
                         catalogTotal={row.catalogTotal}
+                        uniqueLabel={t("collectionStats.unique")}
+                        copiesLabel={t("collectionStats.copies")}
                         icon={
                           iconSrc ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -433,7 +441,7 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
                       />
                     );
                   }),
-                  empty: "No type data",
+                  empty: t("collectionStats.noTypeData"),
                 },
               ] as { title: string; rows: React.ReactNode[]; empty: string }[]
             ).map(({ title, rows, empty }) => (

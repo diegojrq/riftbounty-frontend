@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
+import { useLocale } from "@/lib/locale-context";
 import { createTrade } from "@/lib/trades";
 import { CardPickerModal } from "@/components/decks/CardPickerModal";
 import { BackLink } from "@/components/layout/BackLink";
@@ -18,6 +19,7 @@ function NewTradeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
+  const { t } = useLocale();
 
   const [recipientSlug, setRecipientSlug] = useState(searchParams.get("recipient") ?? "");
   const [items, setItems] = useState<DraftItem[]>([]);
@@ -57,8 +59,8 @@ function NewTradeContent() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!recipientSlug.trim()) { setError("Enter the recipient's slug."); return; }
-    if (recipientSlug.trim() === user?.slug) { setError("You can't trade with yourself."); return; }
+    if (!recipientSlug.trim()) { setError(t("trades.enterRecipientSlug")); return; }
+    if (recipientSlug.trim() === user?.slug) { setError(t("trades.cantTradeWithYourself")); return; }
 
     setSubmitting(true);
     setError(null);
@@ -68,10 +70,10 @@ function NewTradeContent() {
         items: items.map((i) => ({ cardId: i.card.uuid, quantity: i.quantity })),
         message: message.trim() || undefined,
       });
-      toast.success("Trade proposal sent!");
+      toast.success(t("trades.tradeProposalSent"));
       router.push(`/trades/${trade.id}`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error creating trade";
+      const msg = err instanceof Error ? err.message : t("trades.errorCreatingTrade");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -92,21 +94,21 @@ function NewTradeContent() {
   return (
     <div className="min-h-screen bg-gray-900">
       <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
-        <BackLink href="/trades" label="My Trades" className="mb-5" />
-        <h1 className="mb-6 text-2xl font-bold text-white">New Trade Proposal</h1>
+        <BackLink href="/trades" label={t("back.myTrades")} className="mb-5" />
+        <h1 className="mb-6 text-2xl font-bold text-white">{t("trades.newTrade")}</h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Recipient */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-300" htmlFor="recipient">
-              Recipient slug
+              {t("trades.recipientSlug")}
             </label>
             <input
               id="recipient"
               type="text"
               value={recipientSlug}
               onChange={(e) => setRecipientSlug(e.target.value)}
-              placeholder="e.g. dark-wizard"
+              placeholder={t("trades.recipientSlugPlaceholder")}
               className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
           </div>
@@ -114,21 +116,21 @@ function NewTradeContent() {
           {/* My offer */}
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-300">My offer</span>
+              <span className="text-sm font-medium text-gray-300">{t("trades.myOffer")}</span>
               <button
                 type="button"
                 onClick={() => setShowPicker(true)}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-300 transition hover:border-emerald-600 hover:text-emerald-400"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                Add card
+                {t("trades.addCard")}
               </button>
             </div>
 
             {items.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-700 bg-gray-800/50 px-4 py-6 text-center">
-                <p className="text-sm text-gray-500">No cards added yet.</p>
-                <p className="mt-0.5 text-xs text-gray-600">You can create a trade with no items too.</p>
+                <p className="text-sm text-gray-500">{t("trades.noCardsAddedYet")}</p>
+                <p className="mt-0.5 text-xs text-gray-600">{t("trades.noItemsToo")}</p>
               </div>
             ) : (
               <ul className="space-y-2">
@@ -149,7 +151,7 @@ function NewTradeContent() {
                           type="button"
                           onClick={() => updateQty(item.card.uuid, -1)}
                           className="flex h-7 w-7 items-center justify-center rounded-l-lg text-gray-400 hover:bg-gray-700 hover:text-white"
-                          aria-label="Decrease"
+                          aria-label={t("common.decrease")}
                         >
                           −
                         </button>
@@ -164,7 +166,7 @@ function NewTradeContent() {
                           type="button"
                           onClick={() => updateQty(item.card.uuid, 1)}
                           className="flex h-7 w-7 items-center justify-center rounded-r-lg text-gray-400 hover:bg-gray-700 hover:text-white"
-                          aria-label="Increase"
+                          aria-label={t("common.increase")}
                         >
                           +
                         </button>
@@ -173,7 +175,7 @@ function NewTradeContent() {
                         type="button"
                         onClick={() => removeItem(item.card.uuid)}
                         className="flex h-7 w-7 items-center justify-center rounded text-gray-500 hover:bg-red-900/30 hover:text-red-400"
-                        aria-label="Remove"
+                        aria-label={t("common.remove")}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                       </button>
@@ -187,14 +189,14 @@ function NewTradeContent() {
           {/* Message */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-300" htmlFor="message">
-              Message <span className="text-gray-500">(optional)</span>
+              {t("trades.messageOptional")}
             </label>
             <textarea
               id="message"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={3}
-              placeholder="Say something to the other player..."
+              placeholder={t("trades.saySomethingPlaceholder")}
               className="w-full resize-none rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
           </div>
@@ -209,14 +211,14 @@ function NewTradeContent() {
               disabled={submitting || !recipientSlug.trim()}
               className="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
             >
-              {submitting ? "Sending…" : "Send Proposal"}
+              {submitting ? t("trades.sending") : t("trades.sendProposal")}
             </button>
             <button
               type="button"
               onClick={() => router.back()}
               className="rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm font-medium text-gray-300 transition hover:bg-gray-700"
             >
-              Cancel
+              {t("trades.cancel")}
             </button>
           </div>
         </form>
@@ -224,7 +226,7 @@ function NewTradeContent() {
 
       {showPicker && (
         <CardPickerModal
-          title="Add card to your offer"
+          title={t("trades.addCardToOffer")}
           onSelect={handleCardSelect}
           onClose={() => setShowPicker(false)}
         />

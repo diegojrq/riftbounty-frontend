@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale } from "@/lib/locale-context";
+
 export const ATTRIBUTE_OPTIONS = [
   "Accelerate",
   "Action",
@@ -29,6 +31,7 @@ interface AttributesFilterProps {
 }
 
 export function AttributesFilter({ selected, onChange }: AttributesFilterProps) {
+  const { t } = useLocale();
   function toggle(attr: string) {
     if (selected.includes(attr)) {
       onChange(selected.filter((a) => a !== attr));
@@ -39,7 +42,7 @@ export function AttributesFilter({ selected, onChange }: AttributesFilterProps) 
 
   return (
     <div className="w-full">
-      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-gray-500">Attributes</p>
+      <p className="mb-1 text-xs font-medium uppercase tracking-wider text-gray-500">{t("cards.attributes")}</p>
       <div className="flex flex-wrap gap-1.5">
         {ATTRIBUTE_OPTIONS.map((attr) => {
           const active = selected.includes(attr);

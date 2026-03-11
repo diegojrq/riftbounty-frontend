@@ -3,6 +3,7 @@
 import type { Card } from "@/types/card";
 import { getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
+import { useLocale } from "@/lib/locale-context";
 
 interface CardTileProps {
   card: Card;
@@ -74,7 +75,7 @@ export function CardTile({
   onAdd,
   onDecrease,
 }: CardTileProps) {
-  /** Use props or card.collectionQuantity (API always sends collectionQuantity, 0 when not in collection) */
+  const { t } = useLocale();
   const qty = Number(quantity ?? card.collectionQuantity ?? 0);
   const canDecrease = inCollection && qty >= 1;
   const useGrayscale = grayscaleWhenNotInCollection && !inCollection;
@@ -155,7 +156,7 @@ export function CardTile({
               type="button"
               onClick={onOpenDetail}
               className="absolute inset-0 z-0 cursor-pointer"
-              aria-label={`View ${card.name} details`}
+              aria-label={t("cards.viewDetails", { name: card.name })}
             >
               {imageNode}
             </button>
@@ -187,8 +188,8 @@ export function CardTile({
                         onClick={(e) => { e.preventDefault(); onDecrease?.(); }}
                         disabled={actionDisabled}
                         className="flex size-10 shrink-0 items-center justify-center rounded-md border border-gray-500 bg-gray-700/90 text-white transition-colors hover:bg-gray-600 disabled:opacity-50"
-                        title="Decrease quantity"
-                        aria-label="Decrease quantity"
+                        title={t("cards.decreaseQuantity")}
+                        aria-label={t("cards.decreaseQuantity")}
                       >
                         <IconMinus />
                       </button>
@@ -198,8 +199,8 @@ export function CardTile({
                       onClick={(e) => { e.preventDefault(); onAdd?.(); }}
                       disabled={actionDisabled}
                       className="flex size-10 shrink-0 items-center justify-center rounded-md border-2 border-green-600 bg-green-700 text-white shadow transition-colors hover:bg-green-600 hover:border-green-500 disabled:opacity-50"
-                      title="Add one"
-                      aria-label="Add one"
+                      title={t("cards.addOne")}
+                      aria-label={t("cards.addOne")}
                     >
                       <IconPlus />
                     </button>
@@ -223,15 +224,15 @@ export function CardTile({
               type="button"
               onClick={onOpenDetail}
               className="absolute inset-0 z-0 flex cursor-pointer flex-col items-center justify-center gap-1 bg-gray-800 p-4 text-center"
-              aria-label={`View ${card.name} details`}
+              aria-label={t("cards.viewDetails", { name: card.name })}
             >
               <span className={`text-3xl text-gray-500 ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`} aria-hidden>🃏</span>
-              <p className="text-xs font-medium text-gray-400">No image</p>
+              <p className="text-xs font-medium text-gray-400">{t("cards.noImage")}</p>
             </button>
           ) : (
             <div className={`absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gray-800 p-4 text-center ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`}>
               <span className="text-3xl text-gray-500" aria-hidden>🃏</span>
-              <p className="text-xs font-medium text-gray-400">No image</p>
+              <p className="text-xs font-medium text-gray-400">{t("cards.noImage")}</p>
             </div>
           )}
           <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 to-transparent px-2 py-3 pt-6">
@@ -259,8 +260,8 @@ export function CardTile({
                         onClick={(e) => { e.preventDefault(); onDecrease?.(); }}
                         disabled={actionDisabled}
                         className="flex size-10 shrink-0 items-center justify-center rounded-md border border-gray-500 bg-gray-700/90 text-white transition-colors hover:bg-gray-600 disabled:opacity-50"
-                        title="Decrease quantity"
-                        aria-label="Decrease quantity"
+                        title={t("cards.decreaseQuantity")}
+                        aria-label={t("cards.decreaseQuantity")}
                       >
                         <IconMinus />
                       </button>
@@ -270,8 +271,8 @@ export function CardTile({
                       onClick={(e) => { e.preventDefault(); onAdd?.(); }}
                       disabled={actionDisabled}
                       className="flex size-10 shrink-0 items-center justify-center rounded-md border-2 border-green-600 bg-green-700 text-white shadow transition-colors hover:bg-green-600 hover:border-green-500 disabled:opacity-50"
-                      title="Add one"
-                      aria-label="Add one"
+                      title={t("cards.addOne")}
+                      aria-label={t("cards.addOne")}
                     >
                       <IconPlus />
                     </button>

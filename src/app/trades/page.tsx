@@ -5,17 +5,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
+import { useLocale } from "@/lib/locale-context";
 import { listTrades } from "@/lib/trades";
 import type { TradeSummary, TradeStatusFilter, TradeRoleFilter } from "@/types/trade";
-
-const STATUS_LABELS: Record<string, string> = {
-  all: "All",
-  PENDING: "Pending",
-  COUNTERED: "Countered",
-  ACCEPTED: "Accepted",
-  REJECTED: "Rejected",
-  CANCELLED: "Cancelled",
-};
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "border-amber-700 bg-amber-900/30 text-amber-400",
@@ -46,14 +38,14 @@ function TradesSkeleton() {
   );
 }
 
-function MyTurnBadge() {
+function MyTurnBadge({ label }: { label: string }) {
   return (
     <span className="flex items-center gap-1 rounded-full border border-amber-600/60 bg-amber-900/40 px-2 py-0.5 text-xs font-semibold text-amber-400">
       <span className="relative flex h-1.5 w-1.5">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
         <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-amber-500" />
       </span>
-      Your turn
+      {label}
     </span>
   );
 }
@@ -61,6 +53,7 @@ function MyTurnBadge() {
 export default function TradesPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { t } = useLocale();
 
   const [trades, setTrades] = useState<TradeSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,10 +111,18 @@ export default function TradesPage() {
   }
 
   const statusOptions: TradeStatusFilter[] = ["all", "PENDING", "COUNTERED", "ACCEPTED", "REJECTED", "CANCELLED"];
+  const statusLabels: Record<string, string> = {
+    all: t("trades.all"),
+    PENDING: t("trades.pending"),
+    COUNTERED: t("trades.countered"),
+    ACCEPTED: t("trades.accepted"),
+    REJECTED: t("trades.rejected"),
+    CANCELLED: t("trades.cancelled"),
+  };
   const roleOptions: { value: TradeRoleFilter; label: string }[] = [
-    { value: "all", label: "All roles" },
-    { value: "initiator", label: "I started" },
-    { value: "recipient", label: "Received" },
+    { value: "all", label: t("trades.allRoles") },
+    { value: "initiator", label: t("trades.iStarted") },
+    { value: "recipient", label: t("trades.received") },
   ];
 
   return (
@@ -129,8 +130,8 @@ export default function TradesPage() {
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">My Trades</h1>
-          <p className="mt-1 text-sm text-gray-500">To start a trade, visit another player&apos;s profile.</p>
+          <h1 className="text-2xl font-bold text-white">{t("trades.myTradesTitle")}</h1>
+          <p className="mt-1 text-sm text-gray-500">{t("trades.myTradesSubtitle")}</p>
         </div>
 
         {/* Filters */}
@@ -148,7 +149,7 @@ export default function TradesPage() {
                     : "border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-300"
                 }`}
               >
-                {STATUS_LABELS[s]}
+                {statusLabels[s]}
               </button>
             ))}
           </div>
@@ -180,11 +181,11 @@ export default function TradesPage() {
           <TradesSkeleton />
         ) : trades.length === 0 ? (
           <div className="rounded-xl border border-gray-700 bg-gray-800 px-6 py-12 text-center">
-            <p className="mb-1 text-sm font-medium text-gray-300">No trades found</p>
+            <p className="mb-1 text-sm font-medium text-gray-300">{t("trades.noTradesFound")}</p>
             <p className="text-xs text-gray-500">
               {statusFilter !== "all" || roleFilter !== "all"
-                ? "Try changing the filters."
-                : "Visit another player\u2019s profile to start a trade."}
+                ? t("trades.tryChangingFilters")
+                : t("trades.visitProfileToStart")}
             </p>
           </div>
         ) : (
@@ -213,14 +214,14 @@ export default function TradesPage() {
                           )}
                         </p>
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
-                          <span className="capitalize">{role}</span>
+                          <span className="capitalize">{role === "initiator" ? t("trades.iStarted") : t("trades.received")}</span>
                           <span>·</span>
                           <span>
-                            {role === "initiator" ? trade.initiatorItemCount : trade.recipientItemCount} cards offered
+                            {t("trades.cardsOffered", { count: role === "initiator" ? trade.initiatorItemCount : trade.recipientItemCount })}
                           </span>
                           <span>·</span>
                           <span>
-                            {role === "initiator" ? trade.recipientItemCount : trade.initiatorItemCount} cards requested
+                            {t("trades.cardsRequested", { count: role === "initiator" ? trade.recipientItemCount : trade.initiatorItemCount })}
                           </span>
                         </div>
                       </div>
@@ -233,9 +234,9 @@ export default function TradesPage() {
                           STATUS_COLORS[trade.status] ?? "border-gray-700 bg-gray-800 text-gray-400"
                         }`}
                       >
-                        {STATUS_LABELS[trade.status] ?? trade.status}
+                        {statusLabels[trade.status] ?? trade.status}
                       </span>
-                      {myTurn && <MyTurnBadge />}
+                      {myTurn && <MyTurnBadge label={t("trades.yourTurn")} />}
                       <time className="text-[11px] text-gray-600" dateTime={trade.updatedAt}>
                         {new Date(trade.updatedAt).toLocaleDateString()}
                       </time>

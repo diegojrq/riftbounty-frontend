@@ -88,6 +88,7 @@ async function proxy(
 
   const headers: HeadersInit = {};
   const forwardHeaders = [
+    "accept-language",
     "authorization",
     "content-type",
     "origin",

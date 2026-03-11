@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
+import { useLocale } from "@/lib/locale-context";
 import { normalizeSlugInput, validateSlug } from "@/lib/slug";
 
 const inputClass = "w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
@@ -12,6 +13,7 @@ const inputClass = "w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 
 export default function RegisterPage() {
   const router = useRouter();
   const { register, error, clearError } = useAuth();
+  const { t } = useLocale();
   const [slug, setSlug] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -30,11 +32,11 @@ export default function RegisterPage() {
       return;
     }
     if (password.length < 8) {
-      setLocalError("Password must be at least 8 characters.");
+      setLocalError(t("auth.passwordMinLength"));
       return;
     }
     if (password !== confirmPassword) {
-      setLocalError("Passwords do not match.");
+      setLocalError(t("auth.passwordsDoNotMatch"));
       return;
     }
     setLoading(true);
@@ -45,7 +47,7 @@ export default function RegisterPage() {
         slug: normalizeSlugInput(slug.trim()),
         ...(displayName.trim() && { displayName: displayName.trim() }),
       });
-      toast.success("Account created successfully. Welcome!");
+      toast.success(t("auth.accountCreatedSuccess"));
       router.push("/");
     } catch {
       setLoading(false);
@@ -56,7 +58,7 @@ export default function RegisterPage() {
 
   return (
     <div className="mx-auto max-w-md px-4 py-12">
-      <h1 className="mb-6 text-2xl font-bold text-white">Create account</h1>
+      <h1 className="mb-6 text-2xl font-bold text-white">{t("auth.createAccount")}</h1>
       {err && (
         <div className="mb-4 rounded border border-red-700/50 bg-red-900/40 p-3 text-sm text-red-300">
           {err}
@@ -65,7 +67,7 @@ export default function RegisterPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="slug" className="mb-1 block text-sm font-medium text-gray-300">
-            Username
+            {t("auth.username")}
           </label>
           <input
             id="slug"
@@ -79,12 +81,12 @@ export default function RegisterPage() {
             placeholder="my_username"
           />
           <p className="mt-1 text-xs text-gray-500">
-            3–30 characters: letters, numbers, underscores. Used in riftbounty.com/username
+            {t("auth.usernameHint")}
           </p>
         </div>
         <div>
           <label htmlFor="displayName" className="mb-1 block text-sm font-medium text-gray-300">
-            Name <span className="text-gray-500">(optional)</span>
+            {t("auth.nameOptional")}
           </label>
           <input
             id="displayName"
@@ -97,7 +99,7 @@ export default function RegisterPage() {
         </div>
         <div>
           <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-300">
-            Email
+            {t("auth.email")}
           </label>
           <input
             id="email"
@@ -110,7 +112,7 @@ export default function RegisterPage() {
         </div>
         <div>
           <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-300">
-            Password <span className="text-gray-500">(min. 8 characters)</span>
+            {t("auth.passwordMinHint")}
           </label>
           <input
             id="password"
@@ -124,7 +126,7 @@ export default function RegisterPage() {
         </div>
         <div>
           <label htmlFor="confirmPassword" className="mb-1 block text-sm font-medium text-gray-300">
-            Confirm password
+            {t("auth.confirmPassword")}
           </label>
           <input
             id="confirmPassword"
@@ -140,13 +142,13 @@ export default function RegisterPage() {
           disabled={loading}
           className="w-full rounded bg-emerald-600 px-4 py-2.5 font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
         >
-          {loading ? "Creating account..." : "Register"}
+          {loading ? t("auth.creatingAccount") : t("nav.register")}
         </button>
       </form>
       <p className="mt-4 text-sm text-gray-400">
-        Already have an account?{" "}
+        {t("auth.alreadyHaveAccount")}{" "}
         <Link href="/login" className="text-emerald-400 hover:text-emerald-300 hover:underline">
-          Sign in
+          {t("auth.signIn")}
         </Link>
       </p>
     </div>

@@ -9,14 +9,11 @@ import { getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
 import { BackLink } from "@/components/layout/BackLink";
+import { useLocale } from "@/lib/locale-context";
 import type { Card } from "@/types/card";
 import type { Deck, DeckMainItem } from "@/types/deck";
 
 const TYPE_ORDER = ["legend", "champion", "unit", "limit", "gear", "spell", "rune", "battlefield", "other"];
-const TYPE_LABEL: Record<string, string> = {
-  legend: "Legend", champion: "Champion", unit: "Unit", limit: "Limit",
-  gear: "Gear", spell: "Spell", rune: "Rune", battlefield: "Battlefield", other: "Other",
-};
 const TYPE_IMAGE: Record<string, string> = {
   legend: "/images/types/legend.webp",
   champion: "/images/types/champion.webp",
@@ -75,7 +72,7 @@ function CardSlot({ card, label }: { card: Card | null | undefined; label: strin
         </div>
       ) : (
         <div className="flex aspect-[2.5/3.5] w-full items-center justify-center rounded-xl border-2 border-dashed border-gray-700 bg-gray-800/30">
-          <span className="text-xs text-gray-600">Empty</span>
+          <span className="text-xs text-gray-600">{t("decks.empty")}</span>
         </div>
       )}
     </div>
@@ -176,6 +173,12 @@ export default function DeckViewPage() {
   const params = useParams();
   const deckId = params?.id as string;
   const { user, loading: authLoading } = useAuth();
+  const { t } = useLocale();
+
+  const TYPE_LABEL: Record<string, string> = {
+    legend: t("decks.typeLegend"), champion: t("decks.typeChampion"), unit: t("decks.typeUnit"), limit: t("decks.typeLimit"),
+    gear: t("decks.typeGear"), spell: t("decks.typeSpell"), rune: t("decks.typeRune"), battlefield: t("decks.typeBattlefield"), other: t("decks.typeOther"),
+  };
   const [deck, setDeck] = useState<Deck | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -205,8 +208,8 @@ export default function DeckViewPage() {
   if (!deck) {
     return (
       <div className="min-h-screen bg-gray-900 px-4 py-8">
-        <BackLink href="/decks" label="My Decks" />
-        <p className="text-gray-400">Deck not found.</p>
+        <BackLink href="/decks" label={t("back.myDecks")} />
+        <p className="text-gray-400">{t("decks.deckNotFound")}</p>
       </div>
     );
   }
@@ -226,7 +229,7 @@ export default function DeckViewPage() {
       {/* Header */}
       <div className="border-b border-gray-800 bg-gray-900/95 px-4 py-4 sm:px-8">
         <div className="mx-auto max-w-[1400px]">
-          <BackLink href="/decks" label="My Decks" className="mb-2" />
+          <BackLink href="/decks" label={t("back.myDecks")} className="mb-2" />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               {domains.length > 0 && domains.map((cd) => (
@@ -236,7 +239,7 @@ export default function DeckViewPage() {
               {isValid && (
                 <span className="flex items-center gap-1 rounded-full border border-emerald-700 bg-emerald-900/30 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
                   <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                  Valid
+                  {t("decks.valid")}
                 </span>
               )}
             </div>
@@ -244,7 +247,7 @@ export default function DeckViewPage() {
               href={`/decks/${deck.id}`}
               className="shrink-0 rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
             >
-              ✎ Edit deck
+              ✎ {t("decks.editDeck")}
             </Link>
           </div>
         </div>
@@ -257,14 +260,14 @@ export default function DeckViewPage() {
           <div className="flex flex-col gap-6">
             {/* Legend + Champion */}
             <div className="grid grid-cols-2 gap-3">
-              <CardSlot card={deckLegend} label="Legend" />
-              <CardSlot card={deckChampion} label="Champion" />
+              <CardSlot card={deckLegend} label={t("decks.legend")} />
+              <CardSlot card={deckChampion} label={t("decks.champion")} />
             </div>
 
             {/* Battlefields */}
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Battlefields ({deck.battlefields?.filter((b) => b.card).length ?? 0}/3)
+                {t("decks.stepsBattlefields")} ({deck.battlefields?.filter((b) => b.card).length ?? 0}/3)
               </p>
               <div className="flex flex-col gap-2">
                 {([1, 2, 3] as const).map((pos) => {
@@ -289,7 +292,7 @@ export default function DeckViewPage() {
                     </div>
                   ) : (
                     <div key={pos} className="flex aspect-[3.5/2.5] items-center justify-center rounded-lg border-2 border-dashed border-gray-700 bg-gray-800/30">
-                      <span className="text-xs text-gray-600">Slot {pos} empty</span>
+                      <span className="text-xs text-gray-600">{t("decks.slotEmpty", { pos })}</span>
                     </div>
                   );
                 })}
@@ -302,7 +305,7 @@ export default function DeckViewPage() {
 
             {/* Legend & Champion — linha topo */}
             <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Legend &amp; Champion</h2>
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">{t("decks.legendAndChampion")}</h2>
               <div className="grid grid-cols-2 gap-3">
                 {/* Legend */}
                 {deckLegend ? (
@@ -312,7 +315,7 @@ export default function DeckViewPage() {
                       <img src={getCardImageUrl(deckLegend)!} alt={deckLegend.name} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
                     )}
                     <div className="min-w-0">
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Legend</p>
+                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{t("decks.legend")}</p>
                       <CardHoverPreview card={deckLegend} battlefieldAsLandscape>
                         <p className="truncate text-sm font-medium text-blue-400 cursor-pointer">{deckLegend.name}</p>
                       </CardHoverPreview>
@@ -328,7 +331,7 @@ export default function DeckViewPage() {
                   </div>
                 ) : (
                   <div className="flex h-14 items-center justify-center rounded-lg border-2 border-dashed border-gray-700 bg-gray-800/30">
-                    <span className="text-xs text-gray-600">No Legend</span>
+                    <span className="text-xs text-gray-600">{t("decks.noLegend")}</span>
                   </div>
                 )}
                 {/* Champion */}
@@ -339,7 +342,7 @@ export default function DeckViewPage() {
                       <img src={getCardImageUrl(deckChampion)!} alt={deckChampion.name} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
                     )}
                     <div className="min-w-0">
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Champion</p>
+                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{t("decks.champion")}</p>
                       <CardHoverPreview card={deckChampion} battlefieldAsLandscape>
                         <p className="truncate text-sm font-medium text-blue-400 cursor-pointer">{deckChampion.name}</p>
                       </CardHoverPreview>
@@ -350,7 +353,7 @@ export default function DeckViewPage() {
                   </div>
                 ) : (
                   <div className="flex h-14 items-center justify-center rounded-lg border-2 border-dashed border-gray-700 bg-gray-800/30">
-                    <span className="text-xs text-gray-600">No Champion</span>
+                    <span className="text-xs text-gray-600">{t("decks.noChampion")}</span>
                   </div>
                 )}
               </div>
@@ -367,7 +370,7 @@ export default function DeckViewPage() {
                     <img key={cd.domain.name} src={`/images/domains/${cd.domain.name.toLowerCase()}.webp`} alt="" className="h-4 w-4 object-contain" />
                   ))}
                   <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
-                    Main Deck <span className="text-gray-500">({mainCount}/39)</span>
+                    {t("decks.mainDeckLabel")} <span className="text-gray-500">({mainCount}/39)</span>
                   </h2>
                   {mainCount === 39 && (
                     <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
@@ -422,7 +425,7 @@ export default function DeckViewPage() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src="/images/types/battlefields.webp" alt="" className="h-4 w-4 object-contain" />
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
-                      Battlefields <span className="text-gray-500">({deck.battlefields?.filter((b) => b.card).length ?? 0}/3)</span>
+                      {t("decks.stepsBattlefields")} <span className="text-gray-500">({deck.battlefields?.filter((b) => b.card).length ?? 0}/3)</span>
                     </h2>
                     {(deck.battlefields?.filter((b) => b.card).length ?? 0) === 3 && (
                       <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
@@ -438,7 +441,7 @@ export default function DeckViewPage() {
                           </CardHoverPreview>
                         </li>
                       ) : (
-                        <li key={pos} className="px-1.5 py-0.5 text-xs text-gray-600 italic">Slot {pos} empty</li>
+                        <li key={pos} className="px-1.5 py-0.5 text-xs text-gray-600 italic">{t("decks.slotEmpty", { pos })}</li>
                       );
                     })}
                   </ul>
@@ -450,7 +453,7 @@ export default function DeckViewPage() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src="/images/types/runes.webp" alt="" className="h-4 w-4 object-contain" />
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
-                      Rune Deck <span className="text-gray-500">({runeCount}/12)</span>
+                      {t("decks.runeDeckLabel")} <span className="text-gray-500">({runeCount}/12)</span>
                     </h2>
                     {runeCount === 12 && (
                       <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
@@ -484,14 +487,14 @@ export default function DeckViewPage() {
                   <div className="mb-3 flex items-center gap-2">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
-                      Sideboard <span className="text-gray-500">({sideboardCount}/8)</span>
+                      {t("decks.sideboardLabel")} <span className="text-gray-500">({sideboardCount}/8)</span>
                     </h2>
                     {sideboardCount > 0 && (
                       <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
                     )}
                   </div>
                   {sideboardCount === 0 ? (
-                    <p className="text-xs text-gray-600 italic">No sideboard cards.</p>
+                    <p className="text-xs text-gray-600 italic">{t("decks.noSideboardCards")}</p>
                   ) : (
                     <ul className="space-y-0.5">
                       {(deck.sideboardItems ?? []).map((item, i) => {
@@ -523,7 +526,7 @@ export default function DeckViewPage() {
             {/* Validation errors/warnings */}
             {deck.validation && !isValid && (
               <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
-                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Validation</h2>
+                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">{t("decks.validation")}</h2>
                 <div className="space-y-1.5">
                   {(deck.validation.errors ?? []).map((msg, i) => (
                     <p key={i} className="text-sm text-red-400">{msg}</p>

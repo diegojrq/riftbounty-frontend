@@ -6,7 +6,9 @@ import Link from "next/link";
 import { getCard, getCardImageUrl } from "@/lib/cards";
 import { addToCollection, removeFromCollection, updateQuantity } from "@/lib/collections";
 import { CardImg } from "@/components/cards/CardImg";
+import { CardDescription } from "@/components/cards/CardDescription";
 import { useAuth } from "@/lib/auth-context";
+import { useLocale } from "@/lib/locale-context";
 import type { Card } from "@/types/card";
 
 const SET_DISPLAY: Record<string, string> = {
@@ -72,6 +74,7 @@ interface CardDetailModalProps {
 
 export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetailModalProps) {
   const { user } = useAuth();
+  const { t } = useLocale();
   const [card, setCard] = useState<Card | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -151,13 +154,13 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetai
       />
 
       {/* Panel */}
-      <div className="relative z-10 flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl sm:max-w-4xl">
+      <div className="relative z-10 flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl sm:max-w-5xl">
         {/* Close button */}
         <button
           type="button"
           onClick={onClose}
           className="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition"
-          aria-label="Close"
+          aria-label={t("cards.close")}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
@@ -173,10 +176,10 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetai
 
         {/* Content */}
         {!loading && card && (
-          <div className="overflow-y-auto p-6">
+          <div className="overflow-y-auto p-5 sm:p-6">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
               {/* Image */}
-              <div className={`mx-auto w-full shrink-0 ${isLandscape ? "max-w-[280px] sm:max-w-[340px]" : "max-w-[220px] sm:max-w-[280px]"}`}>
+              <div className={`mx-auto w-full shrink-0 ${isLandscape ? "max-w-[360px] sm:max-w-[420px]" : "max-w-[300px] sm:max-w-[360px]"}`}>
                 <div className={`relative overflow-hidden rounded-xl border border-gray-600 bg-gray-800 shadow-xl ${isLandscape ? "aspect-[3.5/2.5]" : "aspect-[2.5/3.5]"}`}>
                   {imageUrl ? (
                     isLandscape ? (
@@ -200,14 +203,17 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetai
                   ) : (
                     <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-gray-500">
                       <span className="text-5xl" aria-hidden>🃏</span>
-                      <span className="text-sm">No image</span>
+                      <span className="text-sm">{t("cards.noImage")}</span>
                     </div>
                   )}
                 </div>
+                {card.illustrator && (
+                  <p className="mt-2 text-right text-xs text-gray-500">{t("cards.illustrator")}: <span className="text-gray-400">{card.illustrator}</span></p>
+                )}
               </div>
 
               {/* Details */}
-              <div className="min-w-0 flex-1 space-y-5">
+              <div className="min-w-0 flex-1 space-y-4">
                 {/* Header */}
                 <div>
                   <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">{card.name}</h2>
@@ -248,45 +254,39 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetai
                   ))}
                 </div>
 
-                {/* Stats: Cost, Power, Energy, Might, CMC, Orientation */}
-                {(card.cost != null || card.power != null || card.energy != null || card.might != null || card.cmc != null || card.orientation) && (
-                  <div className="rounded-xl border border-gray-700/80 bg-gray-800/40 p-4">
-                    <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500">Stats</p>
+                {/* Stats: Cost, Power, Energy, Might, CMC */}
+                {(card.cost != null || card.power != null || card.energy != null || card.might != null || card.cmc != null) && (
+                  <div className="rounded-xl border border-gray-700/80 bg-gray-800/40 p-3">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">{t("cards.stats")}</p>
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                       {card.cost != null && card.cost !== "" && (
                         <div className="rounded-lg bg-gray-900/60 px-3 py-2">
-                          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Cost</p>
+                          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{t("cards.cost")}</p>
                           <p className="mt-0.5 text-base font-semibold text-white">{card.cost}</p>
                         </div>
                       )}
                       {card.power != null && (
                         <div className="rounded-lg bg-gray-900/60 px-3 py-2">
-                          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Power</p>
+                          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{t("cards.power")}</p>
                           <p className="mt-0.5 text-base font-semibold text-white">{card.power}</p>
                         </div>
                       )}
                       {card.energy != null && (
                         <div className="rounded-lg bg-gray-900/60 px-3 py-2">
-                          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Energy</p>
+                          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{t("cards.energy")}</p>
                           <p className="mt-0.5 text-base font-semibold text-white">{card.energy}</p>
                         </div>
                       )}
                       {card.might != null && (
                         <div className="rounded-lg bg-gray-900/60 px-3 py-2">
-                          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Might</p>
+                          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{t("cards.might")}</p>
                           <p className="mt-0.5 text-base font-semibold text-white">{card.might}</p>
                         </div>
                       )}
                       {card.cmc != null && (
                         <div className="rounded-lg bg-gray-900/60 px-3 py-2">
-                          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">CMC</p>
+                          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{t("cards.cmc")}</p>
                           <p className="mt-0.5 text-base font-semibold text-white">{card.cmc}</p>
-                        </div>
-                      )}
-                      {card.orientation && (
-                        <div className="rounded-lg bg-gray-900/60 px-3 py-2">
-                          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Orientation</p>
-                          <p className="mt-0.5 text-base font-semibold text-white">{fmt(card.orientation)}</p>
                         </div>
                       )}
                     </div>
@@ -295,18 +295,18 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetai
 
                 {/* Description */}
                 {(card.description ?? card.altText) && (
-                  <div className="rounded-xl border border-gray-700/80 bg-gray-800/40 p-4">
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">Description</p>
-                    <p className="text-sm leading-relaxed text-gray-300 whitespace-pre-wrap">
-                      {card.description ?? card.altText}
+                  <div className="rounded-xl border border-gray-700/80 bg-gray-800/40 p-3">
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500">{t("cards.description")}</p>
+                    <p className="text-sm leading-relaxed text-gray-300">
+                      <CardDescription text={card.description ?? card.altText ?? ""} domain={getCardDomains(card)[0]} />
                     </p>
                   </div>
                 )}
 
                 {/* Subtypes, Supertypes, Attributes */}
                 {(getCardSubtypes(card).length > 0 || getCardSupertypes(card).length > 0 || getCardAttributes(card).length > 0) && (
-                  <div className="rounded-xl border border-gray-700/80 bg-gray-800/40 p-4">
-                    <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-500">Traits</p>
+                  <div className="rounded-xl border border-gray-700/80 bg-gray-800/40 p-3">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">{t("cards.traits")}</p>
                     <div className="flex flex-wrap gap-2">
                       {getCardSupertypes(card).map((s) => (
                         <span key={s} className="rounded-md bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-200 border border-amber-700/40">
@@ -327,18 +327,15 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetai
                   </div>
                 )}
 
-                {card.illustrator && (
-                  <p className="text-xs text-gray-500">Illustrator: <span className="text-gray-400">{card.illustrator}</span></p>
-                )}
-
                 {/* Collection */}
-                <div className="rounded-xl border border-gray-700/80 bg-gray-800/40 p-4">
-                  <h3 className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Your collection</h3>
+                <div className="rounded-xl border border-gray-700/80 bg-gray-800/40 p-3">
+                  <h3 className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">{t("cards.yourCollection")}</h3>
                   {!user ? (
                     <p className="mt-2 text-sm text-gray-400">
                       <Link href="/login" className="text-emerald-400 hover:underline" onClick={onClose}>
-                        Log in
-                      </Link>{" "}to add this card to your collection.
+                        {t("profile.logIn")}
+                      </Link>
+                      {t("cards.toAddThisCardSuffix")}
                     </p>
                   ) : (
                     <div className="mt-3 flex flex-wrap items-center gap-4">
@@ -350,7 +347,7 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetai
                             onClick={handleDecrease}
                             disabled={actionLoading}
                             className="flex size-10 items-center justify-center rounded-lg border border-gray-500 bg-gray-700 text-white transition hover:bg-gray-600 disabled:opacity-50"
-                            aria-label="Decrease quantity"
+                            aria-label={t("cards.decreaseQuantity")}
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/></svg>
                           </button>
@@ -360,7 +357,7 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetai
                           onClick={handleAdd}
                           disabled={actionLoading}
                           className="flex size-10 items-center justify-center rounded-lg border-2 border-emerald-600 bg-emerald-700 text-white transition hover:bg-emerald-600 disabled:opacity-50"
-                          aria-label="Add one"
+                          aria-label={t("cards.addOne")}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                         </button>

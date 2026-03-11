@@ -18,18 +18,11 @@ import {
 import { CardPickerModal } from "@/components/decks/CardPickerModal";
 import { BackLink } from "@/components/layout/BackLink";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
+import { useLocale } from "@/lib/locale-context";
 import type { Trade, TradeItem, TradeStatus } from "@/types/trade";
 import type { Card } from "@/types/card";
 
 /* ─── helpers ─────────────────────────────────────── */
-
-const STATUS_LABEL: Record<TradeStatus, string> = {
-  PENDING: "Pending",
-  COUNTERED: "Countered",
-  ACCEPTED: "Accepted",
-  REJECTED: "Rejected",
-  CANCELLED: "Cancelled",
-};
 
 const STATUS_COLOR: Record<TradeStatus, string> = {
   PENDING: "border-amber-700 bg-amber-900/30 text-amber-400",
@@ -67,6 +60,9 @@ interface OfferPanelProps {
   onUpdateQty: (itemId: string, qty: number) => void;
   onRemove: (itemId: string) => void;
   busy: boolean;
+  emptyLabelMy?: string;
+  emptyLabelTheir?: string;
+  addCardLabel?: string;
 }
 
 function OfferPanel({
@@ -78,6 +74,9 @@ function OfferPanel({
   onUpdateQty,
   onRemove,
   busy,
+  emptyLabelMy,
+  emptyLabelTheir,
+  addCardLabel,
 }: OfferPanelProps) {
   return (
     <div className={`rounded-xl border bg-gray-800 ${isMyPanel ? "border-emerald-700/50" : "border-gray-700"}`}>
@@ -91,7 +90,7 @@ function OfferPanel({
             className="flex items-center gap-1.5 rounded-lg border border-gray-600 bg-gray-900 px-2.5 py-1 text-xs font-medium text-gray-300 transition hover:border-emerald-600 hover:text-emerald-400 disabled:opacity-50"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            Add card
+            {addCardLabel}
           </button>
         )}
       </div>
@@ -99,7 +98,7 @@ function OfferPanel({
         <div className="p-3">
         {items.length === 0 ? (
           <p className="py-4 text-center text-xs text-gray-600">
-            {isMyPanel ? "No cards yet." : "Waiting for their offer."}
+            {isMyPanel ? emptyLabelMy : emptyLabelTheir}
           </p>
         ) : (
           <ul className="space-y-1">
@@ -144,7 +143,7 @@ function OfferPanel({
                       onClick={() => onRemove(item.id)}
                       disabled={busy}
                       className="flex h-6 w-6 items-center justify-center rounded text-gray-600 hover:bg-red-900/30 hover:text-red-400 disabled:opacity-30"
-                      aria-label="Remove"
+                      aria-label={t("common.remove")}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                     </button>
@@ -170,9 +169,14 @@ interface MessageThreadProps {
   mySlug: string;
   onSend: (msg: string) => Promise<void>;
   sending: boolean;
+  messagesTitle?: string;
+  noMessagesYet?: string;
+  placeholder?: string;
+  sendLabel?: string;
+  youLabel?: string;
 }
 
-function MessageThread({ trade, mySlug, onSend, sending }: MessageThreadProps) {
+function MessageThread({ trade, mySlug, onSend, sending, messagesTitle, noMessagesYet, placeholder, sendLabel, youLabel }: MessageThreadProps) {
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -190,12 +194,12 @@ function MessageThread({ trade, mySlug, onSend, sending }: MessageThreadProps) {
   return (
     <div className="overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
       <div className="border-b border-gray-700 px-4 py-3">
-        <span className="text-sm font-semibold text-gray-200">Messages</span>
+        <span className="text-sm font-semibold text-gray-200">{messagesTitle}</span>
       </div>
 
       <div className="p-3 space-y-2">
         {trade.messages.length === 0 ? (
-          <p className="py-4 text-center text-xs text-gray-600">No messages yet.</p>
+          <p className="py-4 text-center text-xs text-gray-600">{noMessagesYet}</p>
         ) : (
           trade.messages.map((msg) => {
             const isMe = msg.senderSlug === mySlug;
@@ -212,7 +216,7 @@ function MessageThread({ trade, mySlug, onSend, sending }: MessageThreadProps) {
                   }`}
                 >
                   <p className={`mb-0.5 text-[11px] font-semibold ${isMe ? "text-emerald-400/70 text-right" : "text-gray-400"}`}>
-                    {msg.senderSlug ? `@${msg.senderSlug}` : isMe ? "you" : "unknown"}
+                    {msg.senderSlug ? `@${msg.senderSlug}` : isMe ? youLabel : "—"}
                   </p>
                   <p className="break-words">{msg.message}</p>
                   <p className="mt-0.5 text-right text-[10px] opacity-60">
@@ -239,7 +243,7 @@ function MessageThread({ trade, mySlug, onSend, sending }: MessageThreadProps) {
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e); }
             }}
             rows={1}
-            placeholder="Write a message…"
+            placeholder={placeholder}
             className="flex-1 resize-none overflow-hidden rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-emerald-600"
           />
           <button
@@ -247,7 +251,7 @@ function MessageThread({ trade, mySlug, onSend, sending }: MessageThreadProps) {
             disabled={sending || !draft.trim()}
             className="shrink-0 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:opacity-50"
           >
-            Send
+            {sendLabel}
           </button>
         </form>
       )}
@@ -263,9 +267,12 @@ interface ConfirmModalProps {
   title: string;
   description: string;
   confirmLabel: string;
+  cancelLabel?: string;
   variant?: ConfirmVariant;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Conteúdo extra abaixo da descrição (ex.: aviso de oferta vazia) */
+  children?: React.ReactNode;
 }
 
 const VARIANT_BTN: Record<ConfirmVariant, string> = {
@@ -292,7 +299,7 @@ const VARIANT_ICON: Record<ConfirmVariant, React.ReactNode> = {
   ),
 };
 
-function ConfirmModal({ title, description, confirmLabel, variant = "primary", onConfirm, onCancel }: ConfirmModalProps) {
+function ConfirmModal({ title, description, confirmLabel, cancelLabel, variant = "primary", onConfirm, onCancel, children }: ConfirmModalProps) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") onCancel(); }
     document.addEventListener("keydown", onKey);
@@ -307,6 +314,7 @@ function ConfirmModal({ title, description, confirmLabel, variant = "primary", o
           {VARIANT_ICON[variant]}
           <h2 className="text-lg font-bold text-white">{title}</h2>
           <p className="text-sm text-gray-400">{description}</p>
+          {children}
         </div>
         <div className="flex gap-3">
           <button
@@ -314,7 +322,7 @@ function ConfirmModal({ title, description, confirmLabel, variant = "primary", o
             onClick={onCancel}
             className="flex-1 rounded-xl border border-gray-600 bg-gray-800 py-2.5 text-sm font-semibold text-gray-300 transition hover:bg-gray-700"
           >
-            Go back
+            {cancelLabel}
           </button>
           <button
             type="button"
@@ -337,6 +345,7 @@ export default function TradeDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { t } = useLocale();
   const tradeId = typeof params.id === "string" ? params.id : "";
 
   const [trade, setTrade] = useState<Trade | null>(null);
@@ -351,8 +360,8 @@ export default function TradeDetailPage() {
   const fetchTrade = useCallback(async () => {
     if (!tradeId) return;
     try {
-      const t = await getTrade(tradeId);
-      setTrade(t);
+      const data = await getTrade(tradeId);
+      setTrade(data);
     } catch {
       setNotFound(true);
     } finally {
@@ -366,11 +375,19 @@ export default function TradeDetailPage() {
     fetchTrade();
   }, [authLoading, user, router, fetchTrade]);
 
+  const statusLabel: Record<TradeStatus, string> = {
+    PENDING: t("trades.pending"),
+    COUNTERED: t("trades.countered"),
+    ACCEPTED: t("trades.accepted"),
+    REJECTED: t("trades.rejected"),
+    CANCELLED: t("trades.cancelled"),
+  };
+
   if (authLoading || loading || !user) {
     return (
       <div className="min-h-screen bg-gray-900">
         <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-          <BackLink href="/trades" label="My Trades" className="mb-5" />
+          <BackLink href="/trades" label={t("back.myTrades")} className="mb-5" />
           <TradeDetailSkeleton />
         </div>
       </div>
@@ -381,9 +398,9 @@ export default function TradeDetailPage() {
     return (
       <div className="min-h-screen bg-gray-900">
         <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 text-center">
-          <h1 className="mb-2 text-xl font-bold text-white">Trade not found</h1>
-          <p className="mb-6 text-gray-400">This trade doesn&apos;t exist or you don&apos;t have access.</p>
-          <BackLink href="/trades" label="My Trades" className="inline-flex" />
+          <h1 className="mb-2 text-xl font-bold text-white">{t("trades.tradeNotFound")}</h1>
+          <p className="mb-6 text-gray-400">{t("trades.tradeNotFoundDesc")}</p>
+          <BackLink href="/trades" label={t("back.myTrades")} className="inline-flex" />
         </div>
       </div>
     );
@@ -420,9 +437,9 @@ export default function TradeDetailPage() {
       try {
         await addTradeItem(trade!.id, card.uuid, 1);
         await fetchTrade();
-        toast.success(`${card.name} added`);
+        toast.success(t("trades.cardAdded", { name: card.name }));
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error adding card");
+        toast.error(err instanceof Error ? err.message : t("trades.addCardToOffer"));
       }
     });
   }
@@ -434,7 +451,7 @@ export default function TradeDetailPage() {
         await updateTradeItem(trade!.id, itemId, qty);
         await fetchTrade();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error updating quantity");
+        toast.error(err instanceof Error ? err.message : t("trades.errorUpdatingQty"));
       }
     });
   }
@@ -444,9 +461,9 @@ export default function TradeDetailPage() {
       try {
         await removeTradeItem(trade!.id, itemId);
         await fetchTrade();
-        toast.success("Card removed");
+        toast.success(t("trades.cardRemoved"));
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error removing card");
+        toast.error(err instanceof Error ? err.message : t("trades.errorLoadingTrade"));
       }
     });
   }
@@ -457,7 +474,7 @@ export default function TradeDetailPage() {
       await sendTradeMessage(trade!.id, msg);
       await fetchTrade();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error sending message");
+      toast.error(err instanceof Error ? err.message : t("trades.errorSendingMessage"));
     } finally {
       setMsgSending(false);
     }
@@ -468,9 +485,9 @@ export default function TradeDetailPage() {
       try {
         const updated = await submitTrade(trade!.id);
         setTrade(updated);
-        toast.success("Trade submitted for review.");
+        toast.success(t("trades.tradeSubmitted"));
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error submitting trade");
+        toast.error(err instanceof Error ? err.message : t("trades.errorSubmittingTrade"));
       }
     });
   }
@@ -480,9 +497,9 @@ export default function TradeDetailPage() {
       try {
         const updated = await acceptTrade(trade!.id);
         setTrade(updated);
-        toast.success("Trade accepted!");
+        toast.success(t("trades.tradeAccepted"));
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error accepting trade");
+        toast.error(err instanceof Error ? err.message : t("trades.errorAcceptingTrade"));
       }
     });
   }
@@ -492,9 +509,9 @@ export default function TradeDetailPage() {
       try {
         const updated = await rejectTrade(trade!.id);
         setTrade(updated);
-        toast.success("Trade rejected.");
+        toast.success(t("trades.tradeRejected"));
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error rejecting trade");
+        toast.error(err instanceof Error ? err.message : t("trades.errorRejectingTrade"));
       }
     });
   }
@@ -503,10 +520,10 @@ export default function TradeDetailPage() {
     await withBusy(async () => {
       try {
         await cancelTrade(trade!.id);
-        toast.success("Trade cancelled.");
+        toast.success(t("trades.tradeCancelled"));
         router.push("/trades");
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Error cancelling trade");
+        toast.error(err instanceof Error ? err.message : t("trades.errorCancellingTrade"));
       }
     });
   }
@@ -520,17 +537,17 @@ export default function TradeDetailPage() {
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
           </span>
-          It&apos;s your turn to review and respond.
+          {t("trades.itIsYourTurn")}
         </div>
       );
     }
     return (
       <div className="rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-2.5 text-sm text-gray-400">
-        Waiting for{" "}
+        {t("trades.waitingForLabel")}
         <a href={`/${counterpart.slug}`} className="font-medium text-blue-400 hover:underline">
           @{counterpart.slug}
-        </a>{" "}
-        to respond.
+        </a>
+        {t("trades.toRespondLabel")}
       </div>
     );
   })();
@@ -538,13 +555,13 @@ export default function TradeDetailPage() {
   return (
     <div className="min-h-screen bg-gray-900">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-        <BackLink href="/trades" label="My Trades" className="mb-5" />
+        <BackLink href="/trades" label={t("back.myTrades")} className="mb-5" />
 
         {/* Header */}
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-white">
-              Trade with{" "}
+              {t("trades.tradeWith")}{" "}
               <a
                 href={`/${counterpart.slug}`}
                 className="text-blue-400 hover:underline"
@@ -559,7 +576,7 @@ export default function TradeDetailPage() {
           <span
             className={`rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_COLOR[trade.status]}`}
           >
-            {STATUS_LABEL[trade.status]}
+            {statusLabel[trade.status]}
           </span>
         </div>
 
@@ -576,7 +593,7 @@ export default function TradeDetailPage() {
               className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5"/></svg>
-              Accept
+              {t("trades.acceptTrade")}
             </button>
             <button
               type="button"
@@ -585,7 +602,7 @@ export default function TradeDetailPage() {
               className="flex items-center gap-2 rounded-lg border border-blue-600 bg-blue-900/30 px-4 py-2.5 text-sm font-semibold text-blue-300 transition hover:bg-blue-800/40 disabled:opacity-50"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-              {trade.status === "COUNTERED" ? "Submit counter" : "Submit offer"}
+              {trade.status === "COUNTERED" ? t("trades.submitCounter") : t("trades.submitOffer")}
             </button>
             <button
               type="button"
@@ -594,7 +611,7 @@ export default function TradeDetailPage() {
               className="flex items-center gap-2 rounded-lg border border-red-800 bg-red-900/20 px-4 py-2.5 text-sm font-semibold text-red-400 transition hover:bg-red-900/40 disabled:opacity-50"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              Reject
+              {t("trades.rejectTrade")}
             </button>
             {amInitiator && (
               <button
@@ -603,7 +620,7 @@ export default function TradeDetailPage() {
                 disabled={busy}
                 className="ml-auto text-xs text-gray-600 underline-offset-2 hover:text-red-400 hover:underline disabled:opacity-50"
               >
-                Cancel this trade
+                {t("trades.cancelThisTrade")}
               </button>
             )}
           </div>
@@ -618,27 +635,27 @@ export default function TradeDetailPage() {
               disabled={busy}
               className="text-xs text-gray-600 underline-offset-2 hover:text-red-400 hover:underline disabled:opacity-50"
             >
-              Cancel this trade
+              {t("trades.cancelThisTrade")}
             </button>
           </div>
         )}
 
-        {/* Counter-offer hint */}
-        {active && isMyTurn && !amInitiator && (
+        {/* Counter-offer hint — sempre que for nosso turno de responder (aceitar/rejeitar/contrapropor) */}
+        {active && isMyTurn && (
           <div className="mb-5 flex items-center gap-2 rounded-lg border border-blue-800/50 bg-blue-900/10 px-4 py-2.5 text-sm text-blue-300">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-            Want to counter? Visit{" "}
+            {t("trades.wantToCounterPrefix")}
             <a href={`/${counterpart.slug}`} className="font-semibold text-blue-200 hover:underline">
-              @{counterpart.slug}&apos;s profile
-            </a>{" "}
-            to pick cards and submit a counter offer.
+              @{counterpart.slug}
+            </a>
+            {t("trades.wantToCounterSuffix")}
           </div>
         )}
 
         {/* Offers */}
         <div className="mb-5 grid gap-4 md:grid-cols-2">
           <OfferPanel
-            title={`Cards I asked for (${myItems.length})`}
+            title={`${t("trades.cardsIAskedFor")} (${myItems.length})`}
             items={myItems}
             isMyPanel
             canEdit={active && isMyTurn}
@@ -646,9 +663,12 @@ export default function TradeDetailPage() {
             onUpdateQty={handleUpdateQty}
             onRemove={handleRemoveItem}
             busy={busy}
+            emptyLabelMy={t("trades.noCardsYet")}
+            emptyLabelTheir={t("trades.waitingForTheirOffer")}
+            addCardLabel={t("trades.addCard")}
           />
           <OfferPanel
-            title={`Cards @${counterpart.slug} asked for (${theirItems.length})`}
+            title={`${t("trades.cardsTheyAskedFor", { slug: counterpart.slug })} (${theirItems.length})`}
             items={theirItems}
             isMyPanel={false}
             canEdit={false}
@@ -665,12 +685,17 @@ export default function TradeDetailPage() {
           mySlug={mySlug}
           onSend={handleSendMessage}
           sending={msgSending}
+          messagesTitle={t("trades.messages")}
+          noMessagesYet={t("trades.noMessagesYet")}
+          placeholder={t("trades.writeMessage")}
+          sendLabel={t("trades.send")}
+          youLabel={t("trades.you")}
         />
       </div>
 
       {showPicker && (
         <CardPickerModal
-          title="Add card to your offer"
+          title={t("trades.addCardToOffer")}
           onSelect={handleAddCard}
           onClose={() => setShowPicker(false)}
         />
@@ -678,9 +703,10 @@ export default function TradeDetailPage() {
 
       {pendingAction === "accept" && (
         <ConfirmModal
-          title="Accept this trade?"
-          description="You'll receive the cards they requested and give away the ones listed. This can't be undone."
-          confirmLabel="Accept trade"
+          title={t("trades.acceptThisTrade")}
+          description={t("trades.acceptDescription")}
+          confirmLabel={t("trades.acceptTrade")}
+          cancelLabel={t("common.goBack")}
           variant="success"
           onConfirm={() => { setPendingAction(null); handleAccept(); }}
           onCancel={() => setPendingAction(null)}
@@ -688,19 +714,34 @@ export default function TradeDetailPage() {
       )}
       {pendingAction === "submit" && (
         <ConfirmModal
-          title={trade.status === "COUNTERED" ? "Submit your counter?" : "Submit your offer?"}
-          description="The other player will be notified and can accept, reject or counter your offer."
-          confirmLabel={trade.status === "COUNTERED" ? "Submit counter" : "Submit offer"}
+          title={trade.status === "COUNTERED" ? t("trades.submitYourCounter") : t("trades.submitYourOffer")}
+          description={t("trades.submitDescription")}
+          confirmLabel={trade.status === "COUNTERED" ? t("trades.submitCounter") : t("trades.submitOffer")}
+          cancelLabel={t("common.goBack")}
           variant="primary"
           onConfirm={() => { setPendingAction(null); handleSubmit(); }}
           onCancel={() => setPendingAction(null)}
-        />
+        >
+          {myItems.length === 0 && (
+            <div className="mt-3 w-full rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-2.5 text-left text-sm text-amber-200">
+              <p className="font-medium">{t("trades.yourOfferEmpty")}</p>
+              <p className="mt-1 text-amber-200/90">
+                {t("trades.wantToCounterPrefix")}
+                <a href={`/${counterpart.slug}`} className="font-semibold text-amber-100 underline hover:no-underline">
+                  @{counterpart.slug}
+                </a>
+                {t("trades.wantToCounterSuffix")}
+              </p>
+            </div>
+          )}
+        </ConfirmModal>
       )}
       {pendingAction === "reject" && (
         <ConfirmModal
-          title="Reject this trade?"
-          description="The trade will be marked as rejected. The other player will be notified."
-          confirmLabel="Reject trade"
+          title={t("trades.rejectThisTrade")}
+          description={t("trades.rejectDescription")}
+          confirmLabel={t("trades.rejectTrade")}
+          cancelLabel={t("common.goBack")}
           variant="danger"
           onConfirm={() => { setPendingAction(null); handleReject(); }}
           onCancel={() => setPendingAction(null)}
@@ -708,9 +749,10 @@ export default function TradeDetailPage() {
       )}
       {pendingAction === "cancel" && (
         <ConfirmModal
-          title="Cancel this trade?"
-          description="The trade will be cancelled and removed from both players' active trades."
-          confirmLabel="Yes, cancel it"
+          title={t("trades.cancelThisTrade")}
+          description={t("trades.cancelDescription")}
+          confirmLabel={t("trades.yesCancelIt")}
+          cancelLabel={t("common.goBack")}
           variant="danger"
           onConfirm={() => { setPendingAction(null); handleCancel(); }}
           onCancel={() => setPendingAction(null)}

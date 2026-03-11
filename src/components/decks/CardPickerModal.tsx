@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
+import { useLocale } from "@/lib/locale-context";
 import type { Card } from "@/types/card";
 import type { CardsListResponse, CardsQueryParams } from "@/types/card";
 
@@ -18,6 +19,7 @@ interface CardPickerModalProps {
 }
 
 export function CardPickerModal({ title, onSelect, onClose, typeFilter }: CardPickerModalProps) {
+  const { t } = useLocale();
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<Card[]>([]);
   const [loading, setLoading] = useState(false);
@@ -63,16 +65,16 @@ export function CardPickerModal({ title, onSelect, onClose, typeFilter }: CardPi
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name (min 2 chars)..."
+            placeholder={t("picker.searchByNameMin")}
             className="mt-2 w-full rounded border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-400"
           />
         </div>
         <div className="max-h-96 overflow-y-auto p-2">
           {loading ? (
-            <p className="py-4 text-center text-gray-400">Searching...</p>
+            <p className="py-4 text-center text-gray-400">{t("picker.searching")}</p>
           ) : items.length === 0 ? (
             <p className="py-4 text-center text-gray-400">
-              {!canSearch ? "Type to search" : "No cards found"}
+              {!canSearch ? t("picker.typeToSearch") : t("cards.noCardsFound")}
             </p>
           ) : (
             <ul className="space-y-1">
@@ -100,7 +102,7 @@ export function CardPickerModal({ title, onSelect, onClose, typeFilter }: CardPi
             onClick={onClose}
             className="w-full rounded bg-gray-700 py-2 text-sm text-white hover:bg-gray-600"
           >
-            Cancel
+            {t("picker.cancel")}
           </button>
         </div>
       </div>

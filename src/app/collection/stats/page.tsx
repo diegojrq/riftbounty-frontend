@@ -5,10 +5,12 @@ import { useEffect } from "react";
 import { CollectionStats } from "@/components/collection/CollectionStats";
 import { BackLink } from "@/components/layout/BackLink";
 import { useAuth } from "@/lib/auth-context";
+import { useLocale } from "@/lib/locale-context";
 
 export default function CollectionStatsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { t } = useLocale();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -33,8 +35,8 @@ export default function CollectionStatsPage() {
   return (
     <div className="min-h-screen bg-gray-900">
       <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-10 xl:px-12">
-        <BackLink href="/collection" label="My Collection" />
-        <h1 className="mb-6 text-2xl font-bold text-white">Collection stats</h1>
+        <BackLink href="/collection" label={t("back.myCollection")} />
+        <h1 className="mb-6 text-2xl font-bold text-white">{t("collectionStats.title")}</h1>
         <CollectionStats />
       </div>
     </div>

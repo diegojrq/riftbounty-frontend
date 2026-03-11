@@ -2,4 +2,10 @@ metagame
 import decks
 export decks tga
 cartas novas domain
-consetar illustrators
+remover cmc
+[Action] _(Play on your turn or in showdowns.)_ Deal 3 to a unit at a battlefield.
+
+Cost 1C
+
+
+tinder do riftbound

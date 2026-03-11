@@ -2,18 +2,52 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
+import { useLocale } from "@/lib/locale-context";
 import { getUnreadCount } from "@/lib/notifications";
+
+function FlagBr({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 14" className={className} aria-hidden preserveAspectRatio="xMidYMid meet">
+      <rect width="20" height="14" fill="#009c3b" />
+      <path fill="#ffdf00" d="M10 0 L20 7 L10 14 L0 7 Z" />
+      <circle cx="10" cy="7" r="3.2" fill="#002776" />
+    </svg>
+  );
+}
+
+function FlagGb({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 60 30" className={className} aria-hidden>
+      <rect width="60" height="30" fill="#012169" />
+      <path fill="none" stroke="#fff" strokeWidth="4" d="M0 15 h60 M30 0 v30" />
+      <path fill="none" stroke="#C8102E" strokeWidth="2" d="M0 15 h60 M30 0 v30" />
+      <path fill="none" stroke="#fff" strokeWidth="5" d="M0 0 L60 30 M60 0 L0 30" />
+      <path fill="none" stroke="#C8102E" strokeWidth="3" d="M0 0 L60 30 M60 0 L0 30" />
+    </svg>
+  );
+}
 
 export function Header() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, loading, logout } = useAuth();
+  const { t, locale, setLocale } = useLocale();
   const isHome = pathname === "/";
   const [menuOpen, setMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const guardedNav = useCallback((e: React.MouseEvent, href: string) => {
+    if (!user) {
+      e.preventDefault();
+      toast.error(t("nav.loginRequired"));
+      router.push("/login");
+    }
+  }, [user, t, router]);
 
   // Close menu on route change
   useEffect(() => {
@@ -46,7 +80,7 @@ export function Header() {
         <Link
           href="/"
           className="flex items-center gap-2.5 transition-opacity hover:opacity-90"
-          aria-label="Riftbounty home"
+          aria-label={t("nav.ariaHome")}
         >
           <Image
             src="/images/riftbounty.png"
@@ -64,7 +98,7 @@ export function Header() {
         <div className="hidden items-center gap-1 sm:flex sm:gap-2">
           {loading ? (
             <span className="rounded bg-gray-800 px-3 py-1.5 text-sm text-gray-500">...</span>
-          ) : user ? (
+          ) : (
             <>
               <Link
                 href="/cards"
@@ -74,91 +108,125 @@ export function Header() {
                     : "text-gray-400"
                 }`}
               >
-                Cards
+                {t("nav.cards")}
               </Link>
               <Link
                 href="/collection"
+                onClick={(e) => guardedNav(e, "/collection")}
                 className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
                   pathname.startsWith("/collection")
                     ? "bg-gray-800 text-white"
                     : "text-gray-400"
                 }`}
               >
-                My collection
+                {t("nav.myCollection")}
               </Link>
               <Link
                 href="/decks"
+                onClick={(e) => guardedNav(e, "/decks")}
                 className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
                   pathname.startsWith("/decks")
                     ? "bg-gray-800 text-white"
                     : "text-gray-400"
                 }`}
               >
-                My decks
+                {t("nav.myDecks")}
               </Link>
               <Link
                 href="/trades"
+                onClick={(e) => guardedNav(e, "/trades")}
                 className={`relative rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
                   pathname.startsWith("/trades")
                     ? "bg-gray-800 text-white"
                     : "text-gray-400"
                 }`}
               >
-                Trades
+                {t("nav.trades")}
                 {unreadCount > 0 && (
                   <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold leading-none text-gray-900">
                     {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 )}
               </Link>
-              <Link
-                href="/profile"
-                className={`rounded px-3 py-1.5 text-sm uppercase transition-colors hover:bg-gray-700 hover:text-white ${
-                  pathname.startsWith("/profile")
-                    ? "bg-gray-700 text-white"
-                    : "bg-gray-800 text-gray-300"
-                }`}
-              >
-                {user.displayName || user.email}
-              </Link>
-              <button
-                type="button"
-                onClick={logout}
-                className="rounded px-3 py-2 text-sm font-medium uppercase text-gray-400 transition-colors hover:bg-gray-800 hover:text-red-400"
-              >
-                Log out
-              </button>
-            </>
-          ) : (
-            <>
-              <Link
-                href="/login"
-                className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
-                  pathname.startsWith("/login")
-                    ? "bg-gray-800 text-white"
-                    : "text-gray-400"
-                }`}
-              >
-                Login
-              </Link>
-              <Link
-                href="/register"
-                className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-emerald-500/20 hover:text-emerald-300 ${
-                  pathname.startsWith("/register")
-                    ? "bg-emerald-500/20 text-emerald-300"
-                    : "text-emerald-400"
-                }`}
-              >
-                Register
-              </Link>
+
+              {user ? (
+                <>
+                  <Link
+                    href="/profile"
+                    className={`rounded px-3 py-1.5 text-sm uppercase transition-colors hover:bg-gray-700 hover:text-white ${
+                      pathname.startsWith("/profile")
+                        ? "bg-gray-700 text-white"
+                        : "bg-gray-800 text-gray-300"
+                    }`}
+                  >
+                    {user.displayName || user.email}
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="rounded px-3 py-2 text-sm font-medium uppercase text-gray-400 transition-colors hover:bg-gray-800 hover:text-red-400"
+                  >
+                    {t("nav.logOut")}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
+                      pathname.startsWith("/login")
+                        ? "bg-gray-800 text-white"
+                        : "text-gray-400"
+                    }`}
+                  >
+                    {t("nav.login")}
+                  </Link>
+                  <Link
+                    href="/register"
+                    className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-emerald-500/20 hover:text-emerald-300 ${
+                      pathname.startsWith("/register")
+                        ? "bg-emerald-500/20 text-emerald-300"
+                        : "text-emerald-400"
+                    }`}
+                  >
+                    {t("nav.register")}
+                  </Link>
+                </>
+              )}
             </>
           )}
+        </div>
+
+        {/* Language selector */}
+        <div className="hidden items-center gap-0.5 sm:flex">
+          <button
+            type="button"
+            onClick={() => setLocale("pt-BR")}
+            className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium uppercase transition-colors ${
+              locale === "pt-BR" ? "bg-gray-700 text-white" : "text-gray-500 hover:text-gray-300"
+            }`}
+            aria-label="Português"
+          >
+            <FlagBr className="h-3.5 w-5 shrink-0 rounded-sm" />
+            PT
+          </button>
+          <button
+            type="button"
+            onClick={() => setLocale("en")}
+            className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium uppercase transition-colors ${
+              locale === "en" ? "bg-gray-700 text-white" : "text-gray-500 hover:text-gray-300"
+            }`}
+            aria-label="English"
+          >
+            <FlagGb className="h-3.5 w-5 shrink-0 rounded-sm" />
+            EN
+          </button>
         </div>
 
         {/* Mobile hamburger button */}
         <button
           type="button"
-          aria-label={menuOpen ? "Close menu" : "Open menu"}
+          aria-label={menuOpen ? t("nav.ariaCloseMenu") : t("nav.ariaOpenMenu")}
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((v) => !v)}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-800 hover:text-white sm:hidden"
@@ -179,18 +247,20 @@ export function Header() {
       {menuOpen && (
         <div className="border-t border-gray-800 bg-gray-900 sm:hidden">
           {loading ? (
-            <div className="px-4 py-3 text-sm text-gray-500">Loading...</div>
-          ) : user ? (
+            <div className="px-4 py-3 text-sm text-gray-500">{t("common.loading")}</div>
+          ) : (
             <div className="flex flex-col divide-y divide-gray-800">
-              <Link
-                href="/profile"
-                className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium hover:bg-gray-800 ${
-                  pathname.startsWith("/profile") ? "bg-gray-800 text-white" : "text-gray-300"
-                }`}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="8" r="5"/><path d="M3 21a9 9 0 0 1 18 0"/></svg>
-                {user.displayName || user.email}
-              </Link>
+              {user && (
+                <Link
+                  href="/profile"
+                  className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium hover:bg-gray-800 ${
+                    pathname.startsWith("/profile") ? "bg-gray-800 text-white" : "text-gray-300"
+                  }`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="8" r="5"/><path d="M3 21a9 9 0 0 1 18 0"/></svg>
+                  {user.displayName || user.email}
+                </Link>
+              )}
               <Link
                 href="/cards"
                 className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
@@ -198,67 +268,73 @@ export function Header() {
                 }`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="2" y="3" width="20" height="14" rx="2"/><path d="m8 21 4-4 4 4"/></svg>
-                Cards
+                {t("nav.cards")}
               </Link>
               <Link
                 href="/collection"
+                onClick={(e) => guardedNav(e, "/collection")}
                 className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
                   pathname.startsWith("/collection") ? "bg-gray-800 text-white" : "text-gray-400"
                 }`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-                My collection
+                {t("nav.myCollection")}
               </Link>
               <Link
                 href="/decks"
+                onClick={(e) => guardedNav(e, "/decks")}
                 className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
                   pathname.startsWith("/decks") ? "bg-gray-800 text-white" : "text-gray-400"
                 }`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 17.5 16 19l-2-2"/><circle cx="17" cy="17" r="5"/></svg>
-                My decks
+                {t("nav.myDecks")}
               </Link>
               <Link
                 href="/trades"
+                onClick={(e) => guardedNav(e, "/trades")}
                 className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
                   pathname.startsWith("/trades") ? "bg-gray-800 text-white" : "text-gray-400"
                 }`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
-                Trades
+                {t("nav.trades")}
                 {unreadCount > 0 && (
                   <span className="ml-auto flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500 px-1 text-xs font-bold text-gray-900">
                     {unreadCount > 9 ? "9+" : unreadCount}
                   </span>
                 )}
               </Link>
-              <button
-                type="button"
-                onClick={() => { logout(); setMenuOpen(false); }}
-                className="flex items-center gap-3 px-4 py-3.5 text-left text-sm font-medium uppercase text-gray-400 hover:bg-gray-800 hover:text-red-400"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
-                Log out
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col divide-y divide-gray-800">
-              <Link
-                href="/login"
-                className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
-                  pathname.startsWith("/login") ? "bg-gray-800 text-white" : "text-gray-400"
-                }`}
-              >
-                Login
-              </Link>
-              <Link
-                href="/register"
-                className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-emerald-500/10 hover:text-emerald-300 ${
-                  pathname.startsWith("/register") ? "bg-emerald-500/10 text-emerald-300" : "text-emerald-400"
-                }`}
-              >
-                Register
-              </Link>
+
+              {user ? (
+                <button
+                  type="button"
+                  onClick={() => { logout(); setMenuOpen(false); }}
+                  className="flex items-center gap-3 px-4 py-3.5 text-left text-sm font-medium uppercase text-gray-400 hover:bg-gray-800 hover:text-red-400"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                  {t("nav.logOut")}
+                </button>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
+                      pathname.startsWith("/login") ? "bg-gray-800 text-white" : "text-gray-400"
+                    }`}
+                  >
+                    {t("nav.login")}
+                  </Link>
+                  <Link
+                    href="/register"
+                    className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-emerald-500/10 hover:text-emerald-300 ${
+                      pathname.startsWith("/register") ? "bg-emerald-500/10 text-emerald-300" : "text-emerald-400"
+                    }`}
+                  >
+                    {t("nav.register")}
+                  </Link>
+                </>
+              )}
             </div>
           )}
         </div>
