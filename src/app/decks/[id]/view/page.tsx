@@ -37,6 +37,7 @@ function groupByType(items: DeckMainItem[]) {
 }
 
 function CardSlot({ card, label }: { card: Card | null | undefined; label: string }) {
+  const { t } = useLocale();
   const isLandscape =
     card?.orientation?.toLowerCase() === "landscape" ||
     (card?.record_type?.toLowerCase().includes("battleground") ?? false) ||
