@@ -78,6 +78,7 @@ function OfferPanel({
   emptyLabelTheir,
   addCardLabel,
 }: OfferPanelProps) {
+  const { t } = useLocale();
   return (
     <div className={`rounded-xl border bg-gray-800 ${isMyPanel ? "border-emerald-700/50" : "border-gray-700"}`}>
       <div className={`flex items-center justify-between border-b px-4 py-3 ${isMyPanel ? "border-emerald-700/40" : "border-gray-700"}`}>
