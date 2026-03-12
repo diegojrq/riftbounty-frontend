@@ -13,11 +13,11 @@ Use o texto abaixo no campo "Example Product Description" (ajuste o link do app 
 
 ---
 
-**Riftbounty** is a **card library and collection tracker** for Riftbound. It helps players browse all cards, filter by name and domain (body, calm, chaos, fury, mind, order), and track their personal collection with quantities. Players can see which cards they own and which they are missing. Planned features include connecting players for **trading** (wants and haves) and **deckbuilding** from their collections. The product is free to use and does not simulate or replicate Riftbound gameplay.
+**Riftbounty** is a **free card library and collection tracker** for Riftbound. It helps players browse all cards, filter by name and domain (body, calm, chaos, fury, mind, order), and track their personal collection with quantities. Players can see which cards they own and which they are missing. **Current features:** Connecting players for **trading** (view another player's public collection, add cards to a trade basket, send proposals, counter-offers, accept or reject) and **deckbuilding** from their collections (legend, champion, main deck, runes, sideboard, battlefields, with validation). Users can make their collection public on their profile (with an option to hide a number of copies per card). **Planned features:** Tracking the metagame (e.g. trending decks) and using AI to suggest decks or improvements; no monetization—we intend to add a donate button. The product is free to use and does not simulate or replicate Riftbound gameplay.
 
-**Note:** The app is currently a **prototype**. It does not yet display card images, in line with Riot’s guidelines to use only official assets from the API; we are waiting for API key approval to integrate official card art and data. We plan to improve the experience significantly—including filters, usability, and security—once we have access to the API.
+**Note:** The app is currently a **prototype**. Card images and data rely on catalog/API integration; we follow Riot’s guidelines to use only official assets from the API. We plan to improve filters, usability, and security once we have full access to the API.
 
-**APIs we are using (or plan to use):** card catalog / assets API (for card data and official images).
+**APIs we use (or plan to use):** card catalog / assets API (for card data and official images).
 
 **Link to the app:** [add your production URL when available]
 
