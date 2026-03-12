@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { BackLink } from "@/components/layout/BackLink";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getPublicProfile, getProfileMatch } from "@/lib/profile";
@@ -57,6 +57,10 @@ function getRarityIcon(rarity?: string): string | null {
 }
 
 /* ─── Domain helper ─────────────────────────────────── */
+const NO_DOMAIN_ICON = "/images/types/unit.webp";
+const BATTLEFIELD_ICON = "/images/types/battlefields.webp";
+const VALID_DOMAIN_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
+
 function getCardDomains(card: { domain?: string; domains?: string[]; cardDomains?: { domain: { name: string } }[] } | undefined): string[] {
   if (!card) return [];
   const result: string[] = [];
@@ -64,6 +68,22 @@ function getCardDomains(card: { domain?: string; domains?: string[]; cardDomains
   if (card.domains) result.push(...card.domains.map((d) => d.toLowerCase()));
   if (card.cardDomains) result.push(...card.cardDomains.map((cd) => cd.domain.name.toLowerCase()));
   return [...new Set(result)];
+}
+
+/** Domains that have an image under /images/domains/. Others (e.g. "minds", "sprite") fall back to type icon. */
+function getDisplayDomainIcons(domains: string[]): string[] {
+  return domains.filter((d) => VALID_DOMAIN_SLUGS.has(d));
+}
+
+function isBattlefieldCard(card: { type?: string; record_type?: string } | undefined): boolean {
+  if (!card) return false;
+  const t = (card.type ?? "").toLowerCase();
+  const r = (card.record_type ?? "").toLowerCase();
+  return t === "battlefield" || r.includes("battleground") || t === "battleground";
+}
+
+function getNoDomainIcon(card: { type?: string; record_type?: string } | undefined): string {
+  return isBattlefieldCard(card) ? BATTLEFIELD_ICON : NO_DOMAIN_ICON;
 }
 
 /* ─── Rarity filter constants ───────────────────────── */
@@ -374,10 +394,15 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
                                 <CardHoverPreview card={cardForPreview}>
                                   <span className="flex min-w-0 cursor-default items-center gap-1">
                                     <span className="flex gap-0.5">
-                                      {domains.map((d) => (
+                                      {getDisplayDomainIcons(domains).length > 0 ? (
+                                        getDisplayDomainIcons(domains).map((d) => (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-3.5 w-3.5 object-contain" />
+                                        ))
+                                      ) : (
                                         // eslint-disable-next-line @next/next/no-img-element
-                                        <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-3.5 w-3.5 object-contain" />
-                                      ))}
+                                        <img src={getNoDomainIcon(cached ?? item.card)} alt="" className="h-3.5 w-3.5 object-contain opacity-80" />
+                                      )}
                                     </span>
                                     <span className="truncate text-xs text-blue-400">{name}</span>
                                     {rarityNorm && (
@@ -456,10 +481,15 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
                             <li key={card.uuid} className="flex items-center justify-between gap-1 rounded px-1 py-0.5 hover:bg-gray-700/40">
                               <CardHoverPreview card={card as unknown as Card}>
                                 <span className="flex min-w-0 cursor-default items-center gap-1 text-xs">
-                                  {domains.map((d) => (
+                                  {getDisplayDomainIcons(domains).length > 0 ? (
+                                    getDisplayDomainIcons(domains).map((d) => (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
+                                    ))
+                                  ) : (
                                     // eslint-disable-next-line @next/next/no-img-element
-                                    <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
-                                  ))}
+                                    <img src={getNoDomainIcon(cached)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
+                                  )}
                                   <span className="shrink-0 tabular-nums text-gray-500">×{quantity}</span>
                                   <span className="truncate text-blue-400">{card.name}</span>
                                   {rarityIcon && (
@@ -541,6 +571,7 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
 /* ─── Page ───────────────────────────────────────────── */
 export default function PublicProfilePage() {
   const params = useParams();
+  const pathname = usePathname();
   const slug = typeof params.slug === "string" ? params.slug : "";
   const { user: me, loading: authLoading } = useAuth();
   const { t } = useLocale();
@@ -849,7 +880,10 @@ export default function PublicProfilePage() {
   }
 
   const isOwnProfile = me?.slug === slug;
-  const showTradePanel = !!me && !isOwnProfile;
+  const hasPublicCollection = publicCollection.length > 0;
+  const showTradePanel = !!me && !isOwnProfile && hasPublicCollection;
+  const showTradeCTA = !me && !isOwnProfile && hasPublicCollection;
+  const registerReturnTo = pathname ? `/register?returnTo=${encodeURIComponent(pathname)}` : "/register";
   const tradeIsMyTurn = activeTrade ? activeTrade.currentTurnSlug === me?.slug : false;
   const basketCount = [...basket.values()].reduce((s, i) => s + i.quantity, 0);
 
@@ -1056,10 +1090,15 @@ export default function PublicProfilePage() {
                                           ))}
                                           <CardHoverPreview card={item.card as unknown as Card}>
                                             <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
-                                              {domains.map((d) => (
+                                              {getDisplayDomainIcons(domains).length > 0 ? (
+                                                getDisplayDomainIcons(domains).map((d) => (
+                                                  // eslint-disable-next-line @next/next/no-img-element
+                                                  <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
+                                                ))
+                                              ) : (
                                                 // eslint-disable-next-line @next/next/no-img-element
-                                                <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
-                                              ))}
+                                                <img src={getNoDomainIcon(cached ?? item.card)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
+                                              )}
                                               <span className="shrink-0 tabular-nums text-emerald-500">×{item.theirQuantity}</span>
                                               <span className="truncate text-blue-400">{item.card.name}</span>
                                               {rarityIcon && (
@@ -1144,10 +1183,15 @@ export default function PublicProfilePage() {
                                           <li key={item.cardUuid} className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:bg-gray-700/40">
                                             <CardHoverPreview card={item.card as unknown as Card}>
                                               <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
-                                                {domains.map((d) => (
+                                                {getDisplayDomainIcons(domains).length > 0 ? (
+                                                  getDisplayDomainIcons(domains).map((d) => (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
+                                                  ))
+                                                ) : (
                                                   // eslint-disable-next-line @next/next/no-img-element
-                                                  <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
-                                                ))}
+                                                  <img src={getNoDomainIcon(cached ?? item.card)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
+                                                )}
                                                 <span className="shrink-0 tabular-nums text-gray-500">×{item.quantity}</span>
                                                 <span className="truncate text-blue-400">{item.card.name}</span>
                                                 {rarityIcon && (
@@ -1179,43 +1223,57 @@ export default function PublicProfilePage() {
             </div>
           </div>
 
-          {/* Right: sticky trade basket (desktop only) */}
-          {showTradePanel && (
+          {/* Right: sticky trade basket or register CTA (desktop only) */}
+          {(showTradePanel || showTradeCTA) && (
             <div className="hidden self-start md:block md:flex-[3]">
               <div className="sticky top-[73px]">
-                <BasketPanel
-                  basket={basket}
-                  recipientSlug={user.slug}
-                  recipientDisplayName={user.displayName}
-                  onUpdateQty={updateBasketQty}
-                  onRemove={removeFromBasket}
-                  onClear={clearBasket}
-                  cardCacheMap={cardCacheMap}
-                  scraperIdMap={scraperIdMap}
-                  activeTrade={activeTrade}
-                  activeTradeDetail={activeTradeDetail}
-                  isMyTurn={tradeIsMyTurn}
-                  originalItemsMap={originalItemsMap}
-                  onCounterSubmitError={handleCounterSubmitError}
-                />
+                {showTradePanel ? (
+                  <BasketPanel
+                    basket={basket}
+                    recipientSlug={user.slug}
+                    recipientDisplayName={user.displayName}
+                    onUpdateQty={updateBasketQty}
+                    onRemove={removeFromBasket}
+                    onClear={clearBasket}
+                    cardCacheMap={cardCacheMap}
+                    scraperIdMap={scraperIdMap}
+                    activeTrade={activeTrade}
+                    activeTradeDetail={activeTradeDetail}
+                    isMyTurn={tradeIsMyTurn}
+                    originalItemsMap={originalItemsMap}
+                    onCounterSubmitError={handleCounterSubmitError}
+                  />
+                ) : (
+                  <div className="rounded-xl border border-gray-700 bg-gray-800 p-5">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-400">{t("profile.trade")}</h3>
+                    <p className="mt-3 text-sm text-gray-300">
+                      {t("profile.registerToTradeWith", { slug: user.slug })}
+                    </p>
+                    <Link
+                      href={registerReturnTo}
+                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                    >
+                      {t("profile.registerToTradeCTA", { slug: user.slug })}
+                    </Link>
+                    <p className="mt-3 text-xs text-gray-500">
+                      {t("profile.registerToTradeHint")}{" "}
+                      <Link href={pathname ? `/login?returnTo=${encodeURIComponent(pathname)}` : "/login"} className="font-medium text-emerald-400 hover:underline">
+                        {t("profile.logIn")}
+                      </Link>
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
         </div>
-
-        {!me && !isOwnProfile && (
-          <div className="mt-4 rounded-lg border border-gray-700 bg-gray-800/50 px-5 py-4 text-sm text-gray-400">
-            <Link href="/login" className="font-medium text-emerald-400 hover:underline">{t("profile.logIn")}</Link>{" "}
-            {t("profile.logInToSeeCards")}
-          </div>
-        )}
 
         <div className="mt-6">
           <BackLink href="/" label={t("back.home")} className="" />
         </div>
       </div>
 
-      {/* Mobile: floating basket button (both tabs) */}
+      {/* Mobile: floating basket or register-to-trade button */}
       {showTradePanel && (
         <button
           type="button"
@@ -1233,6 +1291,18 @@ export default function PublicProfilePage() {
             </span>
           )}
         </button>
+      )}
+      {showTradeCTA && (
+        <Link
+          href={registerReturnTo}
+          className="fixed bottom-6 right-4 z-40 flex items-center gap-2 rounded-full border border-emerald-700 bg-emerald-600 py-3 pl-4 pr-5 text-sm font-semibold text-white shadow-xl transition hover:bg-emerald-500 md:hidden"
+          aria-label={t("profile.registerToTradeCTA", { slug: user.slug })}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
+          </svg>
+          {t("profile.registerToTradeCTA", { slug: user.slug })}
+        </Link>
       )}
     </div>
   );

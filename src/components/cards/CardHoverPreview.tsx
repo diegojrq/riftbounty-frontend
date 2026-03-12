@@ -27,6 +27,8 @@ export function CardHoverPreview({ card, children, battlefieldAsLandscape = fals
     side: "right",
   });
   const triggerRef = useRef<HTMLSpanElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const TAP_MOVE_THRESHOLD = 10;
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -67,13 +69,37 @@ export function CardHoverPreview({ card, children, battlefieldAsLandscape = fals
 
   const cardImageUrl = getCardImageUrl(card);
 
-  function handleTap(e: React.MouseEvent | React.TouchEvent) {
+  function handleTouchStart(e: React.TouchEvent) {
+    const t = e.targetTouches[0];
+    if (t) touchStartRef.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (!isTouchDevice()) return;
+    if (!cardImageUrl) return;
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const end = e.changedTouches[0];
+    if (!end) return;
+    const dx = Math.abs(end.clientX - start.x);
+    const dy = Math.abs(end.clientY - start.y);
+    const moved = dx > TAP_MOVE_THRESHOLD || dy > TAP_MOVE_THRESHOLD;
+    if (moved) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setModalVisible(true);
+  }
+
+  function handleClick(e: React.MouseEvent) {
     if (!isTouchDevice()) return;
     if (!cardImageUrl) return;
     e.preventDefault();
     e.stopPropagation();
     setModalVisible(true);
   }
+
+  const handleTap = handleClick;
 
   if (!cardImageUrl) {
     return <>{children}</>;
@@ -105,8 +131,9 @@ export function CardHoverPreview({ card, children, battlefieldAsLandscape = fals
         ref={triggerRef}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setHoverVisible(false)}
-        onClick={handleTap}
-        onTouchEnd={handleTap}
+        onClick={handleClick}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
         className="cursor-default"
       >
         {children}

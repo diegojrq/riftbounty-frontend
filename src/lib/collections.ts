@@ -3,17 +3,23 @@ import type {
   CollectionItemResponse,
   CollectionResponse,
   CollectionStats,
+  CollectionVisibilityResponse,
 } from "@/types/collection";
 
-/** GET /v1/collections/me – returns user's collection (creates on first call). Includes collection.isPublic. */
+/** GET /v1/collections/me – returns user's collection (creates on first call). Includes collection.isPublic and collection.minKeepPrivate. */
 export async function getCollection(): Promise<CollectionResponse> {
   const res = await apiGet<CollectionResponse>("/collections/me");
   return res.data;
 }
 
-/** PATCH /v1/collections/me/visibility – set whether collection is visible on public profile. */
-export async function setCollectionVisibility(isPublic: boolean): Promise<{ isPublic: boolean }> {
-  const res = await apiPatch<{ isPublic: boolean }>("/collections/me/visibility", { isPublic });
+/** PATCH /v1/collections/me/visibility – set collection visibility on public profile. minKeepPrivate 0–999 optional. */
+export async function setCollectionVisibility(
+  isPublic: boolean,
+  minKeepPrivate?: number
+): Promise<CollectionVisibilityResponse> {
+  const body: { isPublic: boolean; minKeepPrivate?: number } = { isPublic };
+  if (minKeepPrivate !== undefined) body.minKeepPrivate = minKeepPrivate;
+  const res = await apiPatch<CollectionVisibilityResponse>("/collections/me/visibility", body);
   return res.data;
 }
 

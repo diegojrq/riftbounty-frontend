@@ -371,7 +371,7 @@ function CardsPageContent() {
               <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
             </span>
             <input id="home-search-mobile" type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder={t("cards.searchCardNamePlaceholder")}
-              className="w-full rounded border border-gray-600 bg-gray-800 py-2 pl-9 pr-3 text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full rounded border border-gray-600 bg-gray-800 py-2 pl-9 pr-3 text-base text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
           <button type="button" onClick={() => setDrawerOpen(true)}
             className="flex shrink-0 items-center gap-1.5 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700" aria-label={t("collection.openFilters")}>
@@ -389,7 +389,7 @@ function CardsPageContent() {
         {allCards.length === 0 ? (
           <>
             <p className="mb-4 text-sm text-gray-400">{t("collection.loadingCards")}</p>
-            <ul className="grid grid-cols-1 gap-5 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {Array.from({ length: 12 }).map((_, i) => (
                 <li key={i} className="aspect-[2.5/3.5] w-full overflow-hidden rounded-lg border border-gray-700/50 bg-gray-800">
                   <div className="h-full w-full animate-pulse rounded-lg bg-gray-700/60" />
@@ -405,7 +405,7 @@ function CardsPageContent() {
               {t("cards.showingOf", { shown: visibleCards.length, total: totalCount })}
               {hasMore && <span className="ml-1 text-gray-500">{t("cards.scrollDownToLoadMore")}</span>}
             </p>
-            <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5">
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {visibleCards.map((card) => (
                 <CardTile
                   key={card.uuid}

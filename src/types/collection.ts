@@ -10,10 +10,16 @@ export interface CollectionItem {
   card: Card;
 }
 
-/** GET /v1/collections/me response */
+/** GET /v1/collections/me response. collection.isPublic and collection.minKeepPrivate are user visibility settings. */
 export interface CollectionResponse {
-  collection: { id: string; userId: string; isPublic?: boolean };
+  collection: { id: string; userId: string; isPublic?: boolean; minKeepPrivate?: number };
   items: CollectionItem[];
+}
+
+/** PATCH /v1/collections/me/visibility response */
+export interface CollectionVisibilityResponse {
+  isPublic: boolean;
+  minKeepPrivate?: number;
 }
 
 /** POST /v1/collections/me/items (add) and PATCH (update quantity) can return this shape */

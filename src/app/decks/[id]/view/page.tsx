@@ -13,6 +13,23 @@ import { useLocale } from "@/lib/locale-context";
 import type { Card } from "@/types/card";
 import type { Deck, DeckMainItem } from "@/types/deck";
 
+const VALID_DOMAIN_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
+const UNIT_ICON = "/images/types/unit.webp";
+const BATTLEFIELD_ICON = "/images/types/battlefields.webp";
+
+function isBattlefieldCard(card: { type?: string; record_type?: string } | undefined): boolean {
+  if (!card) return false;
+  const t = (card.type ?? "").toLowerCase();
+  const r = (card.record_type ?? "").toLowerCase();
+  return t === "battlefield" || r.includes("battleground") || t === "battleground";
+}
+
+function domainImageSrc(domain: string | null | undefined, card?: { type?: string; record_type?: string }): string {
+  const d = domain?.toLowerCase();
+  if (d && VALID_DOMAIN_SLUGS.has(d)) return `/images/domains/${d}.webp`;
+  return isBattlefieldCard(card) ? BATTLEFIELD_ICON : UNIT_ICON;
+}
+
 const TYPE_ORDER = ["legend", "champion", "unit", "limit", "gear", "spell", "rune", "battlefield", "other"];
 const TYPE_IMAGE: Record<string, string> = {
   legend: "/images/types/legend.webp",
@@ -84,7 +101,7 @@ function DomainBadge({ name }: { name: string }) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-2">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`/images/domains/${name.toLowerCase()}.webp`} alt={name} className="h-8 w-8 object-contain" />
+      <img src={domainImageSrc(name)} alt={name} className="h-8 w-8 object-contain" />
       <span className="text-sm font-semibold capitalize text-gray-200">{name}</span>
     </div>
   );
@@ -324,7 +341,7 @@ export default function DeckViewPage() {
                         <div className="mt-1 flex gap-1">
                           {domains.map((cd) => (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img key={cd.domain.name} src={`/images/domains/${cd.domain.name.toLowerCase()}.webp`} alt={cd.domain.name} title={cd.domain.name} className="h-3.5 w-3.5 object-contain" />
+                            <img key={cd.domain.name} src={domainImageSrc(cd.domain.name)} alt={cd.domain.name} title={cd.domain.name} className="h-3.5 w-3.5 object-contain" />
                           ))}
                         </div>
                       )}
@@ -368,7 +385,7 @@ export default function DeckViewPage() {
                 <div className="mb-3 flex items-center gap-2">
                   {domains.map((cd) => (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img key={cd.domain.name} src={`/images/domains/${cd.domain.name.toLowerCase()}.webp`} alt="" className="h-4 w-4 object-contain" />
+                    <img key={cd.domain.name} src={domainImageSrc(cd.domain.name)} alt="" className="h-4 w-4 object-contain" />
                   ))}
                   <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
                     {t("decks.mainDeckLabel")} <span className="text-gray-500">({mainCount}/39)</span>
@@ -393,12 +410,11 @@ export default function DeckViewPage() {
                         <ul className="space-y-0.5">
                           {items.map((item, i) => {
                             const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
+                            const domainImgSrc = domainImageSrc(domain, item.card);
                             return (
                               <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
-                                {domain && (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={`/images/domains/${domain}.webp`} alt="" className="h-3 w-3 shrink-0 object-contain" />
-                                )}
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={domainImgSrc} alt={domain ?? "unit"} className="h-3 w-3 shrink-0 object-contain opacity-90" />
                                 <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
                                 {item.card ? (
                                   <CardHoverPreview card={item.card} battlefieldAsLandscape>
@@ -463,12 +479,11 @@ export default function DeckViewPage() {
                   <ul className="space-y-0.5">
                     {(deck.runeItems ?? []).map((item, i) => {
                       const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
+                      const domainImgSrc = domainImageSrc(domain, item.card);
                       return (
                         <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
-                          {domain && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={`/images/domains/${domain}.webp`} alt="" className="h-3 w-3 shrink-0 object-contain" />
-                          )}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={domainImgSrc} alt={domain ?? "unit"} className="h-3 w-3 shrink-0 object-contain opacity-90" />
                           <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
                           {item.card ? (
                             <CardHoverPreview card={item.card} battlefieldAsLandscape>
@@ -500,12 +515,11 @@ export default function DeckViewPage() {
                     <ul className="space-y-0.5">
                       {(deck.sideboardItems ?? []).map((item, i) => {
                         const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
+                        const domainImgSrcSb = domainImageSrc(domain, item.card);
                         return (
                           <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
-                            {domain && (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={`/images/domains/${domain}.webp`} alt="" className="h-3 w-3 shrink-0 object-contain" />
-                            )}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={domainImgSrcSb} alt={domain ?? "unit"} className="h-3 w-3 shrink-0 object-contain opacity-90" />
                             <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
                             {item.card ? (
                               <CardHoverPreview card={item.card} battlefieldAsLandscape>

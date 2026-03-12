@@ -305,6 +305,17 @@ function getCardAttributes(card: Card): string[] {
   return [];
 }
 
+const VALID_DOMAIN_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
+const UNIT_ICON = "/images/types/unit.webp";
+const BATTLEFIELD_ICON = "/images/types/battlefields.webp";
+
+function isBattlefieldCard(card: { type?: string; record_type?: string } | undefined): boolean {
+  if (!card) return false;
+  const t = (card.type ?? "").toLowerCase();
+  const r = (card.record_type ?? "").toLowerCase();
+  return t === "battlefield" || r.includes("battleground") || t === "battleground";
+}
+
 /** Extrai todos os nomes de domínio de uma carta, independente do formato da API */
 function getCardDomains(card: Card): string[] {
   const result = new Set<string>();
@@ -316,6 +327,12 @@ function getCardDomains(card: Card): string[] {
     );
   }
   return [...result];
+}
+
+function domainImageSrc(domain: string | null | undefined, card?: { type?: string; record_type?: string }): string {
+  const d = domain?.toLowerCase();
+  if (d && VALID_DOMAIN_SLUGS.has(d)) return `/images/domains/${d}.webp`;
+  return isBattlefieldCard(card) ? BATTLEFIELD_ICON : UNIT_ICON;
 }
 
 function cardMatchesDomains(card: Card, domains: string[]): boolean {
@@ -830,7 +847,7 @@ export default function DeckBuilderPage() {
                   <div key={cd.domain.name} className="flex flex-col items-center gap-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={`/images/domains/${cd.domain.name.toLowerCase()}.webp`}
+                      src={domainImageSrc(cd.domain.name)}
                       alt={cd.domain.name}
                       className="h-16 w-16 object-contain drop-shadow-lg"
                     />
@@ -1164,7 +1181,7 @@ export default function DeckBuilderPage() {
                                   }`}
                                 >
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={`/images/domains/${domain}.webp`} alt={domain} className="h-full w-full object-contain" />
+                                  <img src={domainImageSrc(domain)} alt={domain} className="h-full w-full object-contain" />
                                 </button>
                               );
                             })}
@@ -1490,7 +1507,7 @@ export default function DeckBuilderPage() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       key={cd.domain.name}
-                      src={`/images/domains/${cd.domain.name.toLowerCase()}.webp`}
+                      src={domainImageSrc(cd.domain.name)}
                       alt={cd.domain.name}
                       title={cd.domain.name.charAt(0).toUpperCase() + cd.domain.name.slice(1)}
                       className="h-4 w-4 object-contain"
@@ -1550,7 +1567,7 @@ export default function DeckBuilderPage() {
                                   {(() => {
                                     const cid = item.card?.uuid ?? item.cardId;
                                     const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
-                                    const domainImgSrc = domain ? `/images/domains/${domain}.webp` : null;
+                                    const domainImgSrc = domainImageSrc(domain, item.card);
                                     const cardErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
                                     const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
                                     const usedByLegend = deckLegend?.uuid === cid ? 1 : 0;
@@ -1567,10 +1584,8 @@ export default function DeckBuilderPage() {
                                           <span className="flex min-w-0 items-center gap-1.5">
                                             <CardHoverPreview card={item.card} battlefieldAsLandscape>
                                               <span className="flex items-center gap-1.5 text-sm text-blue-400 cursor-pointer">
-                                                {domainImgSrc && (
-                                                  // eslint-disable-next-line @next/next/no-img-element
-                                                  <img src={domainImgSrc} alt={domain} className="h-4 w-4 shrink-0 object-contain" />
-                                                )}
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img src={domainImgSrc} alt={domain ?? "unit"} className="h-4 w-4 shrink-0 object-contain opacity-90" />
                                                 <span className="text-gray-500">×{item.quantity}</span>
                                                 {item.card.name}
                                               </span>
@@ -1740,6 +1755,7 @@ export default function DeckBuilderPage() {
                   {(deck.sideboardItems ?? []).map((item, i) => {
                     const cid = item.card?.uuid ?? item.cardId;
                     const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
+                    const domainImgSrcSb = domainImageSrc(domain, item.card);
                     const sbErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
                     const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
                     const usedByLegend = deckLegend?.uuid === cid ? 1 : 0;
@@ -1756,10 +1772,8 @@ export default function DeckBuilderPage() {
                           <span className="flex min-w-0 items-center gap-1">
                             <CardHoverPreview card={item.card} battlefieldAsLandscape>
                               <span className="flex items-center gap-1.5 text-blue-400 cursor-pointer">
-                                {domain && (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={`/images/domains/${domain}.webp`} alt="" className="h-3.5 w-3.5 shrink-0 object-contain" />
-                                )}
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={domainImgSrcSb} alt={domain ?? "unit"} className="h-3.5 w-3.5 shrink-0 object-contain opacity-90" />
                                 <span className="text-gray-500">×{item.quantity}</span>
                                 {item.card.name}
                               </span>

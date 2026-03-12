@@ -10,7 +10,6 @@ import {
   addToCollection,
   getCollection,
   removeFromCollection,
-  setCollectionVisibility,
   updateQuantity,
 } from "@/lib/collections";
 import { useAuth } from "@/lib/auth-context";
@@ -87,7 +86,7 @@ function CollectionSkeleton() {
       {/* Card grid skeleton */}
       <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 lg:px-10 xl:px-12">
         <div className="mb-4 h-4 w-48 animate-pulse rounded bg-gray-700/60" />
-        <ul className="grid grid-cols-1 gap-5 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+        <ul className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {Array.from({ length: 24 }).map((_, i) => (
             <li key={i} className="aspect-[2.5/3.5] w-full overflow-hidden rounded-lg border border-gray-700/50 bg-gray-800">
               <div className="h-full w-full animate-pulse rounded-lg bg-gray-700/60" />
@@ -108,8 +107,6 @@ export default function CollectionPage() {
   // Collection data: map uuid → quantity
   const [collectionMap, setCollectionMap] = useState<Map<string, number>>(new Map());
   const [collectionLoading, setCollectionLoading] = useState(true);
-  const [collectionPublic, setCollectionPublic] = useState<boolean>(false);
-  const [visibilityLoading, setVisibilityLoading] = useState(false);
   const [statsRefreshTrigger, setStatsRefreshTrigger] = useState(0);
 
   // UI state
@@ -155,9 +152,14 @@ export default function CollectionPage() {
         if (id) map.set(id, (map.get(id) ?? 0) + (item.quantity ?? 0));
       }
       setCollectionMap(map);
-      setCollectionPublic(data.collection.isPublic ?? false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("collection.errorLoadingCollection"));
+      const message = err instanceof Error ? err.message : t("collection.errorLoadingCollection");
+      if (typeof message === "string" && message.includes("user_settings")) {
+        setCollectionMap(new Map());
+        setError(null);
+      } else {
+        setError(message);
+      }
     } finally {
       setCollectionLoading(false);
     }
@@ -358,20 +360,6 @@ export default function CollectionPage() {
     }
   }
 
-  async function handleVisibilityToggle() {
-    if (!user) return;
-    setVisibilityLoading(true);
-    try {
-      const next = !collectionPublic;
-      await setCollectionVisibility(next);
-      setCollectionPublic(next);
-    } catch {
-      // toast error
-    } finally {
-      setVisibilityLoading(false);
-    }
-  }
-
   if (authLoading || !user || (cardsLoading && allCards.length === 0)) {
     return <CollectionSkeleton />;
   }
@@ -555,14 +543,6 @@ export default function CollectionPage() {
           {error && (
             <div className="rounded bg-red-900/50 px-3 py-1.5 text-sm text-red-200">{error}</div>
           )}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-400">{t("collection.publicCollection")}</span>
-            <button type="button" role="switch" aria-checked={collectionPublic} disabled={visibilityLoading} onClick={handleVisibilityToggle}
-              className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${collectionPublic ? "border-emerald-500 bg-emerald-600" : "border-gray-600 bg-gray-700"} ${visibilityLoading ? "opacity-50" : ""}`}>
-              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${collectionPublic ? "translate-x-5" : "translate-x-0.5"}`} />
-            </button>
-            <span className="text-xs text-gray-500">{t("collection.visibleOnProfile")}</span>
-          </div>
         </header>
         <CollectionStats breakdown={false} refreshTrigger={statsRefreshTrigger} />
       </div>
@@ -629,7 +609,7 @@ export default function CollectionPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("collection.searchCardName")}
-              className="w-full rounded border border-gray-600 bg-gray-800 py-2 pl-9 pr-3 text-sm text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded border border-gray-600 bg-gray-800 py-2 pl-9 pr-3 text-base text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <button
@@ -652,7 +632,7 @@ export default function CollectionPage() {
         {isLoading ? (
           <>
             <p className="mb-4 text-sm text-gray-400">{t("collection.loadingCards")}</p>
-            <ul className="grid grid-cols-1 gap-5 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            <ul className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {Array.from({ length: 12 }).map((_, i) => (
                 <li key={i} className="aspect-[2.5/3.5] w-full overflow-hidden rounded-lg border border-gray-700/50 bg-gray-800">
                   <div className="h-full w-full animate-pulse rounded-lg bg-gray-700/60" />
@@ -672,7 +652,7 @@ export default function CollectionPage() {
               {collectionStatus === "all" && <> {inCollectionCount} {t("collection.inYourCollection")}.</>}
               {hasMore && <span className="ml-1 text-gray-500">{t("cards.scrollDownToLoadMore")}</span>}
             </p>
-            <ul className="grid grid-cols-1 gap-5 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            <ul className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {visibleCards.map((card) => {
                 const isCardLoading = actionCardId === card.uuid;
                 return (

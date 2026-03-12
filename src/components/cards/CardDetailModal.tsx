@@ -21,6 +21,19 @@ function fmt(s: string) {
 }
 
 const DOMAIN_IMAGE_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
+const NO_DOMAIN_ICON = "/images/types/unit.webp";
+const BATTLEFIELD_ICON = "/images/types/battlefields.webp";
+
+function isBattlefieldCard(card: Card | null | undefined): boolean {
+  if (!card) return false;
+  const t = (card.type ?? "").toLowerCase();
+  const r = (card.record_type ?? "").toLowerCase();
+  return t === "battlefield" || r.includes("battleground") || t === "battleground";
+}
+
+function getNoDomainIcon(card: Card | null | undefined): string {
+  return isBattlefieldCard(card) ? BATTLEFIELD_ICON : NO_DOMAIN_ICON;
+}
 
 function getCardDomains(card: Card): string[] {
   const result: string[] = [];
@@ -239,19 +252,30 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetai
                       {fmt(card.type)}
                     </span>
                   )}
-                  {getCardDomains(card).map((domain) => (
-                    <span key={domain} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-200">
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                        {DOMAIN_IMAGE_SLUGS.has(domain) ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={`/images/domains/${domain}.webp`} alt={domain} className="h-full w-full object-contain" />
-                        ) : (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400" aria-hidden><circle cx="12" cy="12" r="10"/><path d="M4.93 4.93 19.07 19.07"/></svg>
-                        )}
+                  {getCardDomains(card).length > 0 ? (
+                    getCardDomains(card).map((domain) => (
+                      <span key={domain} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-200">
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                          {DOMAIN_IMAGE_SLUGS.has(domain) ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={`/images/domains/${domain}.webp`} alt={domain} className="h-full w-full object-contain" />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={getNoDomainIcon(card)} alt="" className="h-full w-full object-contain opacity-90" />
+                          )}
+                        </span>
+                        {fmt(domain)}
                       </span>
-                      {fmt(domain)}
+                    ))
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-200">
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={getNoDomainIcon(card)} alt="" className="h-full w-full object-contain opacity-90" />
+                      </span>
+                      {isBattlefieldCard(card) ? t("decks.typeBattlefield") : t("decks.typeUnit")}
                     </span>
-                  ))}
+                  )}
                 </div>
 
                 {/* Stats: Cost, Power, Energy, Might, CMC */}

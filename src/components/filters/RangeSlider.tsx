@@ -56,51 +56,55 @@ export function RangeSlider({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
+      <div className="flex items-center justify-between gap-2">
+        <span className="shrink-0 text-xs font-medium uppercase tracking-wider text-gray-500">
           {label}
         </span>
-        <span className="text-xs tabular-nums text-gray-400">
+        <span className="shrink-0 text-xs tabular-nums text-gray-400">
           {valueMin} – {showAnyLabel && valueMax === maxBound ? anyLabel : valueMax}
         </span>
       </div>
       <div className="space-y-2">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-nowrap items-center gap-2">
           <label htmlFor={minId} className="w-8 shrink-0 text-[10px] text-gray-500">{minLabel}</label>
-          <input
-            id={minId}
-            type="range"
-            min={minBound}
-            max={maxBound}
-            step={step}
-            value={valueMin}
-            onChange={(e) => onChange(clampMin(Number(e.target.value)), valueMax)}
-            className={trackClass}
-            aria-label={`${label}${minAriaSuffix}`}
-          />
-          <span className="w-5 shrink-0 text-right text-xs tabular-nums text-gray-400">{valueMin}</span>
+          <div className="min-w-0 flex-1">
+            <input
+              id={minId}
+              type="range"
+              min={minBound}
+              max={maxBound}
+              step={step}
+              value={valueMin}
+              onChange={(e) => onChange(clampMin(Number(e.target.value)), valueMax)}
+              className={trackClass}
+              aria-label={`${label}${minAriaSuffix}`}
+            />
+          </div>
+          <span className="w-6 shrink-0 text-right text-xs tabular-nums text-gray-400">{valueMin}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-nowrap items-center gap-2">
           <label htmlFor={maxId} className="w-8 shrink-0 text-[10px] text-gray-500">{maxLabel}</label>
-          <input
-            id={maxId}
-            type="range"
-            min={minBound}
-            max={maxBound}
-            step={step}
-            value={valueMax}
-            onChange={(e) => onChange(valueMin, clampMax(Number(e.target.value)))}
-            className={trackClass}
-            aria-label={`${label}${maxAriaSuffix}`}
-          />
-          <span className="w-5 shrink-0 text-right text-xs tabular-nums text-gray-400">
+          <div className="min-w-0 flex-1">
+            <input
+              id={maxId}
+              type="range"
+              min={minBound}
+              max={maxBound}
+              step={step}
+              value={valueMax}
+              onChange={(e) => onChange(valueMin, clampMax(Number(e.target.value)))}
+              className={trackClass}
+              aria-label={`${label}${maxAriaSuffix}`}
+            />
+          </div>
+          <span className="min-w-[5rem] shrink-0 text-right text-xs tabular-nums text-gray-400">
             {showAnyLabel && valueMax === maxBound ? anyLabel : valueMax}
           </span>
         </div>
       </div>
-      <div className="flex justify-between px-0.5 text-[10px] text-gray-500">
-        <span>{minBound}</span>
-        <span>{maxBound}</span>
+      <div className="flex flex-nowrap justify-between gap-2 px-0.5 text-[10px] text-gray-500">
+        <span className="shrink-0">{minBound}</span>
+        <span className="shrink-0">{maxBound}</span>
       </div>
     </div>
   );

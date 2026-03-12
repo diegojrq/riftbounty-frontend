@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
+import { getCollection, setCollectionVisibility } from "@/lib/collections";
 import { checkSlugAvailable, getProfile, updateProfile, type UpdateProfilePayload } from "@/lib/profile";
 import { useLocale } from "@/lib/locale-context";
 import type { User, UserAddress } from "@/types/auth";
@@ -82,6 +83,9 @@ export default function ProfilePage() {
   const [errorBounce, setErrorBounce] = useState(false);
   const [slugAvailability, setSlugAvailability] = useState<boolean | null>(null);
   const [slugChecking, setSlugChecking] = useState(false);
+  const [collectionIsPublic, setCollectionIsPublic] = useState(false);
+  const [collectionMinKeepPrivate, setCollectionMinKeepPrivate] = useState(0);
+  const [visibilityLoading, setVisibilityLoading] = useState(false);
   const errorRef = useRef<HTMLDivElement>(null);
 
   async function fetchViaCep(cep: string) {
@@ -109,6 +113,37 @@ export default function ProfilePage() {
   function handleCepBlur() {
     const cep = address.postalCode ?? "";
     if (cep.replace(/\D/g, "").length === 8) fetchViaCep(cep);
+  }
+
+  async function handleVisibilityToggle() {
+    if (!user) return;
+    setVisibilityLoading(true);
+    try {
+      const next = !collectionIsPublic;
+      await setCollectionVisibility(next, collectionMinKeepPrivate);
+      setCollectionIsPublic(next);
+      toast.success(t("profile.visibilitySaved"));
+    } catch {
+      toast.error(t("profile.errorLoadingProfile"));
+    } finally {
+      setVisibilityLoading(false);
+    }
+  }
+
+  async function handleShowOnlyCopiesToggle() {
+    if (!user) return;
+    const next = collectionMinKeepPrivate >= 1 ? 0 : 1;
+    setCollectionMinKeepPrivate(next);
+    if (!collectionIsPublic) return;
+    setVisibilityLoading(true);
+    try {
+      await setCollectionVisibility(true, next);
+      toast.success(t("profile.visibilitySaved"));
+    } catch {
+      toast.error(t("profile.errorLoadingProfile"));
+    } finally {
+      setVisibilityLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -142,6 +177,19 @@ export default function ProfilePage() {
     return () => {
       cancelled = true;
     };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    getCollection()
+      .then((data) => {
+        setCollectionIsPublic(data.collection.isPublic ?? false);
+        const raw = data.collection.minKeepPrivate;
+        setCollectionMinKeepPrivate(
+          typeof raw === "number" && raw >= 1 ? 1 : 0
+        );
+      })
+      .catch(() => {});
   }, [user]);
 
   const buildPayload = useCallback((): UpdateProfilePayload => {
@@ -386,6 +434,43 @@ export default function ProfilePage() {
                   placeholder={user.email}
                 />
               </div>
+            </div>
+          </section>
+          <section className={sectionCardClass}>
+            <div className="border-b border-gray-700 px-5 py-4">
+              <h2 className="text-lg font-semibold text-white">{t("profile.publicCollectionSection")}</h2>
+              <p className="mt-1 text-xs text-gray-500">{t("profile.publicCollectionSectionHint")}</p>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm text-gray-300">{t("profile.visibleOnProfile")}</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={collectionIsPublic}
+                  disabled={visibilityLoading}
+                  onClick={handleVisibilityToggle}
+                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${collectionIsPublic ? "border-emerald-500 bg-emerald-600" : "border-gray-600 bg-gray-700"} ${visibilityLoading ? "opacity-50" : ""}`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${collectionIsPublic ? "translate-x-5" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+              {collectionIsPublic && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm text-gray-300">{t("profile.showOnlyCopies")}</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={collectionMinKeepPrivate >= 1}
+                    disabled={visibilityLoading}
+                    onClick={handleShowOnlyCopiesToggle}
+                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${collectionMinKeepPrivate >= 1 ? "border-emerald-500 bg-emerald-600" : "border-gray-600 bg-gray-700"} ${visibilityLoading ? "opacity-50" : ""}`}
+                  >
+                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${collectionMinKeepPrivate >= 1 ? "translate-x-5" : "translate-x-0.5"}`} />
+                  </button>
+                  <p className="w-full text-xs text-gray-500 sm:w-auto">{t("profile.showOnlyCopiesHint")}</p>
+                </div>
+              )}
             </div>
           </section>
           <section className={sectionCardClass}>

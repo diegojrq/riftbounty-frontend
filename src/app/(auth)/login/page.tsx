@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
@@ -9,8 +9,17 @@ import { useLocale } from "@/lib/locale-context";
 
 const inputClass = "w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
 
+function safeReturnTo(value: string | null): string | null {
+  if (!value || typeof value !== "string") return null;
+  const decoded = decodeURIComponent(value.trim());
+  if (!decoded.startsWith("/") || decoded.startsWith("//") || decoded.includes("\0")) return null;
+  return decoded;
+}
+
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = safeReturnTo(searchParams.get("returnTo"));
   const { login, error, clearError } = useAuth();
   const { t } = useLocale();
   const [email, setEmail] = useState("");
@@ -24,7 +33,7 @@ export default function LoginPage() {
     try {
       await login({ email, password });
       toast.success(t("auth.signedInSuccess"));
-      router.push("/");
+      router.push(returnTo ?? "/");
     } catch {
       setLoading(false);
     }

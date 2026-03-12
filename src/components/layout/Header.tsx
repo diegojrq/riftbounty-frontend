@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
-import { getUnreadCount } from "@/lib/notifications";
+import { getUnreadCount, markAllNotificationsRead } from "@/lib/notifications";
 
 function FlagBr({ className }: { className?: string }) {
   return (
@@ -72,6 +72,14 @@ export function Header() {
     intervalRef.current = setInterval(fetch, 30_000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [user]);
+
+  // Marcar notificações como lidas ao entrar na página de Trocas (onde o usuário vê o que importa)
+  useEffect(() => {
+    if (!user || !pathname.startsWith("/trades")) return;
+    markAllNotificationsRead()
+      .then(() => getUnreadCount().then(setUnreadCount))
+      .catch(() => {});
+  }, [user, pathname]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-800 bg-gray-900/95 backdrop-blur-sm">
