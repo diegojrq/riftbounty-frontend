@@ -1,28 +1,34 @@
 # Riftbounty
 
-Frontend do **Riftbounty** — app de cartas para ver, colecionar e (em breve) trocar e montar decks.
+Frontend do **Riftbounty** — app de cartas para ver, colecionar, trocar e montar decks (companion para Riftbound).
 
 ---
 
 ## O que é o Riftbounty
 
-O Riftbounty é um **app de cartas** em que você pode:
+Riftbounty é uma **biblioteca de cartas e rastreador de coleção** gratuito para Riftbound. Ajuda jogadores a navegar por todas as cartas, filtrar por nome e domínio (body, calm, chaos, fury, mind, order), rastrear a coleção pessoal com quantidades e ver o que têm e o que falta.
 
-- **Ver as cartas e seus atributos** e filtrar por qualquer critério (nome, set, raridade, domínio, tipo, atributos, etc.).
-- **Montar sua coleção**: adicionar qualquer carta à sua coleção e ter um **tracking** do que você tem e do que falta.
-- **(Futuro)** **Conectar jogadores**: usuários poderão ter mais de uma cópia da mesma carta, informar o que precisam e o que têm disponível para **troca**, conectando com outros jogadores no mundo.
-- **(Futuro)** **Montar decks** a partir das suas coleções, com **sugestões e ajuda via IA** na montagem, incluindo consulta ao metagame atual de outras fontes.
+**Funcionalidades atuais:**
+
+- **Biblioteca de cartas** — listagem com busca por nome, filtros por domínio, raridade, tipo, set e atributos; carregamento infinito.
+- **Minha coleção** — adicionar/remover cartas, ajustar quantidade; indicador do que você tem e do que falta; opção de coleção pública no perfil (visível para outros, com opção de esconder um número de cópias por carta).
+- **Trocas** — ver perfil de outro jogador, escolher cartas que ele tem e você quer, montar proposta e enviar; contraproposta, aceitar ou rejeitar; notificações de trocas pendentes.
+- **Decks** — montar decks a partir da coleção: lenda, campeão, deck principal, runas, sideboard e campos de batalha; validação de regras; visualização do deck completo.
+
+O produto é gratuito e não simula nem replica o gameplay de Riftbound. **Planejamentos futuros:** acompanhamento do metagame (decks em alta) e sugestões via IA para decks ou melhorias com base no meta e na coleção do usuário. Não há monetização; a intenção é adicionar um botão de doação para quem quiser ajudar a manter o projeto. **APIs utilizadas (ou planejadas):** catálogo de cartas / API de assets (dados e imagens oficiais). O app é um protótipo; melhorias de filtros, usabilidade e segurança seguem conforme o acesso à API oficial. Riftbounty não é afiliado nem endossado pela Riot Games.
 
 ---
 
-## Funcionalidades atuais
+## Funcionalidades atuais (resumo)
 
 | Área | Descrição |
 |------|-----------|
-| **Listagem** | Grid de cartas com busca por nome, filtro por domínio (body, calm, chaos, fury, mind, order) e carregamento infinito ao rolar. |
-| **Coleção** | Adicionar/remover cartas e ajustar quantidade (+ / −). Cartas na coleção em cores; as que não estão aparecem em grayscale na tela “My collection”. |
-| **Auth** | Login e registro; rotas protegidas; JWT em `localStorage`. |
-| **My collection** | Mesma listagem com filtro por domínio e ordenação por número de colecionador; indicador visual de qual domínio está selecionado. |
+| **Cartas** | Grid com busca, filtros (domínio, raridade, tipo, set, atributos, energia/poder/vigor), infinite scroll. |
+| **Coleção** | Adicionar/remover e ajustar quantidade; grayscale para cartas que não tem; coleção pública opcional no perfil. |
+| **Perfil** | Nome, username (slug), endereço opcional; configuração de visibilidade da coleção e "mostrar apenas cópias". |
+| **Trocas** | Perfil público com coleção; cesta de troca; enviar proposta; contraproposta; aceitar/rejeitar; notificações. |
+| **Decks** | Criar e editar decks (lenda, campeão, main, runas, sideboard, battlefields); validação; visualização. |
+| **Auth** | Login e registro; JWT; rotas protegidas. |
 
 ---
 

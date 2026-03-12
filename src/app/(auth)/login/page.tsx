@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
@@ -16,7 +16,7 @@ function safeReturnTo(value: string | null): string | null {
   return decoded;
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = safeReturnTo(searchParams.get("returnTo"));
@@ -89,5 +89,26 @@ export default function LoginPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <div className="mx-auto max-w-md px-4 py-12">
+      <div className="mb-6 h-8 w-32 animate-pulse rounded bg-gray-700" />
+      <div className="space-y-4">
+        <div className="h-10 animate-pulse rounded bg-gray-700" />
+        <div className="h-10 animate-pulse rounded bg-gray-700" />
+        <div className="h-10 animate-pulse rounded bg-gray-700" />
+      </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </Suspense>
   );
 }
