@@ -245,7 +245,7 @@ function MessageThread({ trade, mySlug, onSend, sending, messagesTitle, noMessag
             }}
             rows={1}
             placeholder={placeholder}
-            className="flex-1 resize-none overflow-hidden rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-emerald-600"
+            className="flex-1 resize-none overflow-hidden rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-base text-white placeholder-gray-500 outline-none focus:border-emerald-600"
           />
           <button
             type="submit"
