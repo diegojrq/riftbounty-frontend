@@ -41,7 +41,7 @@ export async function DELETE(
   return proxy(request, await params, "DELETE");
 }
 
-const ALLOWED_PATH_PREFIXES = ["auth", "cards", "trades", "collections", "decks", "notifications"];
+const ALLOWED_PATH_PREFIXES = ["auth", "cards", "trades", "collections", "decks", "notifications", "admin"];
 
 function validatePath(segments: string[]): string {
   if (!segments?.length) return "";

@@ -289,7 +289,8 @@ function getNextPicker(deck: Deck): PickerMode {
   const runeCount = deck.runeItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   if (runeCount < 12 || sectionHasErrors(deck.runeItems ?? [])) return "rune";
 
-  return "sideboard"; // suggest sideboard as final optional step
+  // Sideboard é coadjuvante: nunca direcionamos o usuário para ele; fica no rune (último step obrigatório)
+  return "rune";
 }
 
 function getCardAttributes(card: Card): string[] {
@@ -386,7 +387,17 @@ export default function DeckBuilderPage() {
   const [battlefieldSlotBeingEdited, setBattlefieldSlotBeingEdited] = useState<1 | 2 | 3 | null>(null);
   const [mobilePickerOpen, setMobilePickerOpen] = useState(false);
   const [addAnimations, setAddAnimations] = useState<Map<string, string[]>>(new Map());
+  const [deckMutationLoading, setDeckMutationLoading] = useState(false);
   const prevValidRef = useRef<boolean | null>(null);
+
+  async function runWithDeckMutation<T>(fn: () => Promise<T>): Promise<T> {
+    setDeckMutationLoading(true);
+    try {
+      return await fn();
+    } finally {
+      setDeckMutationLoading(false);
+    }
+  }
   const pickerContainerRef = useRef<HTMLDivElement>(null);
   const savedScrollRef = useRef<number>(0);
 
@@ -641,104 +652,118 @@ export default function DeckBuilderPage() {
 
   async function handleSetLegend(card: Card) {
     if (!deck) return;
-    try {
-      const currentChampion = deck.championCard ?? deck.champion;
-      if (currentChampion) {
-        await setChampion(deck.id, null);
+    await runWithDeckMutation(async () => {
+      try {
+        const currentChampion = deck.championCard ?? deck.champion;
+        if (currentChampion) {
+          await setChampion(deck.id, null);
+        }
+        const updated = await setLegend(deck.id, card.uuid);
+        setDeck(updated);
+        setPicker(getNextPicker(updated));
+        setMobilePickerOpen(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t("decks.failedToSetLegend"));
       }
-      const updated = await setLegend(deck.id, card.uuid);
-      setDeck(updated);
-      setPicker(getNextPicker(updated));
-      setMobilePickerOpen(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("decks.failedToSetLegend"));
-    }
+    });
   }
 
   async function handleSetChampion(card: Card) {
     if (!deck) return;
-    try {
-      const updated = await setChampion(deck.id, card.uuid);
-      setDeck(updated);
-      const next = getNextPicker(updated);
-      setPicker(next);
-      if (next === "battlefields") setBattlefieldSlotBeingEdited(null);
-      setMobilePickerOpen(false);
+    await runWithDeckMutation(async () => {
+      try {
+        const updated = await setChampion(deck.id, card.uuid);
+        setDeck(updated);
+        const next = getNextPicker(updated);
+        setPicker(next);
+        if (next === "battlefields") setBattlefieldSlotBeingEdited(null);
+        setMobilePickerOpen(false);
 
-      // Auto-name deck as "Legend / Champion" when deck has no name yet
-      if (!(deck.name?.trim())) {
-        const legendObj = updated.legendCard ?? updated.legend;
-        const legendName = legendObj?.name ?? (legendObj as { card?: { name?: string } })?.card?.name;
-        const championName = card.name;
-        if (legendName && championName) {
-          const autoName = `${legendName} / ${championName}`;
-          try {
-            const named = await updateDeckName(updated.id, autoName);
-            setDeck(named);
-            setNameDraft(autoName);
-          } catch {
-            // silent — user can name manually
+        // Auto-name deck as "Legend / Champion" when deck has no name yet
+        if (!(deck.name?.trim())) {
+          const legendObj = updated.legendCard ?? updated.legend;
+          const legendName = legendObj?.name ?? (legendObj as { card?: { name?: string } })?.card?.name;
+          const championName = card.name;
+          if (legendName && championName) {
+            const autoName = `${legendName} / ${championName}`;
+            try {
+              const named = await updateDeckName(updated.id, autoName);
+              setDeck(named);
+              setNameDraft(autoName);
+            } catch {
+              // silent — user can name manually
+            }
           }
         }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t("decks.failedToSetChampion"));
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("decks.failedToSetChampion"));
-    }
+    });
   }
 
   async function handleAddMain(card: Card) {
     if (!deck) return;
     savePickerScroll();
     flashCard(card.uuid);
-    try {
-      const updated = await addMainCard(deck.id, card.uuid, 1);
-      setDeck(updated);
-      setPicker(getNextPicker(updated));
-      restorePickerScroll();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("decks.failedToAddCard"));
-    }
+    await runWithDeckMutation(async () => {
+      try {
+        const updated = await addMainCard(deck.id, card.uuid, 1);
+        setDeck(updated);
+        setPicker(getNextPicker(updated));
+        restorePickerScroll();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t("decks.failedToAddCard"));
+      }
+    });
   }
 
   async function handleAddRune(card: Card) {
     if (!deck) return;
     savePickerScroll();
     flashCard(card.uuid);
-    try {
-      const updated = await addRuneCard(deck.id, card.uuid, 1);
-      setDeck(updated);
-      setPicker(getNextPicker(updated));
-      restorePickerScroll();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("decks.failedToAddRune"));
-    }
+    await runWithDeckMutation(async () => {
+      try {
+        const updated = await addRuneCard(deck.id, card.uuid, 1);
+        setDeck(updated);
+        setPicker(getNextPicker(updated));
+        restorePickerScroll();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t("decks.failedToAddRune"));
+      }
+    });
   }
 
   async function handleAddSideboard(card: Card) {
     if (!deck) return;
     savePickerScroll();
     flashCard(card.uuid);
-    try {
-      const updated = await addSideboardCard(deck.id, card.uuid, 1);
-      setDeck(updated);
-      restorePickerScroll();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("decks.failedToAddSideboard"));
-    }
+    await runWithDeckMutation(async () => {
+      try {
+        const updated = await addSideboardCard(deck.id, card.uuid, 1);
+        setDeck(updated);
+        // Mantém no sideboard; nunca redirecionamos para sideboard, mas quem já está lá fica
+        setPicker("sideboard");
+        restorePickerScroll();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t("decks.failedToAddSideboard"));
+      }
+    });
   }
 
   async function handleSetBattlefield(position: 1 | 2 | 3, card: Card) {
     if (!deck) return;
-    try {
-      const updated = await setBattlefield(deck.id, position, card.uuid);
-      setDeck(updated);
-      const next = getNextPicker(updated);
-      setPicker(next);
-      // Auto-close mobile picker when all 3 BFs filled → moving to next step
-      if (next !== "battlefields") setMobilePickerOpen(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("decks.failedToSetBattlefield"));
-    }
+    await runWithDeckMutation(async () => {
+      try {
+        const updated = await setBattlefield(deck.id, position, card.uuid);
+        setDeck(updated);
+        const next = getNextPicker(updated);
+        setPicker(next);
+        // Auto-close mobile picker when all 3 BFs filled → moving to next step
+        if (next !== "battlefields") setMobilePickerOpen(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t("decks.failedToSetBattlefield"));
+      }
+    });
   }
 
   function handlePickBattlefield(card: Card) {
@@ -820,6 +845,19 @@ export default function DeckBuilderPage() {
 
   return (
     <div className="min-h-screen bg-gray-900">
+      {/* Overlay de loading ao adicionar/remover cartas */}
+      {deckMutationLoading && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-[2px]"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-gray-600 bg-gray-800/95 px-6 py-5 shadow-xl">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" role="status" aria-hidden />
+            <span className="text-sm font-medium text-gray-200">{t("decks.updatingDeck")}</span>
+          </div>
+        </div>
+      )}
       {/* Modal deck válido */}
       {showValidModal && deck && (
         <div
@@ -1609,26 +1647,34 @@ export default function DeckBuilderPage() {
                                           <button
                                             type="button"
                                             onClick={async () => {
-                                              if (item.quantity < 2) {
-                                                try { setDeck(await removeMainCard(deck.id, cid)); } catch {}
-                                              } else {
-                                                try { setDeck(await setMainCardQuantity(deck.id, cid, item.quantity - 1)); } catch {}
-                                              }
+                                              await runWithDeckMutation(async () => {
+                                                if (item.quantity < 2) {
+                                                  try { setDeck(await removeMainCard(deck.id, cid)); } catch {}
+                                                } else {
+                                                  try { setDeck(await setMainCardQuantity(deck.id, cid, item.quantity - 1)); } catch {}
+                                                }
+                                              });
                                             }}
-                                            className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 text-xs"
+                                            disabled={deckMutationLoading}
+                                            className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50 text-xs"
                                           >−</button>
                                           <button
                                             type="button"
                                             onClick={async () => {
                                               if (!canIncreaseMain) return;
-                                              try { setDeck(await setMainCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
+                                              await runWithDeckMutation(async () => {
+                                                try { setDeck(await setMainCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
+                                              });
                                             }}
-                                            disabled={!canIncreaseMain}
+                                            disabled={!canIncreaseMain || deckMutationLoading}
                                             className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50 text-xs"
                                           >+</button>
                                           <button
                                             type="button"
-                                            onClick={async () => { try { setDeck(await removeMainCard(deck.id, cid)); } catch {} }}
+                                            onClick={async () => {
+                                              await runWithDeckMutation(async () => { try { setDeck(await removeMainCard(deck.id, cid)); } catch {} });
+                                            }}
+                                            disabled={deckMutationLoading}
                                             className="rounded bg-red-900/50 px-1.5 text-red-200 hover:bg-red-900/70 text-xs"
                                           >×</button>
                                         </span>
@@ -1701,26 +1747,34 @@ export default function DeckBuilderPage() {
                               <button
                                 type="button"
                                 onClick={async () => {
-                                  if (item.quantity < 2) {
-                                    try { setDeck(await removeRuneCard(deck.id, cid)); } catch {}
-                                  } else {
-                                    try { setDeck(await setRuneCardQuantity(deck.id, cid, item.quantity - 1)); } catch {}
-                                  }
+                                  await runWithDeckMutation(async () => {
+                                    if (item.quantity < 2) {
+                                      try { setDeck(await removeRuneCard(deck.id, cid)); } catch {}
+                                    } else {
+                                      try { setDeck(await setRuneCardQuantity(deck.id, cid, item.quantity - 1)); } catch {}
+                                    }
+                                  });
                                 }}
-                                className="rounded bg-gray-700 px-1.5 hover:bg-gray-600"
+                                disabled={deckMutationLoading}
+                                className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50"
                               >−</button>
                               <button
                                 type="button"
                                 onClick={async () => {
                                   if (runeCount > 11) return;
-                                  try { setDeck(await setRuneCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
+                                  await runWithDeckMutation(async () => {
+                                    try { setDeck(await setRuneCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
+                                  });
                                 }}
-                                disabled={runeCount > 11}
+                                disabled={runeCount > 11 || deckMutationLoading}
                                 className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50"
                               >+</button>
                               <button
                                 type="button"
-                                onClick={async () => { try { setDeck(await removeRuneCard(deck.id, cid)); } catch {} }}
+                                onClick={async () => {
+                                  await runWithDeckMutation(async () => { try { setDeck(await removeRuneCard(deck.id, cid)); } catch {} });
+                                }}
+                                disabled={deckMutationLoading}
                                 className="rounded bg-red-900/50 px-1.5 text-red-200 hover:bg-red-900/70"
                               >×</button>
                             </span>
@@ -1797,26 +1851,34 @@ export default function DeckBuilderPage() {
                           <button
                             type="button"
                             onClick={async () => {
-                              if (item.quantity < 2) {
-                                try { setDeck(await removeSideboardCard(deck.id, cid)); } catch {}
-                              } else {
-                                try { setDeck(await setSideboardCardQuantity(deck.id, cid, item.quantity - 1)); } catch {}
-                              }
+                              await runWithDeckMutation(async () => {
+                                if (item.quantity < 2) {
+                                  try { setDeck(await removeSideboardCard(deck.id, cid)); } catch {}
+                                } else {
+                                  try { setDeck(await setSideboardCardQuantity(deck.id, cid, item.quantity - 1)); } catch {}
+                                }
+                              });
                             }}
-                            className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 text-xs"
+                            disabled={deckMutationLoading}
+                            className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50 text-xs"
                           >−</button>
                           <button
                             type="button"
                             onClick={async () => {
                               if (!canIncreaseSb) return;
-                              try { setDeck(await setSideboardCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
+                              await runWithDeckMutation(async () => {
+                                try { setDeck(await setSideboardCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
+                              });
                             }}
-                            disabled={!canIncreaseSb}
+                            disabled={!canIncreaseSb || deckMutationLoading}
                             className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50 text-xs"
                           >+</button>
                           <button
                             type="button"
-                            onClick={async () => { try { setDeck(await removeSideboardCard(deck.id, cid)); } catch {} }}
+                            onClick={async () => {
+                              await runWithDeckMutation(async () => { try { setDeck(await removeSideboardCard(deck.id, cid)); } catch {} });
+                            }}
+                            disabled={deckMutationLoading}
                             className="rounded bg-red-900/50 px-1.5 text-red-200 hover:bg-red-900/70 text-xs"
                           >×</button>
                         </span>

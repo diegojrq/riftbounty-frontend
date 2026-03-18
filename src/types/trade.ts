@@ -57,7 +57,10 @@ export interface TradeSummary {
 
 export interface CreateTradePayload {
   recipientSlug: string;
+  /** Sua oferta — cartas que você dá. Pelo menos 1 item. */
   items: { cardId: string; quantity: number }[];
+  /** O que você quer do outro (opcional). O outro vê no trade e pode aceitar ou contrapropor. */
+  requestedItems?: { cardId: string; quantity: number }[];
   message?: string;
 }
 

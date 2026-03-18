@@ -157,6 +157,19 @@ export function Header() {
                 )}
               </Link>
 
+              {user?.role === "admin" && (
+                <Link
+                  href="/admin"
+                  className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
+                    pathname.startsWith("/admin")
+                      ? "bg-gray-800 text-white"
+                      : "text-amber-400 hover:text-amber-300"
+                  }`}
+                >
+                  {t("nav.admin")}
+                </Link>
+              )}
+
               {user ? (
                 <>
                   <Link
@@ -313,6 +326,18 @@ export function Header() {
                   </span>
                 )}
               </Link>
+
+              {user?.role === "admin" && (
+                <Link
+                  href="/admin"
+                  className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 ${
+                    pathname.startsWith("/admin") ? "bg-gray-800 text-white" : "text-amber-400 hover:text-amber-300"
+                  }`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 3v18"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  {t("nav.admin")}
+                </Link>
+              )}
 
               {user ? (
                 <button

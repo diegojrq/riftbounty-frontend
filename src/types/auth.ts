@@ -11,11 +11,14 @@ export interface UserAddress {
   state: string | null;
 }
 
+export type UserRole = "user" | "admin";
+
 export interface User {
   id: string;
   slug: string;
   email: string;
   displayName: string | null;
+  role?: UserRole;
   address?: UserAddress | null;
 }
 
@@ -36,15 +39,17 @@ export interface AuthResponse {
   user: User;
 }
 
-/** Card summary in public profile (GET /auth/profile/:slug) */
+/** Card summary in public profile (GET /auth/profile/:slug) and match/offerable (GET /auth/profile/:slug/match) */
 export interface PublicProfileCard {
   uuid: string;
   scraperId?: string;
-  name: string;
+  name: string | null;
   slug?: string;
-  cardSet?: string;
-  rarity?: string;
-  type?: string;
+  cardSet?: string | null;
+  rarity?: string | null;
+  type?: string | null;
+  image_key?: string | null;
+  imageUrl?: string | null;
 }
 
 /** Item in publicCollection (GET /auth/profile/:slug) */
@@ -62,11 +67,20 @@ export interface PublicUser {
   publicCollection?: PublicCollectionItem[];
 }
 
-/** Item in match result (GET /auth/profile/:slug/match) */
+/** Item in match result (GET /auth/profile/:slug/match) — cards they have more of that I want */
 export interface MatchItem {
   cardUuid: string;
-  card: PublicProfileCard;
+  card: PublicProfileCard | null;
   theirQuantity: number;
   myQuantity: number;
   need: number;
+}
+
+/** Item in offerable result (GET /auth/profile/:slug/match) — cards I have more of that I can offer */
+export interface OfferableItem {
+  cardUuid: string;
+  card: PublicProfileCard | null;
+  myQuantity: number;
+  theirQuantity: number;
+  canOffer: number;
 }

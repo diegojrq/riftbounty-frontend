@@ -12,7 +12,7 @@ import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
 import { useCards } from "@/lib/cards-context";
-import type { PublicUser, MatchItem, PublicProfileCard } from "@/types/auth";
+import type { PublicUser, MatchItem, OfferableItem, PublicProfileCard } from "@/types/auth";
 import type { Card } from "@/types/card";
 
 
@@ -108,11 +108,11 @@ const TYPE_IMAGE: Record<string, string> = {
   battlefield: "/images/types/battlefields.webp",
 };
 
-function groupCardsBySetAndType<T extends { card: PublicProfileCard }>(items: T[]) {
+function groupCardsBySetAndType<T extends { card: PublicProfileCard | null }>(items: T[]) {
   const bySet = new Map<string, Map<string, T[]>>();
   for (const item of items) {
-    const set = item.card.cardSet ?? "—";
-    const type = (item.card.type ?? "other").toLowerCase();
+    const set = item.card?.cardSet ?? "—";
+    const type = (item.card?.type ?? "other").toLowerCase();
     if (!bySet.has(set)) bySet.set(set, new Map());
     const byType = bySet.get(set)!;
     if (!byType.has(type)) byType.set(type, []);
@@ -151,28 +151,33 @@ interface BasketPanelProps {
   onUpdateQty: (uuid: string, qty: number) => void;
   onRemove: (uuid: string) => void;
   onClear: () => void;
-  /** If set, submitting adds items to this trade and submits counter instead of creating a new trade */
+  /** O que você pede do outro (só na criação; enviado como requestedItems) */
+  requestedBasket?: Map<string, BasketItem>;
+  onUpdateRequestedQty?: (uuid: string, qty: number) => void;
+  onRemoveRequested?: (uuid: string) => void;
+  onClearRequested?: () => void;
   activeTrade?: TradeSummary | null;
-  /** Full trade detail used to show what the other player already requested */
   activeTradeDetail?: Trade | null;
-  /** Whether it's the current user's turn to act on activeTrade */
   isMyTurn?: boolean;
-  /** Map of cardUuid → existing TradeItem for my side of the active trade (for diff on submit) */
   originalItemsMap?: Map<string, TradeItem>;
-  /** Called when counter-offer submit fails so the page can refetch trade and re-sync basket */
   onCounterSubmitError?: (tradeId: string) => void;
 }
 
-function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty, onRemove, onClear, cardCacheMap, scraperIdMap, activeTrade, activeTradeDetail, isMyTurn, originalItemsMap, onCounterSubmitError }: BasketPanelProps & { cardCacheMap: Map<string, Card>; scraperIdMap: Map<string, Card> }) {
+function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty, onRemove, onClear, requestedBasket, onUpdateRequestedQty, onRemoveRequested, onClearRequested, cardCacheMap, scraperIdMap, activeTrade, activeTradeDetail, isMyTurn, originalItemsMap, onCounterSubmitError }: BasketPanelProps & { cardCacheMap: Map<string, Card>; scraperIdMap: Map<string, Card> }) {
   const router = useRouter();
   const { t } = useLocale();
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const items = useMemo(() => [...basket.values()], [basket]);
+  const requestedItemsList = useMemo(
+    () => (requestedBasket ? [...requestedBasket.values()] : []),
+    [requestedBasket]
+  );
   const totalQty = items.reduce((s, i) => s + i.quantity, 0);
   const hasActiveTrade = !!activeTrade;
   const isCounterMode = hasActiveTrade && !!isMyTurn;
+  const showRequestedSection = !hasActiveTrade && requestedBasket && requestedBasket.size > 0 && onUpdateRequestedQty && onRemoveRequested && onClearRequested;
 
   // Items the other player placed in the trade (what they're asking from me)
   // recipientSlug here is the profile being viewed (the other player)
@@ -306,9 +311,14 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
         }
         router.push(`/trades/${activeTrade.id}`);
       } else {
+        const requestedItems =
+          requestedBasket && requestedBasket.size > 0
+            ? [...requestedBasket.values()].map((i) => ({ cardId: i.card.uuid, quantity: i.quantity }))
+            : undefined;
         const trade = await createTrade({
           recipientSlug,
           items: items.map((i) => ({ cardId: i.card.uuid, quantity: i.quantity })),
+          ...(requestedItems && requestedItems.length > 0 ? { requestedItems } : {}),
           ...(message.trim() ? { message: message.trim() } : {}),
         });
         router.push(`/trades/${trade.id}`);
@@ -346,12 +356,90 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
             </p>
           )}
         </div>
-        {items.length > 0 && (
-          <button type="button" onClick={onClear} className="text-xs text-gray-600 hover:text-red-400">
-            {t("common.clearAll")}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {showRequestedSection && (
+            <button type="button" onClick={onClearRequested} className="text-xs text-gray-600 hover:text-red-400">
+              {t("trades.clearRequested")}
+            </button>
+          )}
+          {items.length > 0 && (
+            <button type="button" onClick={onClear} className="text-xs text-gray-600 hover:text-red-400">
+              {t("common.clearAll")}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* O que você pede do outro (só na nova proposta) */}
+      {showRequestedSection && (
+        <div className="border-b border-gray-700 px-3 py-2">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            {t("trades.whatYouAskFor")}
+          </p>
+          <ul className="space-y-1">
+            {requestedItemsList.map((item) => {
+              const domains = getCardDomains(item.card);
+              const rarity = (item.card.rarity ?? "").toLowerCase().replace(/\s+/g, "");
+              const rarityNorm = rarity === "overnumbered" ? "showcase" : rarity;
+              return (
+                <li key={item.card.uuid} className="flex items-center gap-2 py-0.5">
+                  <div className="flex items-center gap-1 rounded border border-gray-600 bg-gray-700/50 px-1">
+                    <button
+                      type="button"
+                      disabled={item.quantity <= 1}
+                      onClick={() => onUpdateRequestedQty!(item.card.uuid, item.quantity - 1)}
+                      className="text-gray-400 hover:text-white disabled:opacity-40"
+                      aria-label={t("common.decrease")}
+                    >
+                      −
+                    </button>
+                    <span className="min-w-[1.25rem] text-center text-xs tabular-nums text-white">
+                      {item.quantity}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={item.quantity >= item.maxQty}
+                      onClick={() => onUpdateRequestedQty!(item.card.uuid, item.quantity + 1)}
+                      className="text-gray-400 hover:text-white disabled:opacity-40"
+                      aria-label={t("common.increase")}
+                    >
+                      +
+                    </button>
+                  </div>
+                  <CardHoverPreview card={item.card}>
+                    <span className="flex min-w-0 flex-1 cursor-default items-center gap-1">
+                      <span className="flex gap-0.5">
+                        {getDisplayDomainIcons(domains).length > 0 ? (
+                          getDisplayDomainIcons(domains).map((d) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-3.5 w-3.5 object-contain" />
+                          ))
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={getNoDomainIcon(item.card)} alt="" className="h-3.5 w-3.5 object-contain opacity-80" />
+                        )}
+                      </span>
+                      <span className="truncate text-xs text-blue-400">{item.card.name}</span>
+                      {rarityNorm && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={`/images/rarities/${rarityNorm}.svg`} alt={rarityNorm} className="h-3 w-3 shrink-0 opacity-60" />
+                      )}
+                    </span>
+                  </CardHoverPreview>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveRequested!(item.card.uuid)}
+                    className="shrink-0 text-gray-500 hover:text-red-400"
+                    aria-label={t("common.remove")}
+                  >
+                    ×
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {/* What the other player already requested — grouped by set/type like the bottom section */}
       {hasActiveTrade && theirRequestedGrouped.length > 0 && (
@@ -596,12 +684,15 @@ export default function PublicProfilePage() {
   const [notFound, setNotFound] = useState(false);
 
   const [match, setMatch] = useState<MatchItem[]>([]);
+  const [offerable, setOfferable] = useState<OfferableItem[]>([]);
   const [matchLoading, setMatchLoading] = useState(false);
   const [matchLoaded, setMatchLoaded] = useState(false);
 
   const [search, setSearch] = useState("");
   const [selectedRarities, setSelectedRarities] = useState<string[]>([]);
   const [onlyMissing, setOnlyMissing] = useState(false);
+  /** "collection" = coleção pública deles com + onde podemos oferecer; "trade" = listas match + offerable */
+  const [collectionTab, setCollectionTab] = useState<"collection" | "trade">("collection");
 
   /* ── Active trade (for counter-offer flow) ─── */
   const [activeTrade, setActiveTrade] = useState<TradeSummary | null>(null);
@@ -642,25 +733,22 @@ export default function PublicProfilePage() {
   const [basket, setBasket] = useState<Map<string, BasketItem>>(new Map());
 
   // Pre-populate basket with my existing items when entering counter mode.
-  // Wait for match data so we can resolve the correct maxQty (theirQuantity).
+  // Basket = my offer; use offerable (canOffer) for maxQty when available.
   useEffect(() => {
     if (!activeTradeDetail || !activeTrade || !me) return;
-    // If match is expected (not own profile) but not yet loaded, wait
     if (matchLoading) return;
     const myItems =
       activeTrade.initiatorSlug === me.slug
         ? activeTradeDetail.initiatorItems ?? []
         : activeTradeDetail.recipientItems ?? [];
     if (myItems.length === 0) return;
-    // Build a quick lookup: cardUuid → theirQuantity
-    const matchQtyMap = new Map(match.map((m) => [m.cardUuid, m.theirQuantity]));
+    const offerableQtyMap = new Map(offerable.map((o) => [o.cardUuid, o.canOffer]));
     setBasket(
       new Map(
         myItems.map((item) => {
           const card = item.card as PublicProfileCard;
           const uuid = card.uuid ?? item.cardId;
-          // Use theirQuantity from match, fallback to item.quantity so it's never less than current
-          const maxQty = matchQtyMap.get(uuid) ?? item.quantity;
+          const maxQty = offerableQtyMap.get(uuid) ?? item.quantity;
           return [
             uuid,
             {
@@ -673,9 +761,8 @@ export default function PublicProfilePage() {
         })
       )
     );
-  // Re-run when detail or match finishes loading
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTradeDetail?.id, me?.slug, matchLoading]);
+  }, [activeTradeDetail?.id, me?.slug, matchLoading, offerable]);
   const [addAnimations, setAddAnimations] = useState<Map<string, string[]>>(new Map());
   const [basketDrawerOpen, setBasketDrawerOpen] = useState(false);
 
@@ -730,6 +817,41 @@ export default function PublicProfilePage() {
     setBasket(new Map());
   }
 
+  /* ── Requested basket (o que eu quero dele — só na nova proposta) ──────────────────────────── */
+  const [requestedBasket, setRequestedBasket] = useState<Map<string, BasketItem>>(new Map());
+
+  function addToRequestedBasket(card: PublicProfileCard, maxQty: number) {
+    const current = requestedBasket.get(card.uuid)?.quantity ?? 0;
+    if (current >= maxQty) return;
+    setRequestedBasket((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(card.uuid);
+      next.set(card.uuid, { card, quantity: Math.min((existing?.quantity ?? 0) + 1, maxQty), maxQty });
+      return next;
+    });
+  }
+
+  function updateRequestedBasketQty(uuid: string, qty: number) {
+    if (qty <= 0) {
+      setRequestedBasket((prev) => { const next = new Map(prev); next.delete(uuid); return next; });
+    } else {
+      setRequestedBasket((prev) => {
+        const next = new Map(prev);
+        const item = next.get(uuid);
+        if (item) next.set(uuid, { ...item, quantity: Math.min(qty, item.maxQty) });
+        return next;
+      });
+    }
+  }
+
+  function removeFromRequestedBasket(uuid: string) {
+    setRequestedBasket((prev) => { const next = new Map(prev); next.delete(uuid); return next; });
+  }
+
+  function clearRequestedBasket() {
+    setRequestedBasket(new Map());
+  }
+
   /* ── Data loading ─────────────────────────── */
   useEffect(() => {
     if (!slug) { setLoading(false); setNotFound(true); return; }
@@ -750,7 +872,13 @@ export default function PublicProfilePage() {
     let cancelled = false;
     setMatchLoading(true);
     getProfileMatch(slug)
-      .then((data) => { if (!cancelled) { setMatch(data); setMatchLoaded(true); } })
+      .then((data) => {
+        if (!cancelled) {
+          setMatch(data.match ?? []);
+          setOfferable(data.offerable ?? []);
+          setMatchLoaded(true);
+        }
+      })
       .catch(() => { if (!cancelled) setMatchLoaded(true); })
       .finally(() => { if (!cancelled) setMatchLoading(false); });
     return () => { cancelled = true; };
@@ -768,7 +896,7 @@ export default function PublicProfilePage() {
         if (!selectedRarities.includes(r)) return false;
       }
       if (!q) return true;
-      if (item.card.name.toLowerCase().includes(q)) return true;
+      if ((item.card.name ?? "").toLowerCase().includes(q)) return true;
       const cached = cardCacheMap.get(item.cardUuid);
       if (!cached) return false;
       if (cached.subtypes?.some((s: string) => s.toLowerCase().includes(q))) return true;
@@ -781,6 +909,7 @@ export default function PublicProfilePage() {
   const filteredMatch = useMemo(() => {
     const q = search.trim().toLowerCase();
     return match.filter((item) => {
+      if (!item.card) return false;
       if (onlyMissing && item.myQuantity > 0) return false;
       if (selectedRarities.length > 0) {
         const raw = item.card.rarity?.toLowerCase().replace(/\s+/g, "") ?? "";
@@ -788,9 +917,23 @@ export default function PublicProfilePage() {
         if (!selectedRarities.includes(r)) return false;
       }
       if (!q) return true;
-      return item.card.name.toLowerCase().includes(q);
+      return (item.card.name ?? "").toLowerCase().includes(q);
     });
   }, [match, search, selectedRarities, onlyMissing]);
+
+  const filteredOfferable = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return offerable.filter((item) => {
+      if (!item.card) return false;
+      if (selectedRarities.length > 0) {
+        const raw = item.card.rarity?.toLowerCase().replace(/\s+/g, "") ?? "";
+        const r = raw === "overnumbered" ? "showcase" : raw;
+        if (!selectedRarities.includes(r)) return false;
+      }
+      if (!q) return true;
+      return (item.card.name ?? "").toLowerCase().includes(q);
+    });
+  }, [offerable, search, selectedRarities]);
 
   const groupedCollection = useMemo(
     () => groupCardsBySetAndType(filteredCollection),
@@ -800,6 +943,26 @@ export default function PublicProfilePage() {
   const groupedMatch = useMemo(
     () => groupCardsBySetAndType(filteredMatch),
     [filteredMatch]
+  );
+
+  const groupedOfferable = useMemo(
+    () => groupCardsBySetAndType(filteredOfferable),
+    [filteredOfferable]
+  );
+
+  /** Para aba Coleção: cardUuid → offerable (para mostrar + e canOffer na coleção pública deles) */
+  const offerableByCardUuid = useMemo(
+    () => new Map(offerable.map((o) => [o.cardUuid, o])),
+    [offerable]
+  );
+
+  /** Para aba Coleção: cardUuid → minha quantidade (match + offerable) */
+  const myQuantityByCardUuid = useMemo(
+    () => new Map<string, number>([
+      ...match.map((m) => [m.cardUuid, m.myQuantity] as const),
+      ...offerable.map((o) => [o.cardUuid, o.myQuantity] as const),
+    ]),
+    [match, offerable]
   );
 
   // Map of cardUuid → existing TradeItem for my side (used for diff on counter submit)
@@ -822,13 +985,13 @@ export default function PublicProfilePage() {
             detail.initiatorSlug === me.slug
               ? detail.initiatorItems ?? []
               : detail.recipientItems ?? [];
-          const matchQtyMap = new Map(match.map((m) => [m.cardUuid, m.theirQuantity]));
+          const offerableQtyMap = new Map(offerable.map((o) => [o.cardUuid, o.canOffer]));
           setBasket(
             new Map(
               myItems.map((item) => {
                 const card = item.card as PublicProfileCard;
                 const uuid = card.uuid ?? item.cardId;
-                const maxQty = matchQtyMap.get(uuid) ?? item.quantity;
+                const maxQty = offerableQtyMap.get(uuid) ?? item.quantity;
                 return [
                   uuid,
                   {
@@ -844,7 +1007,7 @@ export default function PublicProfilePage() {
         })
         .catch(() => {});
     },
-    [me, match]
+    [me, offerable]
   );
 
   /* ── Loading / not found ─────────────────── */
@@ -909,6 +1072,10 @@ export default function PublicProfilePage() {
               onUpdateQty={updateBasketQty}
               onRemove={removeFromBasket}
               onClear={clearBasket}
+              requestedBasket={!activeTrade ? requestedBasket : undefined}
+              onUpdateRequestedQty={!activeTrade ? updateRequestedBasketQty : undefined}
+              onRemoveRequested={!activeTrade ? removeFromRequestedBasket : undefined}
+              onClearRequested={!activeTrade ? clearRequestedBasket : undefined}
               cardCacheMap={cardCacheMap}
               scraperIdMap={scraperIdMap}
               activeTrade={activeTrade}
@@ -945,28 +1112,56 @@ export default function PublicProfilePage() {
           <div className="min-w-0 flex-1 md:flex-[7]">
             <div className="overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
 
-              {/* Section header */}
+              {/* Section header + tabs (Coleção | Trade) when trade panel */}
               <div className="border-b border-gray-700 px-5 py-4">
                 <div className="flex items-baseline justify-between gap-3">
-                  <div>
+                  <div className="flex flex-wrap items-center gap-3">
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">{t("profile.collection")}</h2>
-                    {showTradePanel ? (
-                      !matchLoading && match.length > 0 && (
-                        <p className="mt-0.5 text-xs text-gray-500">
-                          {t("profile.ofCards", { filtered: filteredMatch.length, total: match.length })}
-                          <span className="ml-2 text-gray-600">· {t("profile.clickPlusToTrade")}</span>
-                        </p>
-                      )
-                    ) : (
-                      publicCollection.length > 0 && (
-                        <p className="mt-0.5 text-xs text-gray-500">
-                          {t("profile.ofCards", { filtered: filteredCollection.length, total: publicCollection.length })}
-                        </p>
-                      )
+                    {showTradePanel && (
+                      <div className="flex rounded-lg border border-gray-600 bg-gray-900/50 p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setCollectionTab("collection")}
+                          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                            collectionTab === "collection" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
+                          }`}
+                        >
+                          {t("profile.tabCollection")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCollectionTab("trade")}
+                          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                            collectionTab === "trade" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
+                          }`}
+                        >
+                          {t("profile.tabTrade")}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
-                {(showTradePanel ? (!matchLoading && match.length > 0) : publicCollection.length > 0) && (
+                {collectionTab === "collection" && (
+                  publicCollection.length > 0 && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      {t("profile.ofCards", { filtered: filteredCollection.length, total: publicCollection.length })}
+                    </p>
+                  )
+                )}
+                {showTradePanel && collectionTab === "trade" && !matchLoading && (match.length > 0 || offerable.length > 0) && (
+                  <>
+                    <p className="mt-2 text-xs text-gray-500">
+                      {t("profile.wantFromThemCount", { count: match.length })}
+                      {" · "}
+                      {t("profile.canOfferCount", { count: offerable.length })}
+                      <span className="ml-2 text-gray-600">· {t("profile.addFromCanOffer")}</span>
+                    </p>
+                    <p className="mt-1 text-[11px] text-gray-600">{t("profile.tradePredictiveExplain")}</p>
+                  </>
+                )}
+                {((showTradePanel && collectionTab === "collection" && publicCollection.length > 0) ||
+                  (showTradePanel && collectionTab === "trade" && !matchLoading && (match.length > 0 || offerable.length > 0)) ||
+                  (!showTradePanel && publicCollection.length > 0)) && (
                   <div className="mt-3 space-y-2">
                     <input
                       type="search"
@@ -976,7 +1171,6 @@ export default function PublicProfilePage() {
                       className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                     <div className="flex items-center gap-2">
-                      {/* Rarity toggles */}
                       <div className="flex items-center gap-1.5">
                         {RARITIES.map((r) => {
                           const active = selectedRarities.includes(r);
@@ -1011,9 +1205,7 @@ export default function PublicProfilePage() {
                           </button>
                         )}
                       </div>
-
-                      {/* Only missing toggle — only for trade match view */}
-                      {showTradePanel && (
+                      {showTradePanel && collectionTab === "trade" && (
                         <button
                           type="button"
                           onClick={() => setOnlyMissing((v) => !v)}
@@ -1036,19 +1228,123 @@ export default function PublicProfilePage() {
 
               {/* Cards */}
               {showTradePanel ? (
-                /* ── Match view (logged in, other's profile) ── */
                 matchLoading ? (
                   <ul className="space-y-1.5 p-4">
                     {Array.from({ length: 10 }).map((_, i) => (
                       <li key={i} className="h-6 animate-pulse rounded bg-gray-700" />
                     ))}
                   </ul>
-                ) : filteredMatch.length > 0 ? (
+                ) : collectionTab === "collection" ? (
+                  /* ── Aba Coleção: coleção pública deles — só solicitar (pedir), não oferecer ── */
+                  publicCollection.length > 0 ? (
+                    <div className="px-4 py-3">
+                      {filteredCollection.length === 0 ? (
+                        <p className="py-6 text-center text-sm text-gray-500">{t("profile.noCardsMatchSearchGeneric")}</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {groupedCollection.map(({ set, label, types }) => (
+                            <div key={set}>
+                              <div className="mb-2 flex items-center gap-2">
+                                <span className="text-sm font-bold uppercase tracking-wide text-gray-200">{label}</span>
+                                <div className="h-px flex-1 bg-gray-700" />
+                              </div>
+                              <div className="space-y-2.5 pl-2">
+                                {types.map(({ type, label: typeLabel, cards }) => {
+                                  const icon = TYPE_IMAGE[type];
+                                  return (
+                                    <div key={type}>
+                                      <div className="mb-0.5 flex items-center gap-1.5">
+                                        {icon && (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img src={icon} alt={typeLabel} className="h-3.5 w-3.5 object-contain opacity-70" />
+                                        )}
+                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                                          {typeLabel} <span className="text-gray-600">({cards.length})</span>
+                                        </span>
+                                      </div>
+                                      <ul className="space-y-0.5 pl-4">
+                                        {cards.map((item) => {
+                                          const maxRequested = item.quantity;
+                                          const requestedItem = requestedBasket.get(item.cardUuid);
+                                          const inRequested = !!requestedItem;
+                                          const atMaxRequested = inRequested && requestedItem.quantity >= maxRequested;
+                                          const myQty = myQuantityByCardUuid.get(item.cardUuid) ?? 0;
+                                          const cached = lookupCached(item.cardUuid, item.card?.scraperId);
+                                          const domains = getCardDomains(cached ?? item.card);
+                                          const rarityIcon = getRarityIcon(item.card?.rarity);
+                                          const cardForRequested = { ...(item.card ?? cached), uuid: (item.card as { uuid?: string })?.uuid ?? item.cardUuid } as PublicProfileCard;
+                                          return (
+                                            <li key={item.cardUuid} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
+                                              <CardHoverPreview card={(item.card ?? cached) as unknown as Card}>
+                                                <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
+                                                  {getDisplayDomainIcons(domains).length > 0 ? (
+                                                    getDisplayDomainIcons(domains).map((d) => (
+                                                      // eslint-disable-next-line @next/next/no-img-element
+                                                      <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
+                                                    ))
+                                                  ) : (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={getNoDomainIcon(cached ?? item.card)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
+                                                  )}
+                                                  <span className="shrink-0 tabular-nums text-gray-500">×{item.quantity}</span>
+                                                  <span className="truncate text-blue-400">{item.card?.name ?? item.cardUuid}</span>
+                                                  {rarityIcon && (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={rarityIcon} alt={item.card?.rarity ?? ""} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
+                                                  )}
+                                                </span>
+                                              </CardHoverPreview>
+                                              <span className="flex shrink-0 items-center gap-2">
+                                                <span className="text-[10px] tabular-nums text-gray-500">{t("profile.mine")} ×{myQty}</span>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => addToRequestedBasket(cardForRequested, maxRequested)}
+                                                  disabled={atMaxRequested}
+                                                  className={`flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${atMaxRequested ? "border-amber-600/60 bg-amber-900/30 text-amber-400" : inRequested ? "border-blue-500 bg-blue-700/60 text-blue-300 hover:bg-blue-700" : "border-gray-700 bg-blue-800/40 text-blue-400 hover:bg-blue-700/60"}`}
+                                                  title={atMaxRequested ? t("trades.maxQuantity", { count: maxRequested }) : inRequested ? `${requestedItem.quantity}/${maxRequested}` : t("trades.requestOne")}
+                                                  aria-label={t("trades.requestOne")}
+                                                >
+                                                  {t("trades.requestOne")}
+                                                </button>
+                                              </span>
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="px-6 py-8 text-center">
+                      <p className="text-sm text-gray-500">{t("profile.noPublicCollection")}</p>
+                    </div>
+                  )
+                ) : collectionTab === "trade" ? (
+                  match.length === 0 && offerable.length === 0 ? (
+                    <div className="px-6 py-8 text-center">
+                      <p className="text-sm text-gray-500">{t("profile.noMatchNoOfferable")}</p>
+                    </div>
+                  ) : (
                   <div className="px-4 py-3">
-                    {search && match.length > 0 && (
-                      <p className="mb-2 text-xs text-gray-500">{t("profile.matching", { count: filteredMatch.length, total: match.length, search })}</p>
+                    {search && (match.length > 0 || offerable.length > 0) && (
+                      <p className="mb-2 text-xs text-gray-500">{t("profile.matching", { count: filteredMatch.length + filteredOfferable.length, total: match.length + offerable.length, search })}</p>
                     )}
-                    <div className="space-y-4">
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 min-w-0">
+                      {/* Coluna esquerda: Cartas que @fulano tem que eu não tenho (match) */}
+                      {match.length > 0 && (
+                      <div className="min-w-0 flex flex-col">
+                        <h3 className="mb-3 flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-950/30 px-3 py-2 text-sm font-bold uppercase tracking-wider text-blue-200">
+                          <span className="flex h-2 w-2 shrink-0 rounded-full bg-blue-400" aria-hidden />
+                          {t("profile.cardsTheyHaveINeed", { slug: user.slug })}
+                        </h3>
+                        <div className="space-y-4 min-h-0">
                       {groupedMatch.map(({ set, label, types }) => (
                         <div key={set}>
                           <div className="mb-2 flex items-center gap-2">
@@ -1071,23 +1367,16 @@ export default function PublicProfilePage() {
                                   </div>
                                   <ul className="space-y-0.5 pl-4">
                                     {cards.map((item) => {
-                                      const animKeys = addAnimations.get(item.cardUuid) ?? [];
-                                      const basketItem = basket.get(item.cardUuid);
-                                      const inBasket = !!basketItem;
-                                      const atMax = inBasket && basketItem.quantity >= item.theirQuantity;
+                                      const maxRequested = item.need ?? item.theirQuantity;
+                                      const requestedItem = requestedBasket.get(item.cardUuid);
+                                      const inRequested = !!requestedItem;
+                                      const atMaxRequested = inRequested && requestedItem.quantity >= maxRequested;
                                       const cached = lookupCached(item.cardUuid, item.card.scraperId);
                                       const domains = getCardDomains(cached);
                                       const rarityIcon = getRarityIcon(item.card.rarity);
+                                      const cardForRequested = { ...item.card, uuid: (item.card as { uuid?: string }).uuid ?? item.cardUuid } as PublicProfileCard;
                                       return (
                                         <li key={item.cardUuid} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
-                                          {animKeys.map((key, i) => (
-                                            <div key={key} className="pointer-events-none absolute inset-0 z-10">
-                                              <div className="animate-card-added absolute inset-0 rounded bg-green-400/20 ring-1 ring-green-500/40" />
-                                              <div className="animate-plus-one absolute right-10 flex" style={{ top: `calc(50% - ${i * 16}px - 10px)` }}>
-                                                <span className="rounded-full bg-green-500 px-1.5 py-0.5 text-xs font-bold text-white shadow">+1</span>
-                                              </div>
-                                            </div>
-                                          ))}
                                           <CardHoverPreview card={item.card as unknown as Card}>
                                             <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
                                               {getDisplayDomainIcons(domains).length > 0 ? (
@@ -1108,20 +1397,16 @@ export default function PublicProfilePage() {
                                             </span>
                                           </CardHoverPreview>
                                           <span className="flex shrink-0 items-center gap-2">
-                                            <span className="text-[10px] tabular-nums text-gray-600">{t("profile.mine")} ×{item.myQuantity}</span>
+                                            <span className="text-[10px] tabular-nums text-gray-500">{t("profile.mine")} ×{item.myQuantity}</span>
                                             <button
                                               type="button"
-                                              onClick={() => addToBasket(item.card, item.theirQuantity)}
-                                              disabled={atMax}
-                                              className={`flex size-6 shrink-0 items-center justify-center rounded border transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
-                                                atMax ? "border-amber-600/60 bg-amber-900/30 text-amber-400"
-                                                : inBasket ? "border-green-500 bg-green-700/60 text-green-300 hover:bg-green-700"
-                                                : "border-green-700 bg-green-800/40 text-green-400 hover:bg-green-700/60"
-                                              }`}
-                                              title={atMax ? t("trades.maxQuantity", { count: item.theirQuantity }) : inBasket ? `${basketItem!.quantity}/${item.theirQuantity}` : t("trades.addToTrade")}
-                                              aria-label={t("trades.addToTrade")}
+                                              onClick={() => addToRequestedBasket(cardForRequested, maxRequested)}
+                                              disabled={atMaxRequested}
+                                              className={`flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${atMaxRequested ? "border-amber-600/60 bg-amber-900/30 text-amber-400" : inRequested ? "border-blue-500 bg-blue-700/60 text-blue-300 hover:bg-blue-700" : "border-gray-700 bg-blue-800/40 text-blue-400 hover:bg-blue-700/60"}`}
+                                              title={atMaxRequested ? t("trades.maxQuantity", { count: maxRequested }) : inRequested ? `${requestedItem.quantity}/${maxRequested}` : t("trades.requestOne")}
+                                              aria-label={t("trades.requestOne")}
                                             >
-                                              <IconPlus className="size-3" />
+                                              {t("trades.requestOne")}
                                             </button>
                                           </span>
                                         </li>
@@ -1134,18 +1419,113 @@ export default function PublicProfilePage() {
                           </div>
                         </div>
                       ))}
+                        </div>
+                      </div>
+                      )}
+
+                      {/* Coluna direita: Cartas que eu tenho e que @fulano não tem (offerable) */}
+                      {offerable.length > 0 && (
+                      <div className="min-w-0 flex flex-col">
+                        <h3 className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-950/30 px-3 py-2 text-sm font-bold uppercase tracking-wider text-emerald-200">
+                          <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-400" aria-hidden />
+                          {t("profile.cardsIHaveTheyDont", { slug: user.slug })}
+                        </h3>
+                        <div className="space-y-4 min-h-0">
+                          {groupedOfferable.map(({ set, label, types }) => (
+                            <div key={set}>
+                              <div className="mb-2 flex items-center gap-2">
+                                <span className="text-sm font-bold uppercase tracking-wide text-gray-200">{label}</span>
+                                <div className="h-px flex-1 bg-gray-700" />
+                              </div>
+                              <div className="space-y-2.5 pl-2">
+                                {types.map(({ type, label: typeLabel, cards }) => {
+                                  const icon = TYPE_IMAGE[type];
+                                  return (
+                                    <div key={type}>
+                                      <div className="mb-0.5 flex items-center gap-1.5">
+                                        {icon && (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img src={icon} alt={typeLabel} className="h-3.5 w-3.5 object-contain opacity-70" />
+                                        )}
+                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                                          {typeLabel} <span className="text-gray-600">({cards.length})</span>
+                                        </span>
+                                      </div>
+                                      <ul className="space-y-0.5 pl-4">
+                                        {cards.map((item) => {
+                                          const animKeys = addAnimations.get(item.cardUuid) ?? [];
+                                          const basketItem = basket.get(item.cardUuid);
+                                          const inBasket = !!basketItem;
+                                          const atMax = inBasket && basketItem.quantity >= item.canOffer;
+                                          const cached = lookupCached(item.cardUuid, item.card?.scraperId);
+                                          const domains = getCardDomains(cached ?? item.card);
+                                          const rarityIcon = getRarityIcon(item.card?.rarity);
+                                          const card = item.card ?? cached;
+                                          if (!card) return null;
+                                          const cardForBasket = { ...card, uuid: (card as { uuid?: string }).uuid ?? item.cardUuid } as PublicProfileCard;
+                                          return (
+                                            <li key={item.cardUuid} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
+                                              {animKeys.map((key, i) => (
+                                                <div key={key} className="pointer-events-none absolute inset-0 z-10">
+                                                  <div className="animate-card-added absolute inset-0 rounded bg-green-400/20 ring-1 ring-green-500/40" />
+                                                  <div className="animate-plus-one absolute right-10 flex" style={{ top: `calc(50% - ${i * 16}px - 10px)` }}>
+                                                    <span className="rounded-full bg-green-500 px-1.5 py-0.5 text-xs font-bold text-white shadow">+1</span>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                              <CardHoverPreview card={card as unknown as Card}>
+                                                <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
+                                                  {getDisplayDomainIcons(domains).length > 0 ? (
+                                                    getDisplayDomainIcons(domains).map((d) => (
+                                                      // eslint-disable-next-line @next/next/no-img-element
+                                                      <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
+                                                    ))
+                                                  ) : (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={getNoDomainIcon(cached ?? item.card)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
+                                                  )}
+                                                  <span className="shrink-0 tabular-nums text-emerald-500">×{item.myQuantity}</span>
+                                                  <span className="truncate text-blue-400">{(card as { name?: string | null }).name ?? item.cardUuid}</span>
+                                                  {rarityIcon && (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={rarityIcon} alt={(card as { rarity?: string }).rarity ?? ""} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
+                                                  )}
+                                                </span>
+                                              </CardHoverPreview>
+                                              <span className="flex shrink-0 items-center gap-2">
+                                                <span className="text-[10px] tabular-nums text-gray-500">{t("profile.mine")} ×{item.myQuantity}</span>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => addToBasket(cardForBasket, item.canOffer)}
+                                                  disabled={atMax}
+                                                  className={`flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${atMax ? "border-amber-600/60 bg-amber-900/30 text-amber-400" : inBasket ? "border-green-500 bg-green-700/60 text-green-300 hover:bg-green-700" : "border-gray-700 bg-green-800/40 text-green-400 hover:bg-green-700/60"}`}
+                                                  title={atMax ? t("trades.maxQuantity", { count: item.canOffer }) : inBasket ? `${basketItem!.quantity}/${item.canOffer}` : t("trades.offerOne")}
+                                                  aria-label={t("trades.offerOne")}
+                                                >
+                                                  {t("trades.offerOne")}
+                                                </button>
+                                              </span>
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      )}
                     </div>
+
+                    {match.length > 0 && offerable.length === 0 && (
+                      <p className="mt-3 text-xs text-gray-500">{t("profile.noOfferableHint")}</p>
+                    )}
                   </div>
-                ) : (
-                  <div className="px-6 py-8 text-center">
-                    <p className="text-sm text-gray-500">
-                      {search
-                        ? t("profile.noCardsMatchSearch", { search })
-                        : t("profile.noCardsFoundForTrade", { slug: user.slug })
-                      }
-                    </p>
-                  </div>
-                )
+                  )
+                ) : null
               ) : (
                 /* ── Own profile or unauthenticated: show full public collection ── */
                 publicCollection.length > 0 ? (
@@ -1235,6 +1615,10 @@ export default function PublicProfilePage() {
                     onUpdateQty={updateBasketQty}
                     onRemove={removeFromBasket}
                     onClear={clearBasket}
+                    requestedBasket={!activeTrade ? requestedBasket : undefined}
+                    onUpdateRequestedQty={!activeTrade ? updateRequestedBasketQty : undefined}
+                    onRemoveRequested={!activeTrade ? removeFromRequestedBasket : undefined}
+                    onClearRequested={!activeTrade ? clearRequestedBasket : undefined}
                     cardCacheMap={cardCacheMap}
                     scraperIdMap={scraperIdMap}
                     activeTrade={activeTrade}

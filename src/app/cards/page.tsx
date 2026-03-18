@@ -324,8 +324,8 @@ function CardsPageContent() {
         </header>
       </div>
 
-      {/* Filter bar — sticky */}
-      <div className="sticky top-0 z-20 border-b border-gray-700 bg-gray-900 sm:top-[77px]">
+      {/* Filter bar — sticky colado ao Header (altura do Header ≈ 61px em sm+) */}
+      <div className="sticky top-0 z-20 border-b border-gray-700 bg-gray-900 sm:top-[61px]">
         <div className="mx-auto w-full max-w-[1600px] px-4 py-3 sm:px-6 lg:px-10 xl:px-12">
 
           <div className="mb-3 hidden items-center gap-2 sm:flex">
