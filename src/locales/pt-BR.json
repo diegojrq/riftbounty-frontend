@@ -121,7 +121,22 @@
     "updated": "Carta atualizada.",
     "deleted": "Carta excluída.",
     "forbidden": "É necessário ser administrador.",
-    "searchPlaceholder": "Buscar por nome..."
+    "searchPlaceholder": "Buscar por nome...",
+    "tcgSyncButton": "Sincronizar preços TCG",
+    "tcgSyncRunning": "Sincronizando preços TCG...",
+    "tcgSyncSuccess": "Sincronização TCG concluída.",
+    "tcgSyncAlreadyRunning": "Já existe uma sincronização TCG em andamento.",
+    "tcgSyncError": "Falha ao sincronizar preços TCG.",
+    "tcgSyncSummaryTitle": "Resumo da última sincronização TCG",
+    "tcgSyncStartedAt": "Início",
+    "tcgSyncFinishedAt": "Fim",
+    "tcgSyncMatched": "Cartas com match",
+    "tcgSyncNoMatch": "Cartas sem match",
+    "tcgSyncPricesUpdated": "Preços atualizados",
+    "tcgSyncPricesSkipped": "Preços ignorados",
+    "tcgSyncRemainingWithoutProductId": "Restantes sem product ID",
+    "tcgSyncGroupErrors": "Erros de grupos",
+    "tcgSyncNoGroupErrors": "nenhum"
   },
   "trades": {
     "myTrades": "Minhas trocas",
@@ -262,7 +277,9 @@
     "statusLabel": "Status",
     "clearStatus": "Limpar status",
     "ownedLabel": "Possuídas",
-    "missingLabel": "Faltando"
+    "missingLabel": "Faltando",
+    "exportMissingCards": "Exportar cartas faltantes",
+    "exportMissingCardsError": "Não foi possível exportar. Faça login e tente novamente."
   },
   "collectionStats": {
     "title": "Estatísticas da coleção",

@@ -3,7 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { apiPost } from "./api";
-import { getStoredUser, removeToken, setStoredUser, setToken } from "./auth";
+import { getStoredUser, getToken, removeToken, setStoredUser, setToken } from "./auth";
 import { getProfile } from "./profile";
 import type { AuthResponse, LoginCredentials, RegisterPayload, User } from "@/types/auth";
 
@@ -78,7 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    setUser(getStoredUser());
+    const token = getToken();
+    setUser(token ? getStoredUser() : null);
     setLoading(false);
   }, []);
 

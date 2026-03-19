@@ -1,3 +1,5 @@
+import { getToken } from "./auth";
+import { getLocale } from "./locale";
 import { apiDelete, apiGet, apiPatch, apiPost } from "./api";
 import type {
   CollectionItemResponse,
@@ -5,6 +7,18 @@ import type {
   CollectionStats,
   CollectionVisibilityResponse,
 } from "@/types/collection";
+
+const EXPORT_MISSING_PATH = "cards/export/missing-cards";
+
+/** Parâmetros opcionais para exportar faltantes (mesmos filtros do GET /v1/cards). */
+export interface ExportMissingParams {
+  set?: string;
+  type?: string;
+  rarity?: string;
+  domain?: string;
+  /** Outros query params aceitos pelo backend (ex.: atributos). */
+  [key: string]: string | undefined;
+}
 
 /** GET /v1/collections/me – returns user's collection (creates on first call). Includes collection.isPublic and collection.minKeepPrivate. */
 export async function getCollection(): Promise<CollectionResponse> {
@@ -56,3 +70,51 @@ export async function getCollectionStats(): Promise<CollectionStats> {
   const res = await apiGet<CollectionStats>("/collections/me/stats");
   return res.data;
 }
+
+/**
+ * GET /v1/cards/export/missing-cards – exporta lista de cartas faltantes (uma linha por nome).
+ * Resposta: arquivo de texto; dispara download no navegador (missing-cards.txt).
+ * Requer Bearer. Params opcionais: set, type, rarity, domain, etc. (mesmos do GET /v1/cards).
+ */
+export const exportMissingCards = async (params?: ExportMissingParams): Promise<void> => {
+  if (typeof window === "undefined") {
+    throw new Error("exportMissingCards is only available in the browser");
+  }
+  const token = getToken();
+  if (!token) {
+    throw new Error("Login required");
+  }
+  const search = new URLSearchParams();
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") search.set(k, String(v));
+    }
+  }
+  const qs = search.toString();
+  const url = `/api/proxy/${EXPORT_MISSING_PATH}${qs ? `?${qs}` : ""}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Accept-Language": getLocale(),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let message: string;
+    try {
+      const json = JSON.parse(text);
+      message = json?.message ?? json?.detail ?? `Error ${res.status}`;
+    } catch {
+      message = text || `Error ${res.status}`;
+    }
+    throw new Error(typeof message === "string" ? message : String(message));
+  }
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = "missing-cards.txt";
+  a.click();
+  URL.revokeObjectURL(objectUrl);
+};

@@ -121,7 +121,22 @@
     "updated": "Card updated.",
     "deleted": "Card deleted.",
     "forbidden": "Admin access required.",
-    "searchPlaceholder": "Search by name..."
+    "searchPlaceholder": "Search by name...",
+    "tcgSyncButton": "Sync TCG prices",
+    "tcgSyncRunning": "Syncing TCG prices...",
+    "tcgSyncSuccess": "TCG sync completed.",
+    "tcgSyncAlreadyRunning": "A TCG sync is already running.",
+    "tcgSyncError": "Failed to sync TCG prices.",
+    "tcgSyncSummaryTitle": "Last TCG sync summary",
+    "tcgSyncStartedAt": "Started at",
+    "tcgSyncFinishedAt": "Finished at",
+    "tcgSyncMatched": "Matched cards",
+    "tcgSyncNoMatch": "Cards without match",
+    "tcgSyncPricesUpdated": "Prices updated",
+    "tcgSyncPricesSkipped": "Prices skipped",
+    "tcgSyncRemainingWithoutProductId": "Remaining without product ID",
+    "tcgSyncGroupErrors": "Group errors",
+    "tcgSyncNoGroupErrors": "none"
   },
   "trades": {
     "myTrades": "My Trades",
@@ -262,7 +277,9 @@
     "statusLabel": "Status",
     "clearStatus": "Clear status",
     "ownedLabel": "Owned",
-    "missingLabel": "Missing"
+    "missingLabel": "Missing",
+    "exportMissingCards": "Export missing cards",
+    "exportMissingCardsError": "Could not export. Please log in and try again."
   },
   "collectionStats": {
     "title": "Collection stats",

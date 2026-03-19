@@ -36,6 +36,7 @@ export function Header() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
   const { t, locale, setLocale } = useLocale();
+  const isAdmin = (user?.role ?? "").toLowerCase() === "admin";
   const isHome = pathname === "/";
   const [menuOpen, setMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -157,7 +158,7 @@ export function Header() {
                 )}
               </Link>
 
-              {user?.role === "admin" && (
+              {isAdmin && (
                 <Link
                   href="/admin"
                   className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
@@ -327,7 +328,7 @@ export function Header() {
                 )}
               </Link>
 
-              {user?.role === "admin" && (
+              {isAdmin && (
                 <Link
                   href="/admin"
                   className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 ${

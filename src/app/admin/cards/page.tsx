@@ -16,7 +16,9 @@ import {
   listAdminAttributes,
   createAdminCard,
   updateAdminCard,
+  runAdminTcgSync,
   type AdminRefItem,
+  type AdminTcgSyncSummary,
   type CreateCardDto,
   type UpdateCardDto,
 } from "@/lib/admin";
@@ -208,6 +210,8 @@ export default function AdminCardsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [syncRunning, setSyncRunning] = useState(false);
+  const [syncSummary, setSyncSummary] = useState<AdminTcgSyncSummary | null>(null);
   const [nameFilter, setNameFilter] = useState("");
   const [setFilter, setSetFilter] = useState<string>("");
   const [offset, setOffset] = useState(0);
@@ -250,6 +254,19 @@ export default function AdminCardsPage() {
     `${actionBase} border-blue-500/40 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20 hover:text-blue-100 focus:ring-blue-500/40`;
   const editBtn =
     `${actionBase} border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 hover:text-amber-100 focus:ring-amber-500/40`;
+
+  const formatGroupErrors = (errors: unknown[]): string => {
+    return errors
+      .map((entry) => {
+        if (typeof entry === "string") return entry;
+        try {
+          return JSON.stringify(entry);
+        } catch {
+          return String(entry);
+        }
+      })
+      .join(", ");
+  };
 
   const fetchRefs = useCallback(async () => {
     setRefsLoading(true);
@@ -433,6 +450,28 @@ export default function AdminCardsPage() {
     }
   };
 
+  const handleTcgSync = async () => {
+    if (syncRunning) return;
+    setSyncRunning(true);
+    try {
+      const result = await runAdminTcgSync();
+      setSyncSummary(result);
+      toast.success(t("admin.tcgSyncSuccess"));
+      fetchList();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.toLowerCase().includes("already running")) {
+        toast.error(t("admin.tcgSyncAlreadyRunning"));
+      } else if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
+        toast.error(t("admin.forbidden"));
+      } else {
+        toast.error(t("admin.tcgSyncError"));
+      }
+    } finally {
+      setSyncRunning(false);
+    }
+  };
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -457,12 +496,46 @@ export default function AdminCardsPage() {
         </select>
         <button
           type="button"
+          onClick={handleTcgSync}
+          disabled={syncRunning}
+          className="inline-flex items-center gap-2 rounded border border-blue-500/40 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-200 transition hover:bg-blue-500/20 hover:text-blue-100 disabled:opacity-60"
+        >
+          {syncRunning && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-transparent" />
+          )}
+          {syncRunning ? t("admin.tcgSyncRunning") : t("admin.tcgSyncButton")}
+        </button>
+        <button
+          type="button"
           onClick={openCreate}
           className="rounded bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-500"
         >
           {t("admin.newCard")}
         </button>
       </div>
+
+      {syncSummary && (
+        <div className="mb-4 rounded-lg border border-blue-900/60 bg-blue-950/30 p-4 text-sm">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-300">
+            {t("admin.tcgSyncSummaryTitle")}
+          </p>
+          <div className="grid grid-cols-1 gap-2 text-blue-100 md:grid-cols-2">
+            <p>{t("admin.tcgSyncStartedAt")}: {new Date(syncSummary.startedAt).toLocaleString()}</p>
+            <p>{t("admin.tcgSyncFinishedAt")}: {new Date(syncSummary.finishedAt).toLocaleString()}</p>
+            <p>{t("admin.tcgSyncMatched")}: {syncSummary.matched}</p>
+            <p>{t("admin.tcgSyncNoMatch")}: {syncSummary.noMatch}</p>
+            <p>{t("admin.tcgSyncPricesUpdated")}: {syncSummary.pricesUpdated}</p>
+            <p>{t("admin.tcgSyncPricesSkipped")}: {syncSummary.pricesSkipped}</p>
+            <p>{t("admin.tcgSyncRemainingWithoutProductId")}: {syncSummary.remainingWithoutProductId}</p>
+            <p>
+              {t("admin.tcgSyncGroupErrors")}:{" "}
+              {syncSummary.groupErrors.length > 0
+                ? formatGroupErrors(syncSummary.groupErrors as unknown[])
+                : t("admin.tcgSyncNoGroupErrors")}
+            </p>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded border border-red-800 bg-red-950/50 px-4 py-3 text-sm text-red-300">

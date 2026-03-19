@@ -8,6 +8,7 @@ import { BackToTop } from "@/components/layout/BackToTop";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { LangSync } from "@/components/layout/LangSync";
+import { ChunkErrorRecovery } from "@/components/layout/ChunkErrorRecovery";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,16 +29,23 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const isProd = process.env.NODE_ENV === "production";
+
   return (
     <html lang="en">
       <body className="antialiased bg-gray-900">
-        <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-S4M3QTYY4P"
-          strategy="afterInteractive"
-        />
-        <Script id="gtag-init" strategy="afterInteractive">
-          {`window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-S4M3QTYY4P');`}
-        </Script>
+        <ChunkErrorRecovery />
+        {isProd && (
+          <>
+            <Script
+              src="https://www.googletagmanager.com/gtag/js?id=G-S4M3QTYY4P"
+              strategy="afterInteractive"
+            />
+            <Script id="gtag-init" strategy="afterInteractive">
+              {`window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-S4M3QTYY4P');`}
+            </Script>
+          </>
+        )}
         <LocaleProvider>
         <LangSync />
         <AuthProvider>

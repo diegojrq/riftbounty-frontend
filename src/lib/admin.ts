@@ -17,6 +17,17 @@ export interface AdminRefListResponse {
   items: AdminRefItem[];
 }
 
+export interface AdminTcgSyncSummary {
+  startedAt: string;
+  finishedAt: string;
+  matched: number;
+  noMatch: number;
+  groupErrors: string[];
+  pricesUpdated: number;
+  pricesSkipped: number;
+  remainingWithoutProductId: number;
+}
+
 export type AdminCard = Card & {
   /** Contexto retornado pelo admin: arrays de nomes. */
   domains?: string[];
@@ -137,4 +148,10 @@ export async function listAdminSupertypes(): Promise<AdminRefItem[]> {
 export async function listAdminAttributes(): Promise<AdminRefItem[]> {
   const res = await apiGet<AdminRefListResponse>("admin/attributes");
   return res.data?.items ?? [];
+}
+
+/** POST /v1/admin/tcg/sync — executa match + atualização de preços TCG */
+export async function runAdminTcgSync(): Promise<AdminTcgSyncSummary> {
+  const res = await apiPost<AdminTcgSyncSummary>("admin/tcg/sync", {});
+  return res.data;
 }
