@@ -17,6 +17,7 @@ import {
   createAdminCard,
   updateAdminCard,
   runAdminTcgSync,
+  bumpAdminCatalogVersion,
   type AdminRefItem,
   type AdminTcgSyncSummary,
   type CreateCardDto,
@@ -211,6 +212,8 @@ export default function AdminCardsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncRunning, setSyncRunning] = useState(false);
+  const [catalogBumpRunning, setCatalogBumpRunning] = useState(false);
+  const [lastCatalogVersion, setLastCatalogVersion] = useState<string | number | null>(null);
   const [syncSummary, setSyncSummary] = useState<AdminTcgSyncSummary | null>(null);
   const [nameFilter, setNameFilter] = useState("");
   const [setFilter, setSetFilter] = useState<string>("");
@@ -472,6 +475,25 @@ export default function AdminCardsPage() {
     }
   };
 
+  const handleCatalogVersionBump = async () => {
+    if (catalogBumpRunning) return;
+    setCatalogBumpRunning(true);
+    try {
+      const result = await bumpAdminCatalogVersion();
+      setLastCatalogVersion(result.version);
+      toast.success(t("admin.catalogVersionBumpSuccess", { version: String(result.version) }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
+        toast.error(t("admin.forbidden"));
+      } else {
+        toast.error(t("admin.catalogVersionBumpError"));
+      }
+    } finally {
+      setCatalogBumpRunning(false);
+    }
+  };
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -507,6 +529,17 @@ export default function AdminCardsPage() {
         </button>
         <button
           type="button"
+          onClick={handleCatalogVersionBump}
+          disabled={catalogBumpRunning}
+          className="inline-flex items-center gap-2 rounded border border-violet-500/40 bg-violet-500/10 px-4 py-2 text-sm font-semibold text-violet-200 transition hover:bg-violet-500/20 hover:text-violet-100 disabled:opacity-60"
+        >
+          {catalogBumpRunning && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-transparent" />
+          )}
+          {catalogBumpRunning ? t("admin.catalogVersionBumpRunning") : t("admin.catalogVersionBumpButton")}
+        </button>
+        <button
+          type="button"
           onClick={openCreate}
           className="rounded bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-500"
         >
@@ -534,6 +567,12 @@ export default function AdminCardsPage() {
                 : t("admin.tcgSyncNoGroupErrors")}
             </p>
           </div>
+        </div>
+      )}
+
+      {lastCatalogVersion !== null && (
+        <div className="mb-4 rounded-lg border border-violet-900/60 bg-violet-950/30 px-4 py-3 text-sm text-violet-100">
+          {t("admin.catalogVersionCurrent", { version: String(lastCatalogVersion) })}
         </div>
       )}
 

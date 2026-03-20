@@ -4,11 +4,25 @@
  * Standard response: { status, message?, data }
  */
 
-import { getToken } from "./auth";
+import { getToken, removeToken } from "./auth";
 import { getLocale } from "./locale";
 import type { ApiSuccess } from "@/types/api";
 
 const DEFAULT_TIMEOUT_MS = 10000;
+
+function isAuthRoute(path: string): boolean {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return normalized.startsWith("/auth/login") || normalized.startsWith("/auth/register");
+}
+
+function redirectToLoginFromClient(): void {
+  if (typeof window === "undefined") return;
+  const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const url = `/login?returnTo=${encodeURIComponent(returnTo)}`;
+  if (window.location.pathname !== "/login") {
+    window.location.assign(url);
+  }
+}
 
 /**
  * No browser: sempre usa /api/proxy/ (Next.js Route Handler server-side)
@@ -73,6 +87,11 @@ export async function apiClient<T>(
     });
 
     if (!res.ok) {
+      if ((res.status === 401 || res.status === 403) && typeof window !== "undefined" && !isAuthRoute(path)) {
+        // Token expired/invalid: clear local session and force re-auth globally.
+        removeToken();
+        redirectToLoginFromClient();
+      }
       const message = body?.message ?? body?.detail ?? `Error ${res.status}`;
       throw new Error(Array.isArray(message) ? message.join(", ") : message);
     }

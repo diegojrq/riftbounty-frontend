@@ -28,6 +28,10 @@ export interface AdminTcgSyncSummary {
   remainingWithoutProductId: number;
 }
 
+export interface AdminCatalogVersionBumpResponse {
+  version: string | number;
+}
+
 export type AdminCard = Card & {
   /** Contexto retornado pelo admin: arrays de nomes. */
   domains?: string[];
@@ -153,5 +157,11 @@ export async function listAdminAttributes(): Promise<AdminRefItem[]> {
 /** POST /v1/admin/tcg/sync — executa match + atualização de preços TCG */
 export async function runAdminTcgSync(): Promise<AdminTcgSyncSummary> {
   const res = await apiPost<AdminTcgSyncSummary>("admin/tcg/sync", {});
+  return res.data;
+}
+
+/** POST /v1/admin/catalog-version/bump — incrementa versão do catálogo e invalida cache no backend */
+export async function bumpAdminCatalogVersion(): Promise<AdminCatalogVersionBumpResponse> {
+  const res = await apiPost<AdminCatalogVersionBumpResponse>("admin/catalog-version/bump", {});
   return res.data;
 }

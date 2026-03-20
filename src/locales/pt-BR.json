@@ -136,7 +136,12 @@
     "tcgSyncPricesSkipped": "Preços ignorados",
     "tcgSyncRemainingWithoutProductId": "Restantes sem product ID",
     "tcgSyncGroupErrors": "Erros de grupos",
-    "tcgSyncNoGroupErrors": "nenhum"
+    "tcgSyncNoGroupErrors": "nenhum",
+    "catalogVersionBumpButton": "Bump de versão do catálogo",
+    "catalogVersionBumpRunning": "Atualizando versão do catálogo...",
+    "catalogVersionBumpSuccess": "Versão do catálogo atualizada para {version}.",
+    "catalogVersionBumpError": "Falha ao atualizar versão do catálogo.",
+    "catalogVersionCurrent": "Versão atual do catálogo: {version}"
   },
   "trades": {
     "myTrades": "Minhas trocas",
