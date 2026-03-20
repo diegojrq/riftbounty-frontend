@@ -410,6 +410,7 @@ function CardsPageContent() {
                 <CardTile
                   key={card.uuid}
                   card={card}
+                  showTcgPriceChip
                   onOpenDetail={() => setDetailUuid(card.uuid)}
                 />
               ))}
@@ -426,6 +427,7 @@ function CardsPageContent() {
       <CardDetailModal
         uuid={detailUuid}
         onClose={() => setDetailUuid(null)}
+        showTcgPrices
       />
     </div>
   );

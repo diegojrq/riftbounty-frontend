@@ -85,6 +85,7 @@ export default function ProfilePage() {
   const [slugChecking, setSlugChecking] = useState(false);
   const [collectionIsPublic, setCollectionIsPublic] = useState(false);
   const [collectionMinKeepPrivate, setCollectionMinKeepPrivate] = useState(0);
+  const [collectionMaxPublicCopies, setCollectionMaxPublicCopies] = useState<number | null>(null);
   const [visibilityLoading, setVisibilityLoading] = useState(false);
   const errorRef = useRef<HTMLDivElement>(null);
 
@@ -115,12 +116,27 @@ export default function ProfilePage() {
     if (cep.replace(/\D/g, "").length === 8) fetchViaCep(cep);
   }
 
+  function clampInt(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, Math.trunc(value)));
+  }
+
+  function buildVisibilityRulesPayload() {
+    return {
+      minKeepPrivate: clampInt(collectionMinKeepPrivate || 0, 0, 999),
+      maxPublicCopies:
+        collectionMaxPublicCopies == null
+          ? null
+          : clampInt(collectionMaxPublicCopies, 1, 999),
+    };
+  }
+
   async function handleVisibilityToggle() {
     if (!user) return;
     setVisibilityLoading(true);
     try {
       const next = !collectionIsPublic;
-      await setCollectionVisibility(next, collectionMinKeepPrivate);
+      const rules = buildVisibilityRulesPayload();
+      await setCollectionVisibility(next, rules.minKeepPrivate, rules.maxPublicCopies);
       setCollectionIsPublic(next);
       toast.success(t("profile.visibilitySaved"));
     } catch {
@@ -130,14 +146,14 @@ export default function ProfilePage() {
     }
   }
 
-  async function handleShowOnlyCopiesToggle() {
+  async function handleSavePublicCollectionRules() {
     if (!user) return;
-    const next = collectionMinKeepPrivate >= 1 ? 0 : 1;
-    setCollectionMinKeepPrivate(next);
-    if (!collectionIsPublic) return;
     setVisibilityLoading(true);
     try {
-      await setCollectionVisibility(true, next);
+      const rules = buildVisibilityRulesPayload();
+      setCollectionMinKeepPrivate(rules.minKeepPrivate);
+      setCollectionMaxPublicCopies(rules.maxPublicCopies);
+      await setCollectionVisibility(collectionIsPublic, rules.minKeepPrivate, rules.maxPublicCopies);
       toast.success(t("profile.visibilitySaved"));
     } catch {
       toast.error(t("profile.errorLoadingProfile"));
@@ -184,9 +200,17 @@ export default function ProfilePage() {
     getCollection()
       .then((data) => {
         setCollectionIsPublic(data.collection.isPublic ?? false);
-        const raw = data.collection.minKeepPrivate;
+        const rawMin = data.collection.minKeepPrivate;
+        const rawMax = data.collection.maxPublicCopies ?? data.collection.max_public_copies;
         setCollectionMinKeepPrivate(
-          typeof raw === "number" && raw >= 1 ? 1 : 0
+          typeof rawMin === "number" && Number.isFinite(rawMin)
+            ? clampInt(rawMin, 0, 999)
+            : 0
+        );
+        setCollectionMaxPublicCopies(
+          typeof rawMax === "number" && Number.isFinite(rawMax)
+            ? clampInt(rawMax, 1, 999)
+            : null
         );
       })
       .catch(() => {});
@@ -456,19 +480,73 @@ export default function ProfilePage() {
                 </button>
               </div>
               {collectionIsPublic && (
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-sm text-gray-300">{t("profile.showOnlyCopies")}</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={collectionMinKeepPrivate >= 1}
-                    disabled={visibilityLoading}
-                    onClick={handleShowOnlyCopiesToggle}
-                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-gray-900 ${collectionMinKeepPrivate >= 1 ? "border-emerald-500 bg-emerald-600" : "border-gray-600 bg-gray-700"} ${visibilityLoading ? "opacity-50" : ""}`}
-                  >
-                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${collectionMinKeepPrivate >= 1 ? "translate-x-5" : "translate-x-0.5"}`} />
-                  </button>
-                  <p className="w-full text-xs text-gray-500 sm:w-auto">{t("profile.showOnlyCopiesHint")}</p>
+                <div className="space-y-3 rounded border border-gray-700/70 bg-gray-800/50 p-3">
+                  <div>
+                    <label htmlFor="minKeepPrivate" className={labelClass}>
+                      {t("profile.minKeepPrivate")}
+                    </label>
+                    <input
+                      id="minKeepPrivate"
+                      type="number"
+                      min={0}
+                      max={999}
+                      value={collectionMinKeepPrivate}
+                      onChange={(e) => {
+                        const raw = Number(e.target.value);
+                        setCollectionMinKeepPrivate(
+                          Number.isFinite(raw) ? raw : 0
+                        );
+                      }}
+                      disabled={visibilityLoading}
+                      className={inputClass}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">{t("profile.minKeepPrivateHint")}</p>
+                  </div>
+                  <div>
+                    <label htmlFor="maxPublicCopies" className={labelClass}>
+                      {t("profile.maxPublicCopies")}
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                      <input
+                        id="maxPublicCopies"
+                        type="number"
+                        min={1}
+                        max={999}
+                        value={collectionMaxPublicCopies ?? ""}
+                        onChange={(e) => {
+                          const value = e.target.value.trim();
+                          if (!value) {
+                            setCollectionMaxPublicCopies(null);
+                            return;
+                          }
+                          const parsed = Number(value);
+                          setCollectionMaxPublicCopies(Number.isFinite(parsed) ? parsed : null);
+                        }}
+                        disabled={visibilityLoading}
+                        className={`${inputClass} min-w-0 flex-1`}
+                        placeholder="Sem limite"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCollectionMaxPublicCopies(null)}
+                        disabled={visibilityLoading || collectionMaxPublicCopies == null}
+                        className="shrink-0 rounded border border-gray-600 bg-gray-700 px-3 py-2 text-xs font-medium text-gray-200 hover:bg-gray-600 disabled:opacity-50"
+                      >
+                        {t("common.clearAll")}
+                      </button>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">{t("profile.maxPublicCopiesHint")}</p>
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleSavePublicCollectionRules}
+                      disabled={visibilityLoading}
+                      className="rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                    >
+                      {visibilityLoading ? t("common.loading") : t("profile.save")}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

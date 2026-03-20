@@ -5,6 +5,7 @@ import type {
   CollectionItemResponse,
   CollectionResponse,
   CollectionStats,
+  CollectionValueResponse,
   CollectionVisibilityResponse,
 } from "@/types/collection";
 
@@ -26,13 +27,15 @@ export async function getCollection(): Promise<CollectionResponse> {
   return res.data;
 }
 
-/** PATCH /v1/collections/me/visibility – set collection visibility on public profile. minKeepPrivate 0–999 optional. */
+/** PATCH /v1/collections/me/visibility – set collection visibility and public display rules. */
 export async function setCollectionVisibility(
   isPublic: boolean,
-  minKeepPrivate?: number
+  minKeepPrivate?: number,
+  maxPublicCopies?: number | null
 ): Promise<CollectionVisibilityResponse> {
-  const body: { isPublic: boolean; minKeepPrivate?: number } = { isPublic };
+  const body: { isPublic: boolean; minKeepPrivate?: number; maxPublicCopies?: number | null } = { isPublic };
   if (minKeepPrivate !== undefined) body.minKeepPrivate = minKeepPrivate;
+  if (maxPublicCopies !== undefined) body.maxPublicCopies = maxPublicCopies;
   const res = await apiPatch<CollectionVisibilityResponse>("/collections/me/visibility", body);
   return res.data;
 }
@@ -68,6 +71,12 @@ export async function updateQuantity(cardId: string, quantity: number): Promise<
 /** GET /v1/collections/me/stats – collection statistics for authenticated user */
 export async function getCollectionStats(): Promise<CollectionStats> {
   const res = await apiGet<CollectionStats>("/collections/me/stats");
+  return res.data;
+}
+
+/** GET /v1/collections/me/value – total collection value for authenticated user */
+export async function getCollectionValue(): Promise<CollectionValueResponse> {
+  const res = await apiGet<CollectionValueResponse>("/collections/me/value");
   return res.data;
 }
 

@@ -557,13 +557,13 @@ export default function CollectionPage() {
               }
             }}
             disabled={exportingMissing}
-            className="shrink-0 flex items-center gap-2 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700 disabled:opacity-50"
+            className="ml-auto shrink-0 flex items-center gap-1.5 rounded border border-gray-600 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-200 hover:bg-gray-700 disabled:opacity-50"
             aria-label={t("collection.exportMissingCards")}
           >
             {exportingMissing ? (
-              <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-gray-400 border-t-white" aria-hidden />
+              <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-gray-400 border-t-white" aria-hidden />
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
             )}
             {t("collection.exportMissingCards")}
           </button>
@@ -692,6 +692,7 @@ export default function CollectionPage() {
                     <CardTile
                       wrapperElement="div"
                       card={card}
+                      showTcgPriceChip
                       inCollection={card.inCollection}
                       quantity={card.collectionQuantity}
                       showCollectionActions
@@ -721,6 +722,7 @@ export default function CollectionPage() {
         uuid={detailUuid}
         onClose={() => setDetailUuid(null)}
         onCollectionChange={loadCollection}
+        showTcgPrices
       />
     </div>
   );

@@ -83,9 +83,29 @@ interface CardDetailModalProps {
   onClose: () => void;
   /** Called after any collection mutation so the parent can refresh its data */
   onCollectionChange?: () => void;
+  /** Show TCG price fields (used on cards/collection pages). */
+  showTcgPrices?: boolean;
 }
 
-export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetailModalProps) {
+function formatUsd(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function getNumeric(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const normalized = value.replace(",", ".").trim();
+    const parsed = Number.parseFloat(normalized);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+export function CardDetailModal({ uuid, onClose, onCollectionChange, showTcgPrices = false }: CardDetailModalProps) {
   const { user } = useAuth();
   const { t } = useLocale();
   const [card, setCard] = useState<Card | null>(null);
@@ -131,6 +151,12 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetai
   const setDisplay = card?.set && SET_DISPLAY[card.set.toUpperCase()]
     ? SET_DISPLAY[card.set.toUpperCase()]
     : card?.set;
+  const tcgLowPrice = getNumeric(card?.tcgLowPrice ?? card?.tcg_low_price);
+  const tcgMidPrice = getNumeric(card?.tcgMidPrice ?? card?.tcg_mid_price);
+  const tcgHighPrice = getNumeric(card?.tcgHighPrice ?? card?.tcg_high_price);
+  const tcgMarketPrice = getNumeric(card?.tcgMarketPrice ?? card?.tcg_market_price);
+  const tcgPriceUpdatedAt = card?.tcgPriceUpdatedAt ?? card?.tcg_price_updated_at ?? null;
+  const hasAnyTcgPrice = [tcgLowPrice, tcgMidPrice, tcgHighPrice, tcgMarketPrice].some((value) => value != null);
 
   async function handleAdd() {
     if (!user || !card) return;
@@ -314,6 +340,41 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange }: CardDetai
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {showTcgPrices && (
+                  <div className="rounded-xl border border-emerald-700/40 bg-emerald-950/20 p-3">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-emerald-300">{t("cards.tcgPricesUsd")}</p>
+                    {hasAnyTcgPrice ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                          <div className="rounded-lg bg-gray-900/60 px-3 py-2">
+                            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{t("cards.tcgMarketPrice")}</p>
+                            <p className="mt-0.5 text-base font-semibold text-emerald-100">{tcgMarketPrice != null ? formatUsd(tcgMarketPrice) : "—"}</p>
+                          </div>
+                          <div className="rounded-lg bg-gray-900/60 px-3 py-2">
+                            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{t("cards.tcgMidPrice")}</p>
+                            <p className="mt-0.5 text-base font-semibold text-gray-100">{tcgMidPrice != null ? formatUsd(tcgMidPrice) : "—"}</p>
+                          </div>
+                          <div className="rounded-lg bg-gray-900/60 px-3 py-2">
+                            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{t("cards.tcgLowPrice")}</p>
+                            <p className="mt-0.5 text-base font-semibold text-gray-100">{tcgLowPrice != null ? formatUsd(tcgLowPrice) : "—"}</p>
+                          </div>
+                          <div className="rounded-lg bg-gray-900/60 px-3 py-2">
+                            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">{t("cards.tcgHighPrice")}</p>
+                            <p className="mt-0.5 text-base font-semibold text-gray-100">{tcgHighPrice != null ? formatUsd(tcgHighPrice) : "—"}</p>
+                          </div>
+                        </div>
+                        {tcgPriceUpdatedAt && (
+                          <p className="mt-2 text-xs text-gray-400">
+                            {t("cards.tcgPriceUpdatedAt")}: {new Date(tcgPriceUpdatedAt).toLocaleString()}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400">{t("cards.tcgPriceUnavailable")}</p>
+                    )}
                   </div>
                 )}
 

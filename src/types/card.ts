@@ -45,6 +45,20 @@ export interface Card {
   collectorNumber?: string;
   /** Chave para imagem: nome do arquivo sem extensão (ex.: OGN-001-298). Usado em getCardImageUrl. */
   image_key?: string;
+  /** TCGplayer product ID vinculado à carta. */
+  tcg_product_id?: number | null;
+  tcgProductId?: number | null;
+  /** TCG prices in USD. API pode enviar snake_case ou camelCase. */
+  tcg_low_price?: number | null;
+  tcgLowPrice?: number | null;
+  tcg_mid_price?: number | null;
+  tcgMidPrice?: number | null;
+  tcg_high_price?: number | null;
+  tcgHighPrice?: number | null;
+  tcg_market_price?: number | null;
+  tcgMarketPrice?: number | null;
+  tcg_price_updated_at?: string | null;
+  tcgPriceUpdatedAt?: string | null;
 }
 
 /** GET /v1/cards response: items (cards with relations), totalCount. */

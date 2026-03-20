@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { getCollectionStats } from "@/lib/collections";
+import { getCollection, getCollectionStats, getCollectionValue } from "@/lib/collections";
 import { getCard, getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
 import { useLocale } from "@/lib/locale-context";
@@ -40,6 +40,64 @@ function formatLabel(s: string): string {
 
 function setDisplayName(setValue: string): string {
   return SET_DISPLAY_NAMES[setValue] ?? formatLabel(setValue);
+}
+
+function parseNumeric(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const normalized = value.replace(",", ".").trim();
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function getCardTcgPrice(card: Card): number | null {
+  return (
+    parseNumeric(card.tcgMarketPrice ?? card.tcg_market_price) ??
+    parseNumeric(card.tcgMidPrice ?? card.tcg_mid_price) ??
+    parseNumeric(card.tcgLowPrice ?? card.tcg_low_price) ??
+    parseNumeric(card.tcgHighPrice ?? card.tcg_high_price)
+  );
+}
+
+function formatCurrency(value: number, currency: string, locale: string): string {
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  }
+}
+
+function parseCollectionValueAmount(data: {
+  totalValue?: unknown;
+  total_value?: unknown;
+  value?: unknown;
+  collectionValue?: unknown;
+}): number | null {
+  return (
+    parseNumeric(data.totalValue) ??
+    parseNumeric(data.total_value) ??
+    parseNumeric(data.value) ??
+    parseNumeric(data.collectionValue)
+  );
+}
+
+interface MostValuableCardData {
+  card: Card;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number;
 }
 
 function BarRow({
@@ -141,20 +199,80 @@ function StatsSkeleton({ compact = false }: { compact?: boolean }) {
 }
 
 export function CollectionStats({ refreshTrigger = 0, breakdown = true }: CollectionStatsProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [stats, setStats] = useState<CollectionStatsType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mostOwnedFull, setMostOwnedFull] = useState<Card | null>(null);
+  const [collectionValue, setCollectionValue] = useState<number | null>(null);
+  const [currency, setCurrency] = useState("USD");
+  const [mostValuableCard, setMostValuableCard] = useState<MostValuableCardData | null>(null);
+  const [topValuableCards, setTopValuableCards] = useState<MostValuableCardData[]>([]);
+  const [pricedUniqueCount, setPricedUniqueCount] = useState(0);
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getCollectionStats();
-      setStats(data);
+      const [statsData, valueData, collectionData] = await Promise.all([
+        getCollectionStats(),
+        getCollectionValue().catch(() => null),
+        getCollection().catch(() => null),
+      ]);
+      setStats(statsData);
+
+      const amount = valueData ? parseCollectionValueAmount(valueData) : null;
+      setCollectionValue(amount);
+      const nextCurrency = valueData?.currency?.trim().toUpperCase();
+      setCurrency(nextCurrency && nextCurrency.length === 3 ? nextCurrency : "USD");
+
+      if (collectionData?.items?.length) {
+        let best: MostValuableCardData | null = null;
+        const ranking: MostValuableCardData[] = [];
+        let pricedCount = 0;
+        let computedTotalValue = 0;
+        for (const item of collectionData.items) {
+          const qty = Number(item.quantity ?? 0);
+          if (!item.card || !Number.isFinite(qty) || qty <= 0) continue;
+          const unitPrice = getCardTcgPrice(item.card);
+          if (unitPrice == null || unitPrice <= 0) continue;
+          pricedCount += 1;
+          const total = unitPrice * qty;
+          computedTotalValue += total;
+          ranking.push({
+            card: item.card,
+            quantity: qty,
+            unitPrice,
+            totalValue: total,
+          });
+          if (!best || total > best.totalValue) {
+            best = {
+              card: item.card,
+              quantity: qty,
+              unitPrice,
+              totalValue: total,
+            };
+          }
+        }
+        ranking.sort((a, b) => b.totalValue - a.totalValue);
+        setTopValuableCards(ranking.slice(0, 10));
+        setMostValuableCard(best);
+        setPricedUniqueCount(pricedCount);
+        if (amount == null && computedTotalValue > 0) {
+          setCollectionValue(computedTotalValue);
+        }
+      } else {
+        setMostValuableCard(null);
+        setTopValuableCards([]);
+        setPricedUniqueCount(0);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("collectionStats.failedToLoadStats"));
       setStats(null);
+      setCollectionValue(null);
+      setCurrency("USD");
+      setMostValuableCard(null);
+      setTopValuableCards([]);
+      setPricedUniqueCount(0);
     } finally {
       setLoading(false);
     }
@@ -341,6 +459,38 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
             </div>
             );
           })()}
+          {mostValuableCard && (() => {
+            const mostValuableImgUrl = getCardImageUrl(mostValuableCard.card);
+            return (
+              <div className="hidden w-full items-center gap-3 sm:flex sm:w-auto">
+                <div
+                  className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-emerald-600/70 bg-gray-800 ring-2 ring-emerald-500/30"
+                  title={mostValuableCard.card.name}
+                >
+                  {mostValuableImgUrl ? (
+                    <CardImg
+                      src={mostValuableImgUrl}
+                      alt={mostValuableCard.card.name}
+                      className="size-full object-cover object-[center_10%] opacity-85"
+                    />
+                  ) : (
+                    <span className="text-2xl text-emerald-300" aria-hidden>💰</span>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-medium uppercase tracking-wider text-emerald-400">
+                    {t("collectionStats.mostValuableCard")}
+                  </p>
+                  <p className="mt-0.5 text-lg font-bold text-white">
+                    {mostValuableCard.card.name}
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-300">
+                    {formatCurrency(mostValuableCard.totalValue, currency, locale)}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
       {!breakdown && (
@@ -357,9 +507,60 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
       {breakdown && (
       <>
       <div className="border-t border-gray-600 pt-4">
-          <div className="grid gap-4 pt-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border border-emerald-700/40 bg-emerald-900/10 p-4">
+            <p className="text-xs font-medium uppercase tracking-wider text-emerald-400">{t("collectionStats.totalValue")}</p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-white">
+              {collectionValue != null ? formatCurrency(collectionValue, currency, locale) : "—"}
+            </p>
+          </div>
+          <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-4">
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">{t("collectionStats.avgValuePerUnique")}</p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-white">
+              {collectionValue != null && stats.totalUniqueCards > 0
+                ? formatCurrency(collectionValue / stats.totalUniqueCards, currency, locale)
+                : "—"}
+            </p>
+          </div>
+          <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-4">
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">{t("collectionStats.avgValuePerCopy")}</p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-white">
+              {collectionValue != null && stats.totalCopies > 0
+                ? formatCurrency(collectionValue / stats.totalCopies, currency, locale)
+                : "—"}
+            </p>
+          </div>
+          <div className="rounded-lg border border-gray-700/50 bg-gray-900/50 p-4">
+            <p className="text-xs font-medium uppercase tracking-wider text-gray-400">{t("collectionStats.pricedCards")}</p>
+            <p className="mt-1 text-xl font-bold tabular-nums text-white">
+              {pricedUniqueCount}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 border-t border-gray-600 pt-4">
+          <div className="grid gap-4 pt-2 sm:grid-cols-2 lg:grid-cols-5">
             {(
               [
+                {
+                  title: t("collectionStats.top10ByValue"),
+                  rows:
+                    topValuableCards.length === 0
+                      ? []
+                      : topValuableCards.map((entry, index) => (
+                          <div
+                            key={`${entry.card.uuid}-${index}`}
+                            className="grid grid-cols-[20px_1fr_auto] items-center gap-2 rounded border border-gray-700/40 bg-gray-800/30 px-2 py-1.5"
+                          >
+                            <span className="text-xs font-semibold tabular-nums text-emerald-400">#{index + 1}</span>
+                            <p className="truncate text-xs font-medium text-gray-100">{entry.card.name}</p>
+                            <p className="text-xs font-semibold tabular-nums text-white">
+                              {formatCurrency(entry.totalValue, currency, locale)}
+                            </p>
+                          </div>
+                        )),
+                  empty: t("collectionStats.noValueData"),
+                },
                 {
                   title: t("collectionStats.bySet"),
                   rows: stats.bySet.map((row) => (

@@ -25,6 +25,8 @@ interface CardTileProps {
   wrapperElement?: "li" | "div";
   /** When true, cards with type Battlefield use landscape aspect (only set on deck edit/view) */
   battlefieldAsLandscape?: boolean;
+  /** Show TCG market chip on top-right (used on cards/collection pages). */
+  showTcgPriceChip?: boolean;
   /** Keys of active add animations (one element rendered per key, allows stacking) */
   addKeys?: string[];
   /** Keys of active remove animations (one element rendered per key, allows stacking) */
@@ -57,6 +59,31 @@ const cardBaseClass =
 
 const SUPPRESS_CARD_IMAGES = false;
 
+function parseTcgPrice(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const normalized = value.replace(",", ".").trim();
+    const parsed = Number.parseFloat(normalized);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function getChipPrice(card: Card): number | null {
+  const market = parseTcgPrice(card.tcgMarketPrice ?? card.tcg_market_price);
+  const mid = parseTcgPrice(card.tcgMidPrice ?? card.tcg_mid_price);
+  const low = parseTcgPrice(card.tcgLowPrice ?? card.tcg_low_price);
+  return market ?? mid ?? low;
+}
+
+function formatUsd(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 export function CardTile({
   card,
   inCollection = false,
@@ -70,6 +97,7 @@ export function CardTile({
   actionDisabled = false,
   wrapperElement = "li",
   battlefieldAsLandscape = false,
+  showTcgPriceChip = false,
   addKeys = [],
   removeKeys = [],
   onAdd,
@@ -91,6 +119,7 @@ export function CardTile({
 
   const cardImageUrl = getCardImageUrl(card);
   const showCardImage = !!cardImageUrl && !SUPPRESS_CARD_IMAGES;
+  const tcgChipPrice = showTcgPriceChip ? getChipPrice(card) : null;
 
   const imageNode = showCardImage ? (
     isLandscape ? (
@@ -127,6 +156,13 @@ export function CardTile({
 
   return (
     <Wrapper className={cardClassName}>
+      {tcgChipPrice != null && !showCollectionActions && (
+        <div className="pointer-events-none absolute bottom-2 left-2 z-30">
+          <span className="inline-flex items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2.5 py-1 text-xs font-semibold text-emerald-50 shadow-md">
+            {formatUsd(tcgChipPrice)}
+          </span>
+        </div>
+      )}
       {addKeys.map((key, i) => (
         <div key={key} className="pointer-events-none">
           <div className="animate-card-added absolute inset-0 z-20 rounded-lg bg-green-400/40 ring-2 ring-green-400" />
@@ -163,13 +199,13 @@ export function CardTile({
           ) : (
             imageNode
           )}
-          <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 to-transparent px-2 py-3 pt-6">
+          <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 to-transparent px-1.5 py-1.5 pt-5">
             {showCollectionActions && (
-              <div className="mt-2 flex flex-col gap-1">
+              <div className="mt-1 flex flex-col gap-0.5">
                 <div className="flex justify-end">
                   <span
                     key={qty}
-                    className={`flex size-10 shrink-0 items-center justify-center rounded-md border text-sm font-bold tabular-nums text-white shadow transition-colors ${
+                    className={`flex size-9 shrink-0 items-center justify-center rounded-md border text-xs font-bold tabular-nums text-white shadow transition-colors ${
                       addKeys.length > 0
                         ? "animate-card-added border-green-400 bg-green-700/80"
                         : removeKeys.length > 0
@@ -180,14 +216,14 @@ export function CardTile({
                     ×{qty}
                   </span>
                 </div>
-                <div className="flex items-center justify-end gap-2">
-                  <div className="flex items-center gap-1">
+                <div className="flex items-center justify-end gap-1">
+                  <div className="flex items-center gap-0.5">
                     {canDecrease && (
                       <button
                         type="button"
                         onClick={(e) => { e.preventDefault(); onDecrease?.(); }}
                         disabled={actionDisabled}
-                        className="flex size-10 shrink-0 items-center justify-center rounded-md border border-gray-500 bg-gray-700/90 text-white transition-colors hover:bg-gray-600 disabled:opacity-50"
+                        className="flex size-9 shrink-0 items-center justify-center rounded-md border border-gray-500 bg-gray-700/90 text-white transition-colors hover:bg-gray-600 disabled:opacity-50"
                         title={t("cards.decreaseQuantity")}
                         aria-label={t("cards.decreaseQuantity")}
                       >
@@ -198,7 +234,7 @@ export function CardTile({
                       type="button"
                       onClick={(e) => { e.preventDefault(); onAdd?.(); }}
                       disabled={actionDisabled}
-                      className="flex size-10 shrink-0 items-center justify-center rounded-md border-2 border-green-600 bg-green-700 text-white shadow transition-colors hover:bg-green-600 hover:border-green-500 disabled:opacity-50"
+                      className="flex size-9 shrink-0 items-center justify-center rounded-md border-2 border-green-600 bg-green-700 text-white shadow transition-colors hover:bg-green-600 hover:border-green-500 disabled:opacity-50"
                       title={t("cards.addOne")}
                       aria-label={t("cards.addOne")}
                     >
@@ -206,11 +242,20 @@ export function CardTile({
                     </button>
                   </div>
                 </div>
-                {collectorNumber && (
-                  <div className="flex justify-end">
-                    <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold tabular-nums text-gray-300">
-                      {collectorNumber}
-                    </span>
+                {(collectorNumber || tcgChipPrice != null) && (
+                  <div className="flex items-center justify-between gap-1">
+                    {tcgChipPrice != null ? (
+                      <span className="inline-flex h-9 items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2 text-xs font-semibold text-emerald-50 shadow-md">
+                        {formatUsd(tcgChipPrice)}
+                      </span>
+                    ) : (
+                      <span />
+                    )}
+                    {collectorNumber && (
+                      <span className="flex h-9 min-w-9 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold tabular-nums text-gray-300">
+                        {collectorNumber}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -235,13 +280,13 @@ export function CardTile({
               <p className="text-xs font-medium text-gray-400">{t("cards.noImage")}</p>
             </div>
           )}
-          <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 to-transparent px-2 py-3 pt-6">
+          <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/85 to-transparent px-1.5 py-1.5 pt-5">
             {showCollectionActions && (
-              <div className="mt-2 flex flex-col gap-1">
+              <div className="mt-1 flex flex-col gap-0.5">
                 <div className="flex justify-end">
                   <span
                     key={qty}
-                    className={`flex size-10 shrink-0 items-center justify-center rounded-md border text-sm font-bold tabular-nums text-white shadow transition-colors ${
+                    className={`flex size-9 shrink-0 items-center justify-center rounded-md border text-xs font-bold tabular-nums text-white shadow transition-colors ${
                       addKeys.length > 0
                         ? "animate-card-added border-green-400 bg-green-700/80"
                         : removeKeys.length > 0
@@ -252,14 +297,14 @@ export function CardTile({
                     ×{qty}
                   </span>
                 </div>
-                <div className="flex items-center justify-end gap-2">
-                  <div className="flex items-center gap-1">
+                <div className="flex items-center justify-end gap-1">
+                  <div className="flex items-center gap-0.5">
                     {canDecrease && (
                       <button
                         type="button"
                         onClick={(e) => { e.preventDefault(); onDecrease?.(); }}
                         disabled={actionDisabled}
-                        className="flex size-10 shrink-0 items-center justify-center rounded-md border border-gray-500 bg-gray-700/90 text-white transition-colors hover:bg-gray-600 disabled:opacity-50"
+                        className="flex size-9 shrink-0 items-center justify-center rounded-md border border-gray-500 bg-gray-700/90 text-white transition-colors hover:bg-gray-600 disabled:opacity-50"
                         title={t("cards.decreaseQuantity")}
                         aria-label={t("cards.decreaseQuantity")}
                       >
@@ -270,7 +315,7 @@ export function CardTile({
                       type="button"
                       onClick={(e) => { e.preventDefault(); onAdd?.(); }}
                       disabled={actionDisabled}
-                      className="flex size-10 shrink-0 items-center justify-center rounded-md border-2 border-green-600 bg-green-700 text-white shadow transition-colors hover:bg-green-600 hover:border-green-500 disabled:opacity-50"
+                      className="flex size-9 shrink-0 items-center justify-center rounded-md border-2 border-green-600 bg-green-700 text-white shadow transition-colors hover:bg-green-600 hover:border-green-500 disabled:opacity-50"
                       title={t("cards.addOne")}
                       aria-label={t("cards.addOne")}
                     >
@@ -278,11 +323,20 @@ export function CardTile({
                     </button>
                   </div>
                 </div>
-                {collectorNumber && (
-                  <div className="flex justify-end">
-                    <span className="flex h-10 min-w-10 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold tabular-nums text-gray-300">
-                      {collectorNumber}
-                    </span>
+                {(collectorNumber || tcgChipPrice != null) && (
+                  <div className="flex items-center justify-between gap-1">
+                    {tcgChipPrice != null ? (
+                      <span className="inline-flex h-9 items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2 text-xs font-semibold text-emerald-50 shadow-md">
+                        {formatUsd(tcgChipPrice)}
+                      </span>
+                    ) : (
+                      <span />
+                    )}
+                    {collectorNumber && (
+                      <span className="flex h-9 min-w-9 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold tabular-nums text-gray-300">
+                        {collectorNumber}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

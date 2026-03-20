@@ -10,9 +10,16 @@ export interface CollectionItem {
   card: Card;
 }
 
-/** GET /v1/collections/me response. collection.isPublic and collection.minKeepPrivate are user visibility settings. */
+/** GET /v1/collections/me response. collection visibility settings are user-level preferences. */
 export interface CollectionResponse {
-  collection: { id: string; userId: string; isPublic?: boolean; minKeepPrivate?: number };
+  collection: {
+    id: string;
+    userId: string;
+    isPublic?: boolean;
+    minKeepPrivate?: number;
+    maxPublicCopies?: number | null;
+    max_public_copies?: number | null;
+  };
   items: CollectionItem[];
 }
 
@@ -20,6 +27,8 @@ export interface CollectionResponse {
 export interface CollectionVisibilityResponse {
   isPublic: boolean;
   minKeepPrivate?: number;
+  maxPublicCopies?: number | null;
+  max_public_copies?: number | null;
 }
 
 /** POST /v1/collections/me/items (add) and PATCH (update quantity) can return this shape */
@@ -90,4 +99,13 @@ export interface CollectionStats {
   byRarity: CollectionStatsByRarity[];
   byType: CollectionStatsByType[];
   mostOwnedCard?: CollectionStatsMostOwnedCard;
+}
+
+/** GET /v1/collections/me/value – total collection value for authenticated user */
+export interface CollectionValueResponse {
+  totalValue?: number | string | null;
+  total_value?: number | string | null;
+  value?: number | string | null;
+  collectionValue?: number | string | null;
+  currency?: string | null;
 }
