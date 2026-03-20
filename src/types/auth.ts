@@ -48,6 +48,9 @@ export interface PublicProfileCard {
   cardSet?: string | null;
   rarity?: string | null;
   type?: string | null;
+  domain?: string | null;
+  domains?: string[] | null;
+  cardDomains?: Array<{ domain: { name: string } }> | null;
   image_key?: string | null;
   imageUrl?: string | null;
 }

@@ -47,7 +47,7 @@ function IconPlus({ className }: { className?: string }) {
 }
 
 /* ─── Rarity helper ─────────────────────────────────── */
-function getRarityIcon(rarity?: string): string | null {
+function getRarityIcon(rarity?: string | null): string | null {
   if (!rarity) return null;
   const key = rarity.toLowerCase().replace(/\s+/g, "");
   // "overnumbered" was renamed to "showcase"
@@ -61,12 +61,29 @@ const NO_DOMAIN_ICON = "/images/types/unit.webp";
 const BATTLEFIELD_ICON = "/images/types/battlefields.webp";
 const VALID_DOMAIN_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
 
-function getCardDomains(card: { domain?: string; domains?: string[]; cardDomains?: { domain: { name: string } }[] } | undefined): string[] {
+function getCardDomains(
+  card:
+    | {
+        domain?: string | null;
+        domains?: Array<string | null> | null;
+        cardDomains?: Array<{ domain?: { name?: string | null } | null } | null> | null;
+      }
+    | undefined
+): string[] {
   if (!card) return [];
   const result: string[] = [];
   if (card.domain) result.push(card.domain.toLowerCase());
-  if (card.domains) result.push(...card.domains.map((d) => d.toLowerCase()));
-  if (card.cardDomains) result.push(...card.cardDomains.map((cd) => cd.domain.name.toLowerCase()));
+  if (card.domains) {
+    result.push(...card.domains.filter((d): d is string => typeof d === "string" && d.length > 0).map((d) => d.toLowerCase()));
+  }
+  if (card.cardDomains) {
+    result.push(
+      ...card.cardDomains
+        .map((cd) => cd?.domain?.name)
+        .filter((name): name is string => typeof name === "string" && name.length > 0)
+        .map((name) => name.toLowerCase())
+    );
+  }
   return [...new Set(result)];
 }
 
@@ -75,14 +92,14 @@ function getDisplayDomainIcons(domains: string[]): string[] {
   return domains.filter((d) => VALID_DOMAIN_SLUGS.has(d));
 }
 
-function isBattlefieldCard(card: { type?: string; record_type?: string } | undefined): boolean {
+function isBattlefieldCard(card: { type?: string | null; record_type?: string | null } | undefined): boolean {
   if (!card) return false;
   const t = (card.type ?? "").toLowerCase();
   const r = (card.record_type ?? "").toLowerCase();
   return t === "battlefield" || r.includes("battleground") || t === "battleground";
 }
 
-function getNoDomainIcon(card: { type?: string; record_type?: string } | undefined): string {
+function getNoDomainIcon(card: { type?: string | null; record_type?: string | null } | undefined): string {
   return isBattlefieldCard(card) ? BATTLEFIELD_ICON : NO_DOMAIN_ICON;
 }
 
@@ -406,7 +423,7 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
                       +
                     </button>
                   </div>
-                  <CardHoverPreview card={item.card}>
+                  <CardHoverPreview card={item.card as unknown as Card}>
                     <span className="flex min-w-0 flex-1 cursor-default items-center gap-1">
                       <span className="flex gap-0.5">
                         {getDisplayDomainIcons(domains).length > 0 ? (
@@ -582,7 +599,7 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
                                   <span className="truncate text-blue-400">{card.name}</span>
                                   {rarityIcon && (
                                     // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={rarityIcon} alt={card.rarity} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
+                                    <img src={rarityIcon} alt={card.rarity ?? ""} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
                                   )}
                                 </span>
                               </CardHoverPreview>
@@ -1367,17 +1384,19 @@ export default function PublicProfilePage() {
                                   </div>
                                   <ul className="space-y-0.5 pl-4">
                                     {cards.map((item) => {
+                                      const cardData = item.card;
+                                      if (!cardData) return null;
                                       const maxRequested = item.need ?? item.theirQuantity;
                                       const requestedItem = requestedBasket.get(item.cardUuid);
                                       const inRequested = !!requestedItem;
                                       const atMaxRequested = inRequested && requestedItem.quantity >= maxRequested;
-                                      const cached = lookupCached(item.cardUuid, item.card.scraperId);
+                                      const cached = lookupCached(item.cardUuid, cardData.scraperId);
                                       const domains = getCardDomains(cached);
-                                      const rarityIcon = getRarityIcon(item.card.rarity);
-                                      const cardForRequested = { ...item.card, uuid: (item.card as { uuid?: string }).uuid ?? item.cardUuid } as PublicProfileCard;
+                                      const rarityIcon = getRarityIcon(cardData.rarity);
+                                      const cardForRequested = { ...cardData, uuid: (cardData as { uuid?: string }).uuid ?? item.cardUuid } as PublicProfileCard;
                                       return (
                                         <li key={item.cardUuid} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
-                                          <CardHoverPreview card={item.card as unknown as Card}>
+                                          <CardHoverPreview card={cardData as unknown as Card}>
                                             <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
                                               {getDisplayDomainIcons(domains).length > 0 ? (
                                                 getDisplayDomainIcons(domains).map((d) => (
@@ -1386,13 +1405,13 @@ export default function PublicProfilePage() {
                                                 ))
                                               ) : (
                                                 // eslint-disable-next-line @next/next/no-img-element
-                                                <img src={getNoDomainIcon(cached ?? item.card)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
+                                                <img src={getNoDomainIcon(cached ?? cardData)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
                                               )}
                                               <span className="shrink-0 tabular-nums text-emerald-500">×{item.theirQuantity}</span>
-                                              <span className="truncate text-blue-400">{item.card.name}</span>
+                                              <span className="truncate text-blue-400">{cardData.name}</span>
                                               {rarityIcon && (
                                                 // eslint-disable-next-line @next/next/no-img-element
-                                                <img src={rarityIcon} alt={item.card.rarity} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
+                                                <img src={rarityIcon} alt={cardData.rarity ?? ""} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
                                               )}
                                             </span>
                                           </CardHoverPreview>
@@ -1458,10 +1477,10 @@ export default function PublicProfilePage() {
                                           const inBasket = !!basketItem;
                                           const atMax = inBasket && basketItem.quantity >= item.canOffer;
                                           const cached = lookupCached(item.cardUuid, item.card?.scraperId);
-                                          const domains = getCardDomains(cached ?? item.card);
-                                          const rarityIcon = getRarityIcon(item.card?.rarity);
                                           const card = item.card ?? cached;
                                           if (!card) return null;
+                                          const domains = getCardDomains(card);
+                                          const rarityIcon = getRarityIcon(card.rarity);
                                           const cardForBasket = { ...card, uuid: (card as { uuid?: string }).uuid ?? item.cardUuid } as PublicProfileCard;
                                           return (
                                             <li key={item.cardUuid} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
@@ -1482,7 +1501,7 @@ export default function PublicProfilePage() {
                                                     ))
                                                   ) : (
                                                     // eslint-disable-next-line @next/next/no-img-element
-                                                    <img src={getNoDomainIcon(cached ?? item.card)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
+                                                    <img src={getNoDomainIcon(card)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
                                                   )}
                                                   <span className="shrink-0 tabular-nums text-emerald-500">×{item.myQuantity}</span>
                                                   <span className="truncate text-blue-400">{(card as { name?: string | null }).name ?? item.cardUuid}</span>
@@ -1576,7 +1595,7 @@ export default function PublicProfilePage() {
                                                 <span className="truncate text-blue-400">{item.card.name}</span>
                                                 {rarityIcon && (
                                                   // eslint-disable-next-line @next/next/no-img-element
-                                                  <img src={rarityIcon} alt={item.card.rarity} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
+                                                  <img src={rarityIcon} alt={item.card.rarity ?? ""} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
                                                 )}
                                               </span>
                                             </CardHoverPreview>
