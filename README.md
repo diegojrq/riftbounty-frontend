@@ -95,6 +95,11 @@ npm start
    - **API_KEY**: (se o backend exigir) mesma chave configurada no backend (header `X-API-Key`).
 3. Faça o deploy; a Vercel usa `npm run build` e serve o app.
 
+**Doações (Pagarme):** o fluxo “Doar” chama `POST …/donations/checkout` via `/api/proxy/donations/checkout` (o prefixo `donations` está permitido no proxy). No backend, aponte os retornos do checkout hospedado para o front, por exemplo:
+- **Sucesso:** `DONATE_SUCCESS_URL` → `https://seu-app.vercel.app/donation-success`
+- **Falha/cancelamento:** `DONATE_CANCEL_URL` (ou URL de falha equivalente) → `https://seu-app.vercel.app/donation-failure`  
+  (a rota legada `/donate/success` ainda existe e mostra a mesma página de agradecimento que `/donation-success`.)
+
 ### Troubleshooting – backend na Vercel
 
 - **Testar se o backend está acessível**  

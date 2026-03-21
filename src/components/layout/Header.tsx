@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
 import { getUnreadCount, markAllNotificationsRead } from "@/lib/notifications";
+import { DonateButton } from "@/components/donations/DonateButton";
 
 function FlagBr({ className }: { className?: string }) {
   return (
@@ -31,13 +32,75 @@ function FlagGb({ className }: { className?: string }) {
   );
 }
 
+function IconCards() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="m8 21 4-4 4 4" />
+    </svg>
+  );
+}
+
+function IconCollection() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect width="7" height="9" x="3" y="3" rx="1" />
+      <rect width="7" height="5" x="14" y="3" rx="1" />
+      <rect width="7" height="9" x="14" y="12" rx="1" />
+      <rect width="7" height="5" x="3" y="16" rx="1" />
+    </svg>
+  );
+}
+
+function IconDecks() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5" />
+      <path d="M16 2v4" />
+      <path d="M8 2v4" />
+      <path d="M3 10h5" />
+      <path d="M17.5 17.5 16 19l-2-2" />
+      <circle cx="17" cy="17" r="5" />
+    </svg>
+  );
+}
+
+function IconTrades() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m16 3 4 4-4 4" />
+      <path d="M20 7H4" />
+      <path d="m8 21-4-4 4-4" />
+      <path d="M4 17h16" />
+    </svg>
+  );
+}
+
+function IconAdmin() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 3v18" />
+      <rect x="4" y="8" width="16" height="12" rx="2" />
+      <path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
+function IconProfile({ className = "h-3.5 w-3.5 shrink-0" }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <circle cx="12" cy="8" r="5" />
+      <path d="M3 21a9 9 0 0 1 18 0" />
+    </svg>
+  );
+}
+
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading, logout } = useAuth();
   const { t, locale, setLocale } = useLocale();
   const isAdmin = (user?.role ?? "").toLowerCase() === "admin";
-  const isHome = pathname === "/";
   const [menuOpen, setMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -84,7 +147,37 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-800 bg-gray-900/95 backdrop-blur-sm">
-      <nav className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3.5 sm:px-6 lg:px-10 xl:px-12">
+      {/* Top row: language selector */}
+      <div className="hidden border-b border-gray-800/70 sm:block">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-end px-4 py-1.5 sm:px-6 lg:px-10 xl:px-12">
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setLocale("pt-BR")}
+              className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium uppercase transition-colors ${
+                locale === "pt-BR" ? "bg-gray-700 text-white" : "text-gray-500 hover:text-gray-300"
+              }`}
+              aria-label="Português"
+            >
+              <FlagBr className="h-3.5 w-5 shrink-0 rounded-sm" />
+              PT
+            </button>
+            <button
+              type="button"
+              onClick={() => setLocale("en")}
+              className={`flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium uppercase transition-colors ${
+                locale === "en" ? "bg-gray-700 text-white" : "text-gray-500 hover:text-gray-300"
+              }`}
+              aria-label="English"
+            >
+              <FlagGb className="h-3.5 w-5 shrink-0 rounded-sm" />
+              EN
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <nav className="mx-auto flex max-w-[1600px] items-center gap-4 px-4 py-3 sm:px-6 lg:px-10 xl:px-12">
         {/* Logo */}
         <Link
           href="/"
@@ -94,62 +187,66 @@ export function Header() {
           <Image
             src="/images/riftbounty.png"
             alt="Riftbounty"
-            width={isHome ? 48 : 32}
-            height={isHome ? 48 : 32}
-            className={`shrink-0 object-contain ${isHome ? "h-12 w-12" : "h-8 w-8"}`}
+            width={32}
+            height={32}
+            className="h-8 w-8 shrink-0 object-contain"
           />
-          <span className={`font-bold uppercase tracking-tight text-white ${isHome ? "text-2xl" : "text-xl"}`}>
+          <span className="text-xl font-bold uppercase tracking-tight text-white">
             Riftbounty
           </span>
         </Link>
 
-        {/* Desktop nav links */}
-        <div className="hidden items-center gap-1 sm:flex sm:gap-2">
+        {/* Desktop main nav links */}
+        <div className="hidden flex-1 items-center justify-center gap-1 sm:flex sm:gap-1.5">
           {loading ? (
             <span className="rounded bg-gray-800 px-3 py-1.5 text-sm text-gray-500">...</span>
           ) : (
             <>
               <Link
                 href="/cards"
-                className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
+                className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
                   pathname.startsWith("/cards")
-                    ? "bg-gray-800 text-white"
-                    : "text-gray-400"
+                    ? "border-gray-600 bg-gray-800 text-white"
+                    : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
                 }`}
               >
+                <IconCards />
                 {t("nav.cards")}
               </Link>
               <Link
                 href="/collection"
                 onClick={(e) => guardedNav(e, "/collection")}
-                className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
+                className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
                   pathname.startsWith("/collection")
-                    ? "bg-gray-800 text-white"
-                    : "text-gray-400"
+                    ? "border-gray-600 bg-gray-800 text-white"
+                    : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
                 }`}
               >
+                <IconCollection />
                 {t("nav.myCollection")}
               </Link>
               <Link
                 href="/decks"
                 onClick={(e) => guardedNav(e, "/decks")}
-                className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
+                className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
                   pathname.startsWith("/decks")
-                    ? "bg-gray-800 text-white"
-                    : "text-gray-400"
+                    ? "border-gray-600 bg-gray-800 text-white"
+                    : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
                 }`}
               >
+                <IconDecks />
                 {t("nav.myDecks")}
               </Link>
               <Link
                 href="/trades"
                 onClick={(e) => guardedNav(e, "/trades")}
-                className={`relative rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
+                className={`relative flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
                   pathname.startsWith("/trades")
-                    ? "bg-gray-800 text-white"
-                    : "text-gray-400"
+                    ? "border-gray-600 bg-gray-800 text-white"
+                    : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
                 }`}
               >
+                <IconTrades />
                 {t("nav.trades")}
                 {unreadCount > 0 && (
                   <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold leading-none text-gray-900">
@@ -158,91 +255,73 @@ export function Header() {
                 )}
               </Link>
 
-              {isAdmin && (
-                <Link
-                  href="/admin"
-                  className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
-                    pathname.startsWith("/admin")
-                      ? "bg-gray-800 text-white"
-                      : "text-amber-400 hover:text-amber-300"
-                  }`}
-                >
-                  {t("nav.admin")}
-                </Link>
-              )}
-
-              {user ? (
-                <>
-                  <Link
-                    href="/profile"
-                    className={`rounded px-3 py-1.5 text-sm uppercase transition-colors hover:bg-gray-700 hover:text-white ${
-                      pathname.startsWith("/profile")
-                        ? "bg-gray-700 text-white"
-                        : "bg-gray-800 text-gray-300"
-                    }`}
-                  >
-                    {user.displayName || user.email}
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={logout}
-                    className="rounded px-3 py-2 text-sm font-medium uppercase text-gray-400 transition-colors hover:bg-gray-800 hover:text-red-400"
-                  >
-                    {t("nav.logOut")}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link
-                    href="/login"
-                    className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-gray-800 hover:text-white ${
-                      pathname.startsWith("/login")
-                        ? "bg-gray-800 text-white"
-                        : "text-gray-400"
-                    }`}
-                  >
-                    {t("nav.login")}
-                  </Link>
-                  <Link
-                    href="/register"
-                    className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors hover:bg-emerald-500/20 hover:text-emerald-300 ${
-                      pathname.startsWith("/register")
-                        ? "bg-emerald-500/20 text-emerald-300"
-                        : "text-emerald-400"
-                    }`}
-                  >
-                    {t("nav.register")}
-                  </Link>
-                </>
-              )}
             </>
           )}
         </div>
 
-        {/* Language selector */}
-        <div className="hidden items-center gap-0.5 sm:flex">
-          <button
-            type="button"
-            onClick={() => setLocale("pt-BR")}
-            className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium uppercase transition-colors ${
-              locale === "pt-BR" ? "bg-gray-700 text-white" : "text-gray-500 hover:text-gray-300"
-            }`}
-            aria-label="Português"
-          >
-            <FlagBr className="h-3.5 w-5 shrink-0 rounded-sm" />
-            PT
-          </button>
-          <button
-            type="button"
-            onClick={() => setLocale("en")}
-            className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium uppercase transition-colors ${
-              locale === "en" ? "bg-gray-700 text-white" : "text-gray-500 hover:text-gray-300"
-            }`}
-            aria-label="English"
-          >
-            <FlagGb className="h-3.5 w-5 shrink-0 rounded-sm" />
-            EN
-          </button>
+        {/* Desktop right actions */}
+        <div className="ml-auto hidden items-center gap-2 sm:flex">
+          <DonateButton />
+          {loading ? (
+            <span className="rounded bg-gray-800 px-3 py-1.5 text-sm text-gray-500">...</span>
+          ) : user ? (
+            <>
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                    pathname.startsWith("/admin")
+                      ? "border-amber-600/60 bg-gray-800 text-amber-300"
+                      : "border-transparent text-amber-400 hover:border-amber-600/40 hover:bg-gray-800 hover:text-amber-300"
+                  }`}
+                >
+                  <IconAdmin />
+                  {t("nav.admin")}
+                </Link>
+              )}
+              <Link
+                href="/profile"
+                className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                  pathname.startsWith("/profile")
+                    ? "border-gray-600 bg-gray-700 text-white"
+                    : "border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-500 hover:bg-gray-700 hover:text-white"
+                }`}
+              >
+                <IconProfile />
+                {user.displayName || user.email}
+              </Link>
+              <button
+                type="button"
+                onClick={logout}
+                className="rounded border border-transparent px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 transition-colors hover:border-red-500/40 hover:bg-gray-800 hover:text-red-400"
+              >
+                {t("nav.logOut")}
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className={`rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                  pathname.startsWith("/login")
+                    ? "border-gray-600 bg-gray-800 text-white"
+                    : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
+                }`}
+              >
+                {t("nav.login")}
+              </Link>
+              <Link
+                href="/register"
+                className={`rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                  pathname.startsWith("/register")
+                    ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                    : "border-transparent text-emerald-400 hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300"
+                }`}
+              >
+                {t("nav.register")}
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile hamburger button */}
@@ -272,6 +351,9 @@ export function Header() {
             <div className="px-4 py-3 text-sm text-gray-500">{t("common.loading")}</div>
           ) : (
             <div className="flex flex-col divide-y divide-gray-800">
+              <div className="px-4 py-3.5">
+                <DonateButton className="w-full justify-center" />
+              </div>
               {user && (
                 <Link
                   href="/profile"
@@ -279,7 +361,7 @@ export function Header() {
                     pathname.startsWith("/profile") ? "bg-gray-800 text-white" : "text-gray-300"
                   }`}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="8" r="5"/><path d="M3 21a9 9 0 0 1 18 0"/></svg>
+                  <IconProfile className="h-4 w-4 shrink-0" />
                   {user.displayName || user.email}
                 </Link>
               )}

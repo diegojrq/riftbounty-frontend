@@ -1,0 +1,323 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { toast } from "sonner";
+import { useAuth } from "@/lib/auth-context";
+import { useLocale } from "@/lib/locale-context";
+import { createDonationCheckout } from "@/lib/donations";
+
+/** Mínimo da API (presets já são ≥ este valor) */
+const MIN_CENTS = 100;
+/** Valor “Outro”: mínimo R$ 5,00 */
+const MIN_CUSTOM_CENTS = 500;
+const MAX_CENTS = 10_000_000;
+const PRESET_CENTS = [500, 1000, 2000] as const;
+const MESSAGE_MAX = 500;
+
+function IconDollar() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden>
+      <line x1="12" x2="12" y1="2" y2="22" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  );
+}
+/** Máx. dígitos no buffer de centavos (100.000,00 BRL) */
+const MAX_CUSTOM_DIGITS = String(MAX_CENTS).length;
+
+function centsToReaisLabel(cents: number, locale: string): string {
+  return new Intl.NumberFormat(locale === "pt-BR" ? "pt-BR" : "en-US", {
+    style: "currency",
+    currency: "BRL",
+  }).format(cents / 100);
+}
+
+/** Parte numérica da máscara BRL (sem símbolo), ex.: 500 → "5,00" (pt) ou "5.00" (en). */
+function formatBrlAmountDigitsOnly(digitStr: string, locale: string): string {
+  if (!digitStr) return "";
+  const n = Number.parseInt(digitStr, 10);
+  if (Number.isNaN(n)) return "";
+  const cents = Math.min(n, MAX_CENTS);
+  return new Intl.NumberFormat(locale === "pt-BR" ? "pt-BR" : "en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
+/** Extrai centavos a partir do texto exibido (só dígitos). Zeros à esquerda viram o valor correto em centavos. */
+function digitsFromInputValue(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, MAX_CUSTOM_DIGITS);
+  if (!digits) return "";
+  const n = Number.parseInt(digits, 10);
+  if (Number.isNaN(n) || n === 0) return "";
+  if (n > MAX_CENTS) return String(MAX_CENTS);
+  return String(n);
+}
+
+interface DonateButtonProps {
+  /** Estilo compacto no header vs. link no rodapé */
+  variant?: "header" | "footer";
+  className?: string;
+}
+
+export function DonateButton({ variant = "header", className = "" }: DonateButtonProps) {
+  const { t, locale } = useLocale();
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [preset, setPreset] = useState<number | "custom">(1000);
+  /** Apenas dígitos: valor em centavos (ex. "500" = R$ 5,00) */
+  const [customDigits, setCustomDigits] = useState("");
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const amountCents = useMemo(() => {
+    if (preset === "custom") {
+      if (!customDigits) return null;
+      const n = Number.parseInt(customDigits, 10);
+      if (Number.isNaN(n)) return null;
+      return Math.min(n, MAX_CENTS);
+    }
+    return preset;
+  }, [preset, customDigits]);
+
+  const amountValid = useMemo(() => {
+    if (amountCents === null) return false;
+    if (amountCents > MAX_CENTS || amountCents < MIN_CENTS) return false;
+    if (preset === "custom") return amountCents >= MIN_CUSTOM_CENTS;
+    return true;
+  }, [amountCents, preset]);
+
+  const resetForm = useCallback(() => {
+    setPreset(1000);
+    setCustomDigits("");
+    setMessage("");
+    setEmail("");
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setOpen(false);
+    setSubmitting(false);
+    resetForm();
+  }, [resetForm]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!amountValid || amountCents === null) {
+      if (preset === "custom" && amountCents !== null && amountCents < MIN_CUSTOM_CENTS) {
+        toast.error(t("donate.errorAmountCustomMin"));
+      } else {
+        toast.error(t("donate.errorAmount"));
+      }
+      return;
+    }
+    const msg = message.trim();
+    if (msg.length > MESSAGE_MAX) {
+      toast.error(t("donate.errorMessageLength"));
+      return;
+    }
+    const donorEmail = (user?.email?.trim() || email.trim()) || "";
+    setSubmitting(true);
+    try {
+      const data = await createDonationCheckout({
+        amountCents,
+        ...(donorEmail ? { email: donorEmail } : {}),
+        ...(msg ? { message: msg } : {}),
+      });
+      if (!data.redirectUrl) {
+        throw new Error(t("donate.errorNoRedirect"));
+      }
+      window.location.href = data.redirectUrl;
+    } catch (err) {
+      setSubmitting(false);
+      const msgText = err instanceof Error ? err.message : t("donate.errorGeneric");
+      toast.error(msgText);
+    }
+  };
+
+  const buttonClass =
+    variant === "footer"
+      ? `text-emerald-400 underline-offset-2 hover:text-emerald-300 hover:underline ${className}`
+      : `inline-flex items-center justify-center gap-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-300 transition-colors hover:border-emerald-500/60 hover:bg-emerald-500/20 ${className}`;
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} className={buttonClass}>
+        {variant === "footer" ? (
+          t("donate.linkFooter")
+        ) : (
+          <>
+            <IconDollar />
+            {t("nav.donate")}
+          </>
+        )}
+      </button>
+
+      {open &&
+        mounted &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[200] overflow-y-auto overscroll-contain"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="donate-modal-title"
+          >
+            {/* Portal em document.body evita stacking/clip do header; scroll externo evita cortar o topo */}
+            <div
+              className="flex min-h-full justify-center bg-black/70 px-4 py-6 sm:px-4 sm:py-10"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) handleClose();
+              }}
+            >
+              <div
+                className="relative my-auto w-full max-w-md max-h-[min(90dvh,calc(100vh-3rem))] overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-5 shadow-xl sm:p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 pr-2">
+                <h2 id="donate-modal-title" className="text-lg font-semibold text-white">
+                  {t("donate.title")}
+                </h2>
+                <p className="mt-1.5 text-sm leading-relaxed text-gray-400">
+                  {t("donate.subtitle")}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
+                aria-label={t("donate.close")}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  {t("donate.amount")}
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {PRESET_CENTS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => {
+                        setPreset(c);
+                        setCustomDigits("");
+                      }}
+                      className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                        preset === c
+                          ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
+                          : "border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-gray-800"
+                      }`}
+                    >
+                      {centsToReaisLabel(c, locale)}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setPreset("custom")}
+                    className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                      preset === "custom"
+                        ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
+                        : "border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-gray-800"
+                    }`}
+                  >
+                    {t("donate.custom")}
+                  </button>
+                </div>
+                {preset === "custom" && (
+                  <div className="mt-3">
+                    <label htmlFor="donate-custom-amount" className="mb-1 block text-xs text-gray-500">
+                      {t("donate.customAmountLabel")}
+                    </label>
+                    <div className="flex rounded-lg border border-gray-600 bg-gray-800 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/40">
+                      <span className="flex shrink-0 items-center border-r border-gray-600 px-3 text-sm font-medium text-gray-400">
+                        {t("donate.currencyPrefix")}
+                      </span>
+                      <input
+                        id="donate-custom-amount"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        placeholder={t("donate.customPlaceholder")}
+                        value={formatBrlAmountDigitsOnly(customDigits, locale)}
+                        onChange={(e) => setCustomDigits(digitsFromInputValue(e.target.value))}
+                        className="min-w-0 flex-1 bg-transparent px-3 py-2 text-white placeholder:text-gray-500 focus:outline-none"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">{t("donate.amountHint")}</p>
+                  </div>
+                )}
+              </div>
+
+              {!user && (
+                <div>
+                  <label htmlFor="donate-email" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                    {t("donate.email")} <span className="font-normal normal-case text-gray-600">({t("common.optional")})</span>
+                  </label>
+                  <input
+                    id="donate-email"
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder:text-gray-500 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                    placeholder={t("donate.emailPlaceholder")}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="donate-message" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  {t("donate.message")} <span className="font-normal normal-case text-gray-600">({t("common.optional")})</span>
+                </label>
+                <textarea
+                  id="donate-message"
+                  rows={3}
+                  maxLength={MESSAGE_MAX}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  className="w-full resize-y rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder:text-gray-500 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                  placeholder={t("donate.messagePlaceholder")}
+                />
+                <p className="mt-1 text-right text-[11px] text-gray-600">
+                  {message.length}/{MESSAGE_MAX}
+                </p>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  disabled={submitting}
+                  className="rounded-lg border border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-800 disabled:opacity-50"
+                >
+                  {t("donate.cancel")}
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || !amountValid}
+                  className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {submitting ? t("donate.submitting") : t("donate.continue")}
+                </button>
+              </div>
+            </form>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
