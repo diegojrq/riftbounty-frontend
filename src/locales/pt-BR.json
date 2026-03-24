@@ -669,8 +669,26 @@
     "typeToSearch": "Digite para buscar",
     "cancel": "Cancelar"
   },
+  "contact": {
+    "title": "Contato",
+    "email": "E-mail",
+    "emailPlaceholder": "seu@email.com",
+    "subject": "Assunto",
+    "subjectPlaceholder": "Assunto curto",
+    "message": "Mensagem",
+    "messagePlaceholder": "Sua mensagem…",
+    "messageHint": "Mínimo de {min} caracteres.",
+    "send": "Enviar",
+    "sending": "Enviando…",
+    "cancel": "Cancelar",
+    "close": "Fechar",
+    "success": "Mensagem enviada. Obrigado!",
+    "error": "Não foi possível enviar. Tente de novo."
+  },
   "footer": {
     "notAffiliated": "Riftbounty não é afiliado à Riot Games.",
-    "disclaimer": "Riftbounty não é endossado pela Riot Games e não reflete as visões ou opiniões da Riot Games ou de qualquer pessoa oficialmente envolvida na produção ou gestão de propriedades da Riot Games. Riot Games e todas as propriedades associadas são marcas registradas da Riot Games, Inc."
+    "disclaimer": "Riftbounty não é endossado pela Riot Games e não reflete as visões ou opiniões da Riot Games ou de qualquer pessoa oficialmente envolvida na produção ou gestão de propriedades da Riot Games. Riot Games e todas as propriedades associadas são marcas registradas da Riot Games, Inc.",
+    "contactAria": "Abrir contato",
+    "contactLabel": "Contato"
   }
 }

@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useCards } from "@/lib/cards-context";
 import { useLocale } from "@/lib/locale-context";
 import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
+import { SiteFooterBlock } from "@/components/layout/SiteFooterBlock";
 
 const DOMAINS = [
   { slug: "fury",  color: "from-red-900/40 to-transparent",   ring: "ring-red-700/50"   },
@@ -234,6 +235,8 @@ export default function HomePage() {
           </div>
         </section>
       )}
+
+      <SiteFooterBlock as="section" />
     </div>
   );
 }

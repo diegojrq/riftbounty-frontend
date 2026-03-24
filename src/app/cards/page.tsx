@@ -70,9 +70,8 @@ function CardsPageContent() {
 
   // UI
   const [visibleCount, setVisibleCount] = useState(LIMIT);
-  const [filtersExpanded, setFiltersExpanded] = useState(
-    () => initDomains.length > 0 || !!initRarity || !!initType || !!initSet || initOnlyNew
-  );
+  /** Filtros vindos da URL continuam aplicados; o painel começa recolhido para não cobrir o grid. */
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailUuid, setDetailUuid] = useState<string | null>(null);
 
@@ -386,11 +385,11 @@ function CardsPageContent() {
         </header>
       </div>
 
-      {/* Filter bar — sticky abaixo do Header desktop (2 linhas: idioma + nav). */}
+      {/* Filter bar — sticky no desktop (só borda inferior azul; sombra forte subia e parecia “borda” no topo). No mobile o destaque vai pra barra fixa de baixo. */}
       <div
-        className={`sticky top-0 z-20 border-b bg-gray-900/95 backdrop-blur-sm sm:top-[86px] ${
+        className={`sticky top-0 z-20 border-b border-t-0 bg-gray-900/95 backdrop-blur-sm sm:top-[86px] ${
           hasActiveFilters
-            ? "border-blue-500/50 shadow-[0_8px_24px_rgba(29,78,216,0.2)]"
+            ? "max-sm:border-gray-700 max-sm:shadow-[0_8px_20px_rgba(0,0,0,0.35)] sm:border-blue-500/50 sm:shadow-none"
             : "border-gray-700 shadow-[0_8px_20px_rgba(0,0,0,0.35)]"
         }`}
       >
@@ -430,8 +429,14 @@ function CardsPageContent() {
         </div>
       </div>
 
-      {/* ── Bottom bar — mobile only ── */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-gray-700 bg-gray-900/95 px-3 py-2 backdrop-blur-sm sm:hidden">
+      {/* ── Bottom bar — mobile only (destaque azul na borda superior quando há filtros) ── */}
+      <div
+        className={`fixed bottom-0 left-0 right-0 z-30 border-t bg-gray-900/95 px-3 py-2 backdrop-blur-sm sm:hidden ${
+          hasActiveFilters
+            ? "border-blue-500/50 shadow-[0_-8px_24px_rgba(29,78,216,0.2)]"
+            : "border-gray-700"
+        }`}
+      >
         {searchQuery.trim().length > 0 && searchQuery.trim().length < MIN_SEARCH_LENGTH && (
           <p className="mb-1.5 text-center text-xs text-amber-400/80">
             {MIN_SEARCH_LENGTH - searchQuery.trim().length === 1 ? t("cards.moreCharsToSearch", { count: 1 }) : t("cards.moreCharsToSearchPlural", { count: MIN_SEARCH_LENGTH - searchQuery.trim().length })}

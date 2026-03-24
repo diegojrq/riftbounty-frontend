@@ -34,7 +34,7 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className="antialiased bg-gray-900">
+      <body className="flex min-h-screen flex-col antialiased bg-gray-900">
         <ChunkErrorRecovery />
         {isProd && (
           <>
@@ -53,7 +53,7 @@ export default function RootLayout({
           <RiotCatalogSetsProvider>
           <CardsProvider>
           <Header />
-          <main className="min-h-screen">{children}</main>
+          <main className="flex min-h-0 flex-1 flex-col">{children}</main>
           <Footer />
           <BackToTop />
           <Toaster

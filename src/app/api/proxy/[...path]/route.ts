@@ -52,6 +52,7 @@ const ALLOWED_PATH_PREFIXES = [
   "admin",
   "donations",
   "riot-catalog",
+  "contact",
 ];
 
 function validatePath(segments: string[]): string {
