@@ -570,7 +570,7 @@
     "filters": "Filters",
     "showResults": "Show results",
     "cardsTitle": "Cards",
-    "searchCardNamePlaceholder": "Search card name…",
+    "searchCardNamePlaceholder": "Search name, collector number or text…",
     "tcgPricesUsd": "TCG prices (USD)",
     "tcgMarketPrice": "Market",
     "tcgMidPrice": "Mid",

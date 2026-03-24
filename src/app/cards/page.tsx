@@ -36,6 +36,22 @@ function getCardDomains(card: Card): string[] {
   return [...new Set(result)];
 }
 
+function getCardCollectorNumberNorm(card: Card): string {
+  return (card.collectorNumber ?? card.collector_number ?? "").toString().trim().toLowerCase();
+}
+
+/** Match tipo LIKE (%q%): substring no número cru ou em forma compacta (ignora espaços, -, /, ., _). */
+function collectorNumberMatchesQuery(card: Card, query: string): boolean {
+  const c = getCardCollectorNumberNorm(card);
+  if (!c) return false;
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  if (c.includes(q)) return true;
+  const qc = q.replace(/[\s\-_/.]+/g, "");
+  const cc = c.replace(/[\s\-_/.]+/g, "");
+  return qc.length > 0 && cc.includes(qc);
+}
+
 function CardsPageContent() {
   const { cards: allCards } = useCards();
   const { t } = useLocale();
@@ -124,7 +140,8 @@ function CardsPageContent() {
         const descriptionMatch =
           card.description != null &&
           cardDescriptionPlainText(card.description).toLowerCase().includes(q);
-        if (!nameMatch && !subtypeMatch && !descriptionMatch) return false;
+        const collectorMatch = collectorNumberMatchesQuery(card, nameFilter);
+        if (!nameMatch && !subtypeMatch && !descriptionMatch && !collectorMatch) return false;
       }
       if (selectedDomains.length > 0) {
         const allDomains = getCardDomains(card);

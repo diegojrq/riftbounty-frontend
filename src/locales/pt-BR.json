@@ -570,7 +570,7 @@
     "filters": "Filtros",
     "showResults": "Ver resultados",
     "cardsTitle": "Cartas",
-    "searchCardNamePlaceholder": "Buscar nome da carta…",
+    "searchCardNamePlaceholder": "Buscar nome, número de colecionador ou texto…",
     "tcgPricesUsd": "Preços TCG (USD)",
     "tcgMarketPrice": "Market",
     "tcgMidPrice": "Mid",
