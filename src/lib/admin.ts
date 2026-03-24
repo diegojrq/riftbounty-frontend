@@ -32,6 +32,23 @@ export interface AdminCatalogVersionBumpResponse {
   version: string | number;
 }
 
+export interface AdminCatalogLoadMetrics {
+  mode: string;
+  added?: number;
+  skippedExisting?: number;
+  loaded: number;
+  totalInJson: number;
+  existingBefore: number;
+}
+
+export interface AdminCatalogVersionLoadResponse {
+  mode?: string;
+  version?: string | number;
+  metrics?: AdminCatalogLoadMetrics;
+  loaderResult?: unknown;
+  stderr?: string;
+}
+
 export type AdminCard = Card & {
   /** Contexto retornado pelo admin: arrays de nomes. */
   domains?: string[];
@@ -111,7 +128,7 @@ export async function listAdminCards(
   return res.data ?? { items: [], totalCount: 0 };
 }
 
-/** GET /v1/admin/cards/:id — id = uuid ou scraper_id */
+/** GET /v1/admin/cards/:id — id da carta (catálogo /cards) ou scraper_id legado */
 export async function getAdminCard(id: string): Promise<AdminCard> {
   const res = await apiGet<AdminCard>(`${BASE}/${encodeURIComponent(id)}`);
   return res.data;
@@ -163,5 +180,11 @@ export async function runAdminTcgSync(): Promise<AdminTcgSyncSummary> {
 /** POST /v1/admin/catalog-version/bump — incrementa versão do catálogo e invalida cache no backend */
 export async function bumpAdminCatalogVersion(): Promise<AdminCatalogVersionBumpResponse> {
   const res = await apiPost<AdminCatalogVersionBumpResponse>("admin/catalog-version/bump", {});
+  return res.data;
+}
+
+/** POST /v1/admin/catalog-version/load — carrega cartas de catalog version (incremental/full no backend) */
+export async function loadAdminCatalogVersion(): Promise<AdminCatalogVersionLoadResponse> {
+  const res = await apiPost<AdminCatalogVersionLoadResponse>("admin/catalog-version/load", {});
   return res.data;
 }

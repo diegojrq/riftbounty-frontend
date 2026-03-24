@@ -28,9 +28,18 @@ import { useCards } from "@/lib/cards-context";
 import { getCardImageUrl } from "@/lib/cards";
 import { CardTile } from "@/components/cards/CardTile";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
-import { AttributesFilter } from "@/components/filters/AttributesFilter";
+import { AbilitiesFilter } from "@/components/filters/AbilitiesFilter";
+import { cardMatchesAnyAbility } from "@/lib/card-ability-filter";
+import { cardDescriptionPlainText } from "@/lib/html-description";
+import {
+  rawDeckValidationErrors,
+  rawDeckValidationWarnings,
+  formatDeckValidationItem,
+  type DeckValidationTranslate,
+} from "@/lib/deck-validation";
 import type { Card } from "@/types/card";
 import type { Deck } from "@/types/deck";
+import { getCardId } from "@/lib/card-id";
 
 const DOMAINS = ["fury", "calm", "mind", "body", "chaos", "order"] as const;
 
@@ -109,12 +118,12 @@ function CardPickerGrid({
   // Combined qty: main + sideboard (counts toward the 3-copy limit)
   const mainQtyMap = new Map<string, number>();
   for (const item of deck.mainItems ?? []) {
-    const id = item.card?.uuid ?? item.cardId;
+    const id = getCardId(item.card as Card) || item.cardId;
     if (id) mainQtyMap.set(id, (mainQtyMap.get(id) ?? 0) + item.quantity);
   }
   const sbQtyMap = new Map<string, number>();
   for (const item of deck.sideboardItems ?? []) {
-    const id = item.card?.uuid ?? item.cardId;
+    const id = getCardId(item.card as Card) || item.cardId;
     if (id) sbQtyMap.set(id, (sbQtyMap.get(id) ?? 0) + item.quantity);
   }
 
@@ -125,8 +134,8 @@ function CardPickerGrid({
       isBf ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3" : "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6"
     }`}>
       {cards.map((card) => {
-        const mainQty = mainQtyMap.get(card.uuid) ?? 0;
-        const sbQty = sbQtyMap.get(card.uuid) ?? 0;
+        const mainQty = mainQtyMap.get(getCardId(card)) ?? 0;
+        const sbQty = sbQtyMap.get(getCardId(card)) ?? 0;
         const combinedQty = mainQty + sbQty;
         // Main: max 39 total + max 3 per card (main+sb combined) | Sideboard: max 8 total + max 3 per card | Rune: max 12 total
         const atLimit =
@@ -135,12 +144,12 @@ function CardPickerGrid({
           (picker === "rune" && runeCount >= 12);
 
         const inColl = picker === "legend" || picker === "champion" || picker === "battlefields" || picker === "main" || picker === "rune" || picker === "sideboard";
-        const owned = collectionQtyByCardId.get(card.uuid) ?? card.collectionQuantity ?? 0;
+        const owned = collectionQtyByCardId.get(getCardId(card)) ?? card.collectionQuantity ?? 0;
 
-        const cardAddKeys = addAnimations.get(card.uuid) ?? [];
+        const cardAddKeys = addAnimations.get(getCardId(card)) ?? [];
 
         return (
-          <li key={card.uuid} className="relative">
+          <li key={getCardId(card)} className="relative">
             <button
               type="button"
               disabled={atLimit}
@@ -263,7 +272,7 @@ function DeckBuilderSkeleton() {
 }
 
 /** Retorna o próximo passo pendente do deck, na ordem de prioridade. */
-function getNextPicker(deck: Deck): PickerMode {
+function getNextPicker(deck: Deck, t: DeckValidationTranslate): PickerMode {
   const legend = deck.legendCard ?? deck.legend;
   const champion = deck.championCard ?? deck.champion;
   if (!legend) return "legend";
@@ -275,8 +284,9 @@ function getNextPicker(deck: Deck): PickerMode {
 
   // Build per-card error map from validation data
   const cardErrors = new Map<string, true>();
-  for (const err of deck.validation?.errors ?? []) {
-    const match = err.match(/"([^"]+)"/);
+  for (const err of rawDeckValidationErrors(deck.validation)) {
+    const s = formatDeckValidationItem(err, t);
+    const match = s.match(/"([^"]+)"/);
     if (match) cardErrors.set(match[1].toLowerCase(), true);
   }
 
@@ -291,19 +301,6 @@ function getNextPicker(deck: Deck): PickerMode {
 
   // Sideboard é coadjuvante: nunca direcionamos o usuário para ele; fica no rune (último step obrigatório)
   return "rune";
-}
-
-function getCardAttributes(card: Card): string[] {
-  if (card.attributes) {
-    if (Array.isArray(card.attributes)) return card.attributes as string[];
-    return Object.keys(card.attributes);
-  }
-  if (Array.isArray(card.cardAttributes)) {
-    return (card.cardAttributes as Array<{ attribute?: { name?: string }; name?: string }>)
-      .map((ca) => ca.attribute?.name ?? ca.name ?? "")
-      .filter(Boolean);
-  }
-  return [];
 }
 
 const VALID_DOMAIN_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
@@ -342,15 +339,29 @@ function cardMatchesDomains(card: Card, domains: string[]): boolean {
   return domains.some((d) => cardDomains.includes(d.toLowerCase()));
 }
 
-function cardHasSubtype(card: Card, subtype: string): boolean {
-  const lower = subtype.toLowerCase();
-  if (card.subtypes?.some((s) => s.toLowerCase() === lower)) return true;
+function getCardTagNames(card: Card): string[] {
+  const tags = new Set<string>();
   if (Array.isArray(card.cardSubtypes)) {
-    return (card.cardSubtypes as Array<{ subtype?: { name?: string }; name?: string }>).some(
-      (cs) => ((cs?.subtype?.name ?? cs?.name ?? "")).toLowerCase() === lower
-    );
+    (card.cardSubtypes as Array<{ subtype?: { name?: string }; name?: string }>).forEach((cs) => {
+      const n = (cs?.subtype?.name ?? cs?.name ?? "").trim().toLowerCase();
+      if (n) tags.add(n);
+    });
   }
-  return false;
+  // Compat legado (caso algum endpoint ainda envie `subtypes`)
+  if (Array.isArray(card.subtypes)) {
+    card.subtypes.forEach((s) => {
+      const n = String(s ?? "").trim().toLowerCase();
+      if (n) tags.add(n);
+    });
+  }
+  return [...tags];
+}
+
+function cardTypeIncludes(card: Card, expected: string): boolean {
+  const e = expected.toLowerCase();
+  const t = (card.type ?? "").toLowerCase();
+  const rt = (card.record_type ?? card.recordType ?? "").toLowerCase();
+  return t === e || t.includes(e) || rt === e || rt.includes(e);
 }
 
 export default function DeckBuilderPage() {
@@ -379,7 +390,7 @@ export default function DeckBuilderPage() {
   const [pickerDomain, setPickerDomain] = useState<string | undefined>(undefined); // legend: single
   const [pickerDomains, setPickerDomains] = useState<string[]>([]); // main: multi
   const [pickerType, setPickerType] = useState<string | undefined>(undefined);
-  const [pickerAttributes, setPickerAttributes] = useState<string[]>([]);
+  const [pickerAbilities, setPickerAbilities] = useState<string[]>([]);
   const [cardSearchQuery, setCardSearchQuery] = useState("");
   const [showValidModal, setShowValidModal] = useState(false);
   const [onlyInCollection, setOnlyInCollection] = useState(false);
@@ -449,7 +460,7 @@ export default function DeckBuilderPage() {
       setDeck(d);
       setNameDraft(d.name || "");
       // Auto-abre o próximo passo pendente na primeira carga
-      setPicker((prev) => prev ?? getNextPicker(d));
+      setPicker((prev) => prev ?? getNextPicker(d, t));
     } catch (err) {
       setError(err instanceof Error ? err.message : t("decks.errorLoadingDeck"));
       setDeck(null);
@@ -473,7 +484,7 @@ export default function DeckBuilderPage() {
       .then((data) => {
         const map = new Map<string, number>();
         for (const it of data.items ?? []) {
-          const id = it.card?.uuid ?? it.cardId;
+          const id = getCardId(it.card as Card) || it.cardId;
           if (id) map.set(id, (map.get(id) ?? 0) + (it.quantity ?? 0));
         }
         setCollectionQtyByCardId(map);
@@ -487,29 +498,34 @@ export default function DeckBuilderPage() {
     const nameQuery = cardSearchQuery.trim().length >= 3 ? cardSearchQuery.trim().toLowerCase() : null;
 
     const results = allCards.filter((card) => {
-      const type = card.type?.toLowerCase() ?? "";
-
       if (picker === "legend") {
-        if (type !== "legend") return false;
+        if (!cardTypeIncludes(card, "legend")) return false;
         if (pickerDomain && !cardMatchesDomains(card, [pickerDomain])) return false;
       } else if (picker === "champion") {
-        if (type !== "champion") return false;
+        // Catálogo novo: "champion" pode vir como Unit + tags (ex.: Teemo),
+        // não necessariamente com type = "Champion".
+        if (!(cardTypeIncludes(card, "champion") || cardTypeIncludes(card, "unit"))) return false;
+        if (cardTypeIncludes(card, "legend")) return false;
         const legendCard = deck?.legendCard ?? deck?.legend;
-        const legendSubtype = legendCard?.subtypes?.[0];
-        if (legendSubtype && !cardHasSubtype(card, legendSubtype)) return false;
-      } else if (picker === "main" || picker === "sideboard") {
-        if (type === "rune" || type === "legend") return false;
-        if (!cardMatchesDomains(card, pickerDomains)) return false;
-        if (pickerType && type !== pickerType.toLowerCase()) return false;
-        if (pickerAttributes.length > 0) {
-          const attrs = getCardAttributes(card).map((a) => a.toLowerCase());
-          if (!pickerAttributes.some((a) => attrs.includes(a.toLowerCase()))) return false;
+        const legendTags = legendCard ? getCardTagNames(legendCard as Card) : [];
+        if (legendTags.length > 0) {
+          const championTags = getCardTagNames(card);
+          if (!legendTags.some((tag) => championTags.includes(tag))) return false;
+        } else {
+          // fallback defensivo se alguma legend vier sem tags
+          const legendDomains = legendCard ? getCardDomains(legendCard as Card) : [];
+          if (legendDomains.length > 0 && !cardMatchesDomains(card, legendDomains)) return false;
         }
+      } else if (picker === "main" || picker === "sideboard") {
+        if (cardTypeIncludes(card, "rune") || cardTypeIncludes(card, "legend")) return false;
+        if (!cardMatchesDomains(card, pickerDomains)) return false;
+        if (pickerType && !cardTypeIncludes(card, pickerType)) return false;
+        if (!cardMatchesAnyAbility(card, pickerAbilities)) return false;
       } else if (picker === "rune") {
-        if (type !== "rune") return false;
+        if (!cardTypeIncludes(card, "rune")) return false;
         if (!cardMatchesDomains(card, pickerDomains)) return false;
       } else if (picker === "battlefields") {
-        if (type !== "battlefield") return false;
+        if (!cardTypeIncludes(card, "battlefield") && !cardTypeIncludes(card, "battleground")) return false;
       }
 
       if (nameQuery) {
@@ -519,32 +535,34 @@ export default function DeckBuilderPage() {
           (card.cardSubtypes as Array<{ subtype?: { name?: string }; name?: string }> | undefined)?.some(
             (cs) => ((cs?.subtype?.name ?? cs?.name) ?? "").toLowerCase().includes(nameQuery)
           );
-        const descriptionMatch = card.description?.toLowerCase().includes(nameQuery) ?? false;
+        const descriptionMatch =
+          card.description != null &&
+          cardDescriptionPlainText(card.description).toLowerCase().includes(nameQuery);
         if (!nameMatch && !subtypeMatch && !descriptionMatch) return false;
       }
 
       if (onlyInCollection) {
-        const collQty = collectionQtyByCardId.get(card.uuid) ?? 0;
+        const collQty = collectionQtyByCardId.get(getCardId(card)) ?? 0;
         if (collQty === 0) return false;
         // subtract copies already committed to main + sideboard + rune + legend + champion
         const legendCard = deck?.legendCard ?? deck?.legend;
         const championCard = deck?.championCard ?? deck?.champion;
-        const usedByLegend = legendCard && (legendCard as { uuid?: string }).uuid === card.uuid ? 1 : 0;
-        const usedByChampion = championCard && (championCard as { uuid?: string }).uuid === card.uuid ? 1 : 0;
+        const usedByLegend = legendCard && getCardId(legendCard as Card) === getCardId(card) ? 1 : 0;
+        const usedByChampion = championCard && getCardId(championCard as Card) === getCardId(card) ? 1 : 0;
         const deckQty =
           usedByLegend +
           usedByChampion +
           (deck?.mainItems ?? []).reduce((sum, item) => {
-            const id = item.card?.uuid ?? item.cardId;
-            return sum + (id === card.uuid ? item.quantity : 0);
+            const id = getCardId(item.card as Card) || item.cardId;
+            return sum + (id === getCardId(card) ? item.quantity : 0);
           }, 0) +
           (deck?.sideboardItems ?? []).reduce((sum, item) => {
-            const id = item.card?.uuid ?? item.cardId;
-            return sum + (id === card.uuid ? item.quantity : 0);
+            const id = getCardId(item.card as Card) || item.cardId;
+            return sum + (id === getCardId(card) ? item.quantity : 0);
           }, 0) +
           (deck?.runeItems ?? []).reduce((sum, item) => {
-            const id = item.card?.uuid ?? item.cardId;
-            return sum + (id === card.uuid ? item.quantity : 0);
+            const id = getCardId(item.card as Card) || item.cardId;
+            return sum + (id === getCardId(card) ? item.quantity : 0);
           }, 0);
         if (collQty - deckQty <= 0) return false;
       }
@@ -552,20 +570,20 @@ export default function DeckBuilderPage() {
       return true;
     });
     return results;
-  }, [picker, allCards, deck, pickerDomain, pickerDomains, pickerType, pickerAttributes, cardSearchQuery, onlyInCollection, collectionQtyByCardId]);
+  }, [picker, allCards, deck, pickerDomain, pickerDomains, pickerType, pickerAbilities, cardSearchQuery, onlyInCollection, collectionQtyByCardId]);
 
   // Reseta filtros ao trocar o picker; para "main" pré-seleciona todos os domains da legend
   useEffect(() => {
     const isMultiDomain = picker === "main" || picker === "rune" || picker === "sideboard";
     if (isMultiDomain) {
       const deckLegendCard = deck?.legendCard ?? deck?.legend;
-      const legendUuid = deckLegendCard?.uuid;
+      const legendId = deckLegendCard ? getCardId(deckLegendCard as Card) : "";
 
       // 1ª prioridade: card do deck API (tem cardDomains relacionais, mais confiável)
       const domainsFromDeckApi = getCardDomains(deckLegendCard ?? {} as Card);
 
       // 2ª prioridade: card do cache (pode ter dados legados/desatualizados)
-      const legendFromCache = legendUuid ? allCards.find((c) => c.uuid === legendUuid) : null;
+      const legendFromCache = legendId ? allCards.find((c) => getCardId(c) === legendId) : null;
       const domainsFromCache = getCardDomains(legendFromCache ?? {} as Card);
 
       // Usa deck API se tiver dados; caso contrário usa cache
@@ -576,7 +594,7 @@ export default function DeckBuilderPage() {
     }
     setPickerDomain(undefined);
     setPickerType(undefined);
-    setPickerAttributes([]);
+    setPickerAbilities([]);
     setCardSearchQuery("");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picker]);
@@ -585,7 +603,6 @@ export default function DeckBuilderPage() {
   // Opens the modal only when deck transitions from invalid → valid during editing
   useEffect(() => {
     if (!deck) return;
-    const hasName = ((deck.name ?? nameDraft)?.trim() ?? "").length > 0;
     const mainC = deck.mainItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
     const runeC = deck.runeItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
     const bfsLen = deck.battlefields?.length ?? 0;
@@ -593,43 +610,10 @@ export default function DeckBuilderPage() {
     const hasLegend = !!(deck.legendCard ?? deck.legend);
     const hasChampion = !!(deck.championCard ?? deck.champion);
     const structurallyComplete = mainC === 39 && runeC === 12 && bfsOk && hasLegend && hasChampion;
-    const noErrors = (deck.validation?.errors?.length ?? 0) === 0;
-    const noWarnings = (deck.validation?.warnings?.length ?? 0) === 0;
+    const noErrors = rawDeckValidationErrors(deck.validation).length === 0;
+    const noWarnings = rawDeckValidationWarnings(deck.validation).length === 0;
     const validationValid = deck.validation?.valid === true;
     const isValid = noErrors && noWarnings && (validationValid || structurallyComplete);
-    const prevWasTrue = prevValidRef.current === true;
-    // #region agent log
-    if (typeof fetch !== "undefined") {
-      fetch("http://127.0.0.1:7905/ingest/39ec0feb-1413-4bfb-b655-c647fc6b8a34", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "186c0c" },
-        body: JSON.stringify({
-          sessionId: "186c0c",
-          location: "decks/[id]/page.tsx:modal-effect",
-          message: "validity-check",
-          data: {
-            mainC,
-            runeC,
-            bfsLen,
-            bfsOk,
-            hasLegend,
-            hasChampion,
-            structurallyComplete,
-            hasName,
-            deckNameLen: (deck.name ?? "").length,
-            nameDraftLen: (nameDraft ?? "").length,
-            noErrors,
-            noWarnings,
-            validationValid,
-            isValid,
-            prevWasTrue,
-            willShowModal: isValid && !prevWasTrue,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    }
-    // #endregion
     if (isValid && prevValidRef.current !== true) {
       setShowValidModal(true);
     }
@@ -658,9 +642,9 @@ export default function DeckBuilderPage() {
         if (currentChampion) {
           await setChampion(deck.id, null);
         }
-        const updated = await setLegend(deck.id, card.uuid);
+        const updated = await setLegend(deck.id, getCardId(card));
         setDeck(updated);
-        setPicker(getNextPicker(updated));
+        setPicker(getNextPicker(updated, t));
         setMobilePickerOpen(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToSetLegend"));
@@ -672,9 +656,9 @@ export default function DeckBuilderPage() {
     if (!deck) return;
     await runWithDeckMutation(async () => {
       try {
-        const updated = await setChampion(deck.id, card.uuid);
+        const updated = await setChampion(deck.id, getCardId(card));
         setDeck(updated);
-        const next = getNextPicker(updated);
+        const next = getNextPicker(updated, t);
         setPicker(next);
         if (next === "battlefields") setBattlefieldSlotBeingEdited(null);
         setMobilePickerOpen(false);
@@ -704,12 +688,12 @@ export default function DeckBuilderPage() {
   async function handleAddMain(card: Card) {
     if (!deck) return;
     savePickerScroll();
-    flashCard(card.uuid);
+    flashCard(getCardId(card));
     await runWithDeckMutation(async () => {
       try {
-        const updated = await addMainCard(deck.id, card.uuid, 1);
+        const updated = await addMainCard(deck.id, getCardId(card), 1);
         setDeck(updated);
-        setPicker(getNextPicker(updated));
+        setPicker(getNextPicker(updated, t));
         restorePickerScroll();
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToAddCard"));
@@ -720,12 +704,12 @@ export default function DeckBuilderPage() {
   async function handleAddRune(card: Card) {
     if (!deck) return;
     savePickerScroll();
-    flashCard(card.uuid);
+    flashCard(getCardId(card));
     await runWithDeckMutation(async () => {
       try {
-        const updated = await addRuneCard(deck.id, card.uuid, 1);
+        const updated = await addRuneCard(deck.id, getCardId(card), 1);
         setDeck(updated);
-        setPicker(getNextPicker(updated));
+        setPicker(getNextPicker(updated, t));
         restorePickerScroll();
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToAddRune"));
@@ -736,10 +720,10 @@ export default function DeckBuilderPage() {
   async function handleAddSideboard(card: Card) {
     if (!deck) return;
     savePickerScroll();
-    flashCard(card.uuid);
+    flashCard(getCardId(card));
     await runWithDeckMutation(async () => {
       try {
-        const updated = await addSideboardCard(deck.id, card.uuid, 1);
+        const updated = await addSideboardCard(deck.id, getCardId(card), 1);
         setDeck(updated);
         // Mantém no sideboard; nunca redirecionamos para sideboard, mas quem já está lá fica
         setPicker("sideboard");
@@ -754,9 +738,9 @@ export default function DeckBuilderPage() {
     if (!deck) return;
     await runWithDeckMutation(async () => {
       try {
-        const updated = await setBattlefield(deck.id, position, card.uuid);
+        const updated = await setBattlefield(deck.id, position, getCardId(card));
         setDeck(updated);
-        const next = getNextPicker(updated);
+        const next = getNextPicker(updated, t);
         setPicker(next);
         // Auto-close mobile picker when all 3 BFs filled → moving to next step
         if (next !== "battlefields") setMobilePickerOpen(false);
@@ -814,14 +798,21 @@ export default function DeckBuilderPage() {
     !!deckLegend &&
     !!deckChampion;
   const isDeckValid = !!(
-    (validation?.errors?.length ?? 0) === 0 &&
-    (validation?.warnings?.length ?? 0) === 0 &&
+    rawDeckValidationErrors(validation).length === 0 &&
+    rawDeckValidationWarnings(validation).length === 0 &&
     (validation?.valid === true || structurallyComplete)
+  );
+
+  const validationErrorStrings = rawDeckValidationErrors(validation).map((e) =>
+    formatDeckValidationItem(e, t)
+  );
+  const validationWarningStrings = rawDeckValidationWarnings(validation).map((e) =>
+    formatDeckValidationItem(e, t)
   );
 
   // Map cardName (lowercase) → error messages, for inline warning icons
   const cardErrorMap = new Map<string, string[]>();
-  for (const err of validation?.errors ?? []) {
+  for (const err of validationErrorStrings) {
     const match = err.match(/"([^"]+)"/);
     if (match) {
       const key = match[1].toLowerCase();
@@ -829,8 +820,8 @@ export default function DeckBuilderPage() {
     }
   }
   // Structural errors = those that don't reference a specific card name
-  const structuralErrors = (validation?.errors ?? []).filter(e => !/"[^"]+"/.test(e));
-  const structuralWarnings = validation?.warnings ?? [];
+  const structuralErrors = validationErrorStrings.filter((e) => !/"[^"]+"/.test(e));
+  const structuralWarnings = validationWarningStrings;
 
   // Whether each section has at least one card with a validation error
   const mainHasErrors = (deck?.mainItems ?? []).some(
@@ -1062,7 +1053,7 @@ export default function DeckBuilderPage() {
                     main: t("decks.stepsMain"), rune: t("decks.stepsRune"), sideboard: t("decks.stepsSB"),
                   };
                   const bfCount = deck?.battlefields?.filter((b) => b.card).length ?? 0;
-                  const errs = validation?.errors ?? [];
+                  const errs = validationErrorStrings;
                   const doneMap: Record<PickerMode, boolean> = {
                     legend: !!deckLegend,
                     champion: !!deckChampion,
@@ -1170,8 +1161,8 @@ export default function DeckBuilderPage() {
                       {/* Domain — not used for battlefields */}
                       {picker !== "battlefields" && (() => {
                         const isMultiDomain = picker === "main" || picker === "rune" || picker === "sideboard";
-                        const legendUuidForUI = deckLegend?.uuid;
-                        const legendCacheForUI = legendUuidForUI ? allCards.find((c) => c.uuid === legendUuidForUI) : null;
+                        const legendIdForUI = deckLegend ? getCardId(deckLegend) : "";
+                        const legendCacheForUI = legendIdForUI ? allCards.find((c) => getCardId(c) === legendIdForUI) : null;
                         const domainsFromDeckApiUI = getCardDomains(deckLegend ?? {} as Card);
                         const domainsFromCacheUI = getCardDomains(legendCacheForUI ?? {} as Card);
                         const domainsToShow = isMultiDomain
@@ -1284,10 +1275,10 @@ export default function DeckBuilderPage() {
                     </div>
                   )}
 
-                  {/* Attributes — main and sideboard, below the row */}
+                  {/* Abilities — main and sideboard (GET /v1/abilities) */}
                   {(picker === "main" || picker === "sideboard") && (
                     <div className="mb-3">
-                      <AttributesFilter selected={pickerAttributes} onChange={setPickerAttributes} />
+                      <AbilitiesFilter selected={pickerAbilities} onChange={setPickerAbilities} />
                     </div>
                   )}
 
@@ -1379,12 +1370,12 @@ export default function DeckBuilderPage() {
                       )}
                       {deckLegend && collectionQtyByCardId.size > 0 && (
                         <span
-                          title={`${t("decks.inCollection")}: ${collectionQtyByCardId.get(deckLegend.uuid) ?? 0} · ${t("decks.inDeck")}: 1`}
+                          title={`${t("decks.inCollection")}: ${collectionQtyByCardId.get(getCardId(deckLegend)) ?? 0} · ${t("decks.inDeck")}: 1`}
                           className={`rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
-                            (collectionQtyByCardId.get(deckLegend.uuid) ?? 0) >= 1 ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
+                            (collectionQtyByCardId.get(getCardId(deckLegend)) ?? 0) >= 1 ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
                           }`}
                         >
-                          {(collectionQtyByCardId.get(deckLegend.uuid) ?? 0)}/1
+                          {(collectionQtyByCardId.get(getCardId(deckLegend)) ?? 0)}/1
                         </span>
                       )}
                     </span>
@@ -1431,12 +1422,12 @@ export default function DeckBuilderPage() {
                       )}
                       {deckChampion && collectionQtyByCardId.size > 0 && (
                         <span
-                          title={`${t("decks.inCollection")}: ${collectionQtyByCardId.get(deckChampion.uuid) ?? 0} · ${t("decks.inDeck")}: 1`}
+                          title={`${t("decks.inCollection")}: ${collectionQtyByCardId.get(getCardId(deckChampion)) ?? 0} · ${t("decks.inDeck")}: 1`}
                           className={`rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
-                            (collectionQtyByCardId.get(deckChampion.uuid) ?? 0) >= 1 ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
+                            (collectionQtyByCardId.get(getCardId(deckChampion)) ?? 0) >= 1 ? "bg-emerald-900/40 text-emerald-300" : "bg-amber-900/40 text-amber-300"
                           }`}
                         >
-                          {(collectionQtyByCardId.get(deckChampion.uuid) ?? 0)}/1
+                          {(collectionQtyByCardId.get(getCardId(deckChampion)) ?? 0)}/1
                         </span>
                       )}
                     </span>
@@ -1501,7 +1492,7 @@ export default function DeckBuilderPage() {
                 <div className="space-y-2">
                   {([1, 2, 3] as const).map((pos) => {
                     const bf = deck.battlefields?.find((b) => b.position === pos);
-                    const bfCardId = bf?.card?.uuid ?? bf?.cardId;
+                    const bfCardId = (bf?.card ? getCardId(bf.card as Card) : "") || bf?.cardId;
                     const owned = bfCardId ? (collectionQtyByCardId.get(bfCardId) ?? 0) : 0;
                     const hasCollectionData = collectionQtyByCardId.size > 0;
                     return (
@@ -1601,17 +1592,17 @@ export default function DeckBuilderPage() {
                             </div>
                             <ul className="space-y-0.5">
                               {items.map((item, i) => (
-                                <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center justify-between gap-2 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
+                                <li key={(getCardId(item.card as Card) || item.cardId) ?? i} className="flex items-center justify-between gap-2 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
                                   {(() => {
-                                    const cid = item.card?.uuid ?? item.cardId;
+                                    const cid = getCardId(item.card as Card) || item.cardId;
                                     const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
                                     const domainImgSrc = domainImageSrc(domain, item.card);
                                     const cardErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
                                     const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
-                                    const usedByLegend = deckLegend?.uuid === cid ? 1 : 0;
-                                    const usedByChampion = deckChampion?.uuid === cid ? 1 : 0;
-                                    const mainQty = (deck.mainItems ?? []).reduce((s, it) => s + ((it.card?.uuid ?? it.cardId) === cid ? it.quantity : 0), 0);
-                                    const sbQty = (deck.sideboardItems ?? []).reduce((s, it) => s + ((it.card?.uuid ?? it.cardId) === cid ? it.quantity : 0), 0);
+                                    const usedByLegend = getCardId(deckLegend) === cid ? 1 : 0;
+                                    const usedByChampion = getCardId(deckChampion) === cid ? 1 : 0;
+                                    const mainQty = (deck.mainItems ?? []).reduce((s, it) => s + ((getCardId(it.card as Card) || it.cardId) === cid ? it.quantity : 0), 0);
+                                    const sbQty = (deck.sideboardItems ?? []).reduce((s, it) => s + ((getCardId(it.card as Card) || it.cardId) === cid ? it.quantity : 0), 0);
                                     const effectiveMax = Math.min(3, Math.max(0, owned - usedByLegend - usedByChampion));
                                     const canIncreaseMain = (mainQty + sbQty) < effectiveMax && (mainQty + sbQty) < 3;
                                     const need = item.quantity;
@@ -1714,9 +1705,9 @@ export default function DeckBuilderPage() {
                 </h2>
                 <ul className="mb-3 max-h-40 space-y-1 overflow-y-auto text-sm text-white">
                   {(deck.runeItems ?? []).map((item, i) => (
-                    <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center justify-between gap-2">
+                    <li key={(getCardId(item.card as Card) || item.cardId) ?? i} className="flex items-center justify-between gap-2">
                       {(() => {
-                        const cid = item.card?.uuid ?? item.cardId;
+                        const cid = getCardId(item.card as Card) || item.cardId;
                         const runeErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
                         const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
                         const need = item.quantity;
@@ -1807,21 +1798,21 @@ export default function DeckBuilderPage() {
                 </h2>
                 <ul className="mb-3 max-h-40 space-y-1 overflow-y-auto text-sm text-white">
                   {(deck.sideboardItems ?? []).map((item, i) => {
-                    const cid = item.card?.uuid ?? item.cardId;
+                    const cid = getCardId(item.card as Card) || item.cardId;
                     const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
                     const domainImgSrcSb = domainImageSrc(domain, item.card);
                     const sbErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
                     const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
-                    const usedByLegend = deckLegend?.uuid === cid ? 1 : 0;
-                    const usedByChampion = deckChampion?.uuid === cid ? 1 : 0;
-                    const mainQty = (deck.mainItems ?? []).reduce((s, it) => s + ((it.card?.uuid ?? it.cardId) === cid ? it.quantity : 0), 0);
-                    const sbQty = (deck.sideboardItems ?? []).reduce((s, it) => s + ((it.card?.uuid ?? it.cardId) === cid ? it.quantity : 0), 0);
+                    const usedByLegend = getCardId(deckLegend) === cid ? 1 : 0;
+                    const usedByChampion = getCardId(deckChampion) === cid ? 1 : 0;
+                    const mainQty = (deck.mainItems ?? []).reduce((s, it) => s + ((getCardId(it.card as Card) || it.cardId) === cid ? it.quantity : 0), 0);
+                    const sbQty = (deck.sideboardItems ?? []).reduce((s, it) => s + ((getCardId(it.card as Card) || it.cardId) === cid ? it.quantity : 0), 0);
                     const effectiveMax = Math.min(3, Math.max(0, owned - usedByLegend - usedByChampion));
                     const canIncreaseSb = sideboardCount <= 7 && (mainQty + sbQty) < effectiveMax && (mainQty + sbQty) < 3;
                     const need = item.quantity;
                     const hasCollectionData = collectionQtyByCardId.size > 0;
                     return (
-                      <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center justify-between gap-2">
+                      <li key={(getCardId(item.card as Card) || item.cardId) ?? i} className="flex items-center justify-between gap-2">
                         {item.card ? (
                           <span className="flex min-w-0 items-center gap-1">
                             <CardHoverPreview card={item.card} battlefieldAsLandscape>

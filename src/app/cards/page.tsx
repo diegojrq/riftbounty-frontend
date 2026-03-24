@@ -6,9 +6,17 @@ import { CardTile } from "@/components/cards/CardTile";
 import { CardDetailModal } from "@/components/cards/CardDetailModal";
 import { useCards } from "@/lib/cards-context";
 import { useLocale } from "@/lib/locale-context";
+import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
+import { parseSetQueryParam } from "@/lib/riot-catalog";
+import { getCardSetFilterValue } from "@/lib/card-set";
+import { cardDescriptionPlainText } from "@/lib/html-description";
 import { RangeSlider } from "@/components/filters/RangeSlider";
-import { AttributesFilter } from "@/components/filters/AttributesFilter";
+import { AbilitiesFilter } from "@/components/filters/AbilitiesFilter";
+import { cardMatchesAnyAbility } from "@/lib/card-ability-filter";
+import { formatAbilityFilterLabel, resolveAbilityFilterChipClass } from "@/lib/card-description";
 import type { Card } from "@/types/card";
+import { cardHasFlag } from "@/lib/cards";
+import { getCardId } from "@/lib/card-id";
 
 const LIMIT = 24;
 const MIN_SEARCH_LENGTH = 3;
@@ -16,26 +24,9 @@ const MIN_SEARCH_LENGTH = 3;
 const DOMAINS = ["fury", "calm", "mind", "body", "chaos", "order"] as const;
 const RARITY_OPTIONS = ["common", "uncommon", "rare", "epic", "showcase"] as const;
 const TYPE_OPTIONS = ["gear", "spell", "rune", "legend", "unit", "battlefield", "champion"] as const;
-const SET_OPTIONS = [
-  { value: "OGN", label: "Origins Main Set" },
-  { value: "SFD", label: "Spiritforged" },
-] as const;
 const ENERGY_BOUNDS = { min: 0, max: 12 };
 const POWER_BOUNDS = { min: 0, max: 10 };
 const MIGHT_BOUNDS = { min: 0, max: 10 };
-
-function getCardAttributes(card: Card): string[] {
-  if (card.attributes) {
-    if (Array.isArray(card.attributes)) return card.attributes as string[];
-    return Object.keys(card.attributes);
-  }
-  if (Array.isArray(card.cardAttributes)) {
-    return (card.cardAttributes as Array<{ attribute?: { name?: string }; name?: string }>)
-      .map((ca) => ca.attribute?.name ?? ca.name ?? "")
-      .filter(Boolean);
-  }
-  return [];
-}
 
 function getCardDomains(card: Card): string[] {
   const result: string[] = [];
@@ -48,6 +39,7 @@ function getCardDomains(card: Card): string[] {
 function CardsPageContent() {
   const { cards: allCards } = useCards();
   const { t } = useLocale();
+  const { sets, formatSetWithCode } = useRiotCatalogSets();
   const searchParams = useSearchParams();
 
   // Seed filter state from URL query params (only on first render)
@@ -67,16 +59,20 @@ function CardsPageContent() {
     return t && (TYPE_OPTIONS as readonly string[]).includes(t.toLowerCase()) ? t.toLowerCase() : undefined;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const initSet = useMemo(() => {
-    const s = searchParams?.get("set");
-    return s && SET_OPTIONS.some((o) => o.value === s.toUpperCase()) ? s.toUpperCase() : undefined;
+  const initSet = useMemo(() => parseSetQueryParam(searchParams?.get("set")), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const initOnlyNew = useMemo(() => {
+    const n = searchParams?.get("new");
+    return n === "1" || n === "true" || n === "yes";
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initSearch = searchParams?.get("q") ?? "";
 
   // UI
   const [visibleCount, setVisibleCount] = useState(LIMIT);
-  const [filtersExpanded, setFiltersExpanded] = useState(() => initDomains.length > 0 || !!initRarity || !!initType || !!initSet);
+  const [filtersExpanded, setFiltersExpanded] = useState(
+    () => initDomains.length > 0 || !!initRarity || !!initType || !!initSet || initOnlyNew
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailUuid, setDetailUuid] = useState<string | null>(null);
 
@@ -90,7 +86,8 @@ function CardsPageContent() {
   const [energyRange, setEnergyRange] = useState<[number, number]>([ENERGY_BOUNDS.min, ENERGY_BOUNDS.max]);
   const [powerRange, setPowerRange] = useState<[number, number]>([POWER_BOUNDS.min, POWER_BOUNDS.max]);
   const [mightRange, setMightRange] = useState<[number, number]>([MIGHT_BOUNDS.min, MIGHT_BOUNDS.max]);
-  const [selectedAttributes, setSelectedAttributes] = useState<string[]>([]);
+  const [selectedAbilities, setSelectedAbilities] = useState<string[]>([]);
+  const [onlyNew, setOnlyNew] = useState(initOnlyNew);
 
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
 
@@ -106,10 +103,16 @@ function CardsPageContent() {
   // Reset visible count when filters change
   useEffect(() => {
     setVisibleCount(LIMIT);
-  }, [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAttributes, energyRange, powerRange, mightRange]);
+  }, [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, energyRange, powerRange, mightRange, onlyNew]);
 
   // Apply all filters locally
   const filteredCards = useMemo(() => {
+    const energyFilterActive =
+      energyRange[0] > ENERGY_BOUNDS.min || energyRange[1] < ENERGY_BOUNDS.max;
+    const powerFilterActive =
+      powerRange[0] > POWER_BOUNDS.min || powerRange[1] < POWER_BOUNDS.max;
+    const mightFilterActive =
+      mightRange[0] > MIGHT_BOUNDS.min || mightRange[1] < MIGHT_BOUNDS.max;
     return allCards.filter((card) => {
       if (nameFilter) {
         const q = nameFilter.toLowerCase();
@@ -119,7 +122,9 @@ function CardsPageContent() {
           (card.cardSubtypes as Array<{ subtype?: { name?: string }; name?: string }> | undefined)?.some(
             (cs) => ((cs?.subtype?.name ?? cs?.name) ?? "").toLowerCase().includes(q)
           );
-        const descriptionMatch = card.description?.toLowerCase().includes(q) ?? false;
+        const descriptionMatch =
+          card.description != null &&
+          cardDescriptionPlainText(card.description).toLowerCase().includes(q);
         if (!nameMatch && !subtypeMatch && !descriptionMatch) return false;
       }
       if (selectedDomains.length > 0) {
@@ -132,25 +137,25 @@ function CardsPageContent() {
       if (selectedRarity && card.rarity?.toLowerCase() !== selectedRarity) return false;
       if (selectedType && card.type?.toLowerCase() !== selectedType) return false;
       if (selectedSet) {
-        const cardSetVal = (card.set ?? card.cardSet ?? "").toUpperCase();
-        if (cardSetVal !== selectedSet) return false;
+        if (getCardSetFilterValue(card) !== selectedSet) return false;
       }
-      if (selectedAttributes.length > 0) {
-        const attrs = getCardAttributes(card).map((a) => a.toLowerCase());
-        if (!selectedAttributes.some((a) => attrs.includes(a.toLowerCase()))) return false;
-      }
-      if (card.energy != null) {
+      if (!cardMatchesAnyAbility(card, selectedAbilities)) return false;
+      if (energyFilterActive) {
+        if (card.energy == null) return false;
         if (card.energy < energyRange[0] || (energyRange[1] < ENERGY_BOUNDS.max && card.energy > energyRange[1])) return false;
       }
-      if (card.power != null) {
+      if (powerFilterActive) {
+        if (card.power == null) return false;
         if (card.power < powerRange[0] || (powerRange[1] < POWER_BOUNDS.max && card.power > powerRange[1])) return false;
       }
-      if (card.might != null) {
+      if (mightFilterActive) {
+        if (card.might == null) return false;
         if (card.might < mightRange[0] || (mightRange[1] < MIGHT_BOUNDS.max && card.might > mightRange[1])) return false;
       }
+      if (onlyNew && !cardHasFlag(card, "new")) return false;
       return true;
     });
-  }, [allCards, nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAttributes, energyRange, powerRange, mightRange]);
+  }, [allCards, nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, energyRange, powerRange, mightRange, onlyNew]);
 
   const totalCount = filteredCards.length;
   const visibleCards = filteredCards.slice(0, visibleCount);
@@ -174,7 +179,7 @@ function CardsPageContent() {
 
   const hasActiveFilters = !!(
     nameFilter || selectedDomains.length > 0 || selectedRarity || selectedType || selectedSet
-    || selectedAttributes.length > 0
+    || selectedAbilities.length > 0 || onlyNew
     || energyRange[0] > ENERGY_BOUNDS.min || energyRange[1] < ENERGY_BOUNDS.max
     || powerRange[0] > POWER_BOUNDS.min || powerRange[1] < POWER_BOUNDS.max
     || mightRange[0] > MIGHT_BOUNDS.min || mightRange[1] < MIGHT_BOUNDS.max
@@ -186,10 +191,11 @@ function CardsPageContent() {
     setSelectedRarity(undefined);
     setSelectedType(undefined);
     setSelectedSet(undefined);
-    setSelectedAttributes([]);
+    setSelectedAbilities([]);
     setEnergyRange([ENERGY_BOUNDS.min, ENERGY_BOUNDS.max]);
     setPowerRange([POWER_BOUNDS.min, POWER_BOUNDS.max]);
     setMightRange([MIGHT_BOUNDS.min, MIGHT_BOUNDS.max]);
+    setOnlyNew(false);
   };
 
   const filterContent = (
@@ -250,24 +256,57 @@ function CardsPageContent() {
           <select id="home-filter-set" value={selectedSet ?? ""} onChange={(e) => setSelectedSet(e.target.value || undefined)}
             className="rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-sm text-white">
             <option value="">{t("cards.allSets")}</option>
-            {SET_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            {sets.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name}
+              </option>
+            ))}
           </select>
+        </div>
+
+        <div className="hidden h-10 w-px shrink-0 self-end bg-gray-700 sm:block" />
+
+        {/* Novas (flag id: new) */}
+        <div className="shrink-0">
+          <label htmlFor="cards-filter-new" className="mb-1 block text-xs font-medium uppercase tracking-wider text-gray-500">
+            {t("cards.filterNewCaption")}
+          </label>
+          <button
+            id="cards-filter-new"
+            type="button"
+            onClick={() => setOnlyNew((v) => !v)}
+            aria-pressed={onlyNew}
+            title={t("cards.filterNewTooltip")}
+            className={`h-8 rounded border-2 px-3 text-xs font-semibold uppercase tracking-wide transition-all ${
+              onlyNew
+                ? "border-amber-400/70 bg-amber-500/20 text-amber-100 ring-1 ring-amber-400/35"
+                : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
+            }`}
+          >
+            {t("cards.filterNewOnly")}
+          </button>
         </div>
 
       </div>
 
       {/* Range sliders */}
       <div className="border-t border-gray-700 pt-3">
-        <div className="grid grid-cols-1 gap-4 sm:flex sm:flex-wrap sm:gap-x-6 sm:gap-y-2">
-          <div className="w-full sm:w-44"><RangeSlider label={t("cards.energy")} minBound={ENERGY_BOUNDS.min} maxBound={ENERGY_BOUNDS.max} valueMin={energyRange[0]} valueMax={energyRange[1]} onChange={(min, max) => setEnergyRange([min, max])} showAnyLabel anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} /></div>
-          <div className="w-full sm:w-44"><RangeSlider label={t("cards.power")} minBound={POWER_BOUNDS.min} maxBound={POWER_BOUNDS.max} valueMin={powerRange[0]} valueMax={powerRange[1]} onChange={(min, max) => setPowerRange([min, max])} showAnyLabel anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} /></div>
-          <div className="w-full sm:w-44"><RangeSlider label={t("cards.might")} minBound={MIGHT_BOUNDS.min} maxBound={MIGHT_BOUNDS.max} valueMin={mightRange[0]} valueMax={mightRange[1]} onChange={(min, max) => setMightRange([min, max])} showAnyLabel anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} /></div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-2">
+          <div className="min-w-0">
+            <RangeSlider label={t("cards.energy")} minBound={ENERGY_BOUNDS.min} maxBound={ENERGY_BOUNDS.max} valueMin={energyRange[0]} valueMax={energyRange[1]} onChange={(min, max) => setEnergyRange([min, max])} showAnyLabel anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} />
+          </div>
+          <div className="min-w-0">
+            <RangeSlider label={t("cards.power")} minBound={POWER_BOUNDS.min} maxBound={POWER_BOUNDS.max} valueMin={powerRange[0]} valueMax={powerRange[1]} onChange={(min, max) => setPowerRange([min, max])} showAnyLabel anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} />
+          </div>
+          <div className="min-w-0">
+            <RangeSlider label={t("cards.might")} minBound={MIGHT_BOUNDS.min} maxBound={MIGHT_BOUNDS.max} valueMin={mightRange[0]} valueMax={mightRange[1]} onChange={(min, max) => setMightRange([min, max])} showAnyLabel anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} />
+          </div>
         </div>
       </div>
 
-      {/* Attributes */}
+      {/* Abilities (GET /v1/abilities) */}
       <div className="border-t border-gray-700 pt-3">
-        <AttributesFilter selected={selectedAttributes} onChange={setSelectedAttributes} />
+        <AbilitiesFilter selected={selectedAbilities} onChange={setSelectedAbilities} />
       </div>
 
       {hasActiveFilters && (
@@ -285,8 +324,31 @@ function CardsPageContent() {
       {selectedDomains.map((d) => <span key={d} className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.domain")}: {d === "colorless" ? t("cards.colorless") : d.charAt(0).toUpperCase() + d.slice(1)}<button type="button" onClick={() => setSelectedDomains((prev) => prev.filter((x) => x !== d))} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearDomain")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>)}
       {selectedRarity && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.rarity")}: {selectedRarity.charAt(0).toUpperCase() + selectedRarity.slice(1)}<button type="button" onClick={() => setSelectedRarity(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearRarity")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
       {selectedType && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.type")}: {selectedType.charAt(0).toUpperCase() + selectedType.slice(1)}<button type="button" onClick={() => setSelectedType(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearType")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
-      {selectedSet && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.set")}: {SET_OPTIONS.find((s) => s.value === selectedSet)?.label ?? selectedSet}<button type="button" onClick={() => setSelectedSet(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearSet")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
-      {selectedAttributes.map((attr) => <span key={attr} className="inline-flex items-center gap-1 rounded-full bg-blue-900/60 px-2.5 py-0.5 text-xs text-blue-300">{attr}<button type="button" onClick={() => setSelectedAttributes(selectedAttributes.filter((a) => a !== attr))} className="rounded-full p-0.5 hover:bg-blue-800/60" aria-label={`${t("cards.clearSearch")} ${attr}`}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>)}
+      {selectedSet && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.set")}: {formatSetWithCode(selectedSet)}<button type="button" onClick={() => setSelectedSet(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearSet")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
+      {onlyNew && (
+        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-900/40 px-2.5 py-0.5 text-xs text-amber-100">
+          {t("cards.filterNewOnly")}
+          <button type="button" onClick={() => setOnlyNew(false)} className="rounded-full p-0.5 hover:bg-amber-800/60" aria-label={t("cards.clearNewFilter")}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </span>
+      )}
+      {selectedAbilities.map((attr) => (
+        <span
+          key={attr}
+          className={`inline-flex max-w-full items-center gap-1 truncate rounded-md px-2 py-0.5 text-xs ${resolveAbilityFilterChipClass(attr)} ring-2 ring-blue-400 ring-offset-2 ring-offset-gray-950`}
+        >
+          {formatAbilityFilterLabel(attr)}
+          <button
+            type="button"
+            onClick={() => setSelectedAbilities(selectedAbilities.filter((a) => a !== attr))}
+            className="shrink-0 rounded-full p-0.5 hover:bg-black/25"
+            aria-label={`${t("cards.clearSearch")} ${attr}`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </span>
+      ))}
       {(energyRange[0] > ENERGY_BOUNDS.min || energyRange[1] < ENERGY_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.energy")}: {energyRange[0]}–{energyRange[1] === ENERGY_BOUNDS.max ? t("cards.any") : energyRange[1]}<button type="button" onClick={() => setEnergyRange([ENERGY_BOUNDS.min, ENERGY_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearEnergy")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
       {(powerRange[0] > POWER_BOUNDS.min || powerRange[1] < POWER_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.power")}: {powerRange[0]}–{powerRange[1] === POWER_BOUNDS.max ? t("cards.any") : powerRange[1]}<button type="button" onClick={() => setPowerRange([POWER_BOUNDS.min, POWER_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearPower")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
       {(mightRange[0] > MIGHT_BOUNDS.min || mightRange[1] < MIGHT_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.might")}: {mightRange[0]}–{mightRange[1] === MIGHT_BOUNDS.max ? t("cards.any") : mightRange[1]}<button type="button" onClick={() => setMightRange([MIGHT_BOUNDS.min, MIGHT_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearMight")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
@@ -324,8 +386,14 @@ function CardsPageContent() {
         </header>
       </div>
 
-      {/* Filter bar — sticky colado ao Header (altura do Header ≈ 61px em sm+) */}
-      <div className="sticky top-0 z-20 border-b border-gray-700 bg-gray-900 sm:top-[61px]">
+      {/* Filter bar — sticky abaixo do Header desktop (2 linhas: idioma + nav). */}
+      <div
+        className={`sticky top-0 z-20 border-b bg-gray-900/95 backdrop-blur-sm sm:top-[86px] ${
+          hasActiveFilters
+            ? "border-blue-500/50 shadow-[0_8px_24px_rgba(29,78,216,0.2)]"
+            : "border-gray-700 shadow-[0_8px_20px_rgba(0,0,0,0.35)]"
+        }`}
+      >
         <div className="mx-auto w-full max-w-[1600px] px-4 py-3 sm:px-6 lg:px-10 xl:px-12">
 
           <div className="mb-3 hidden items-center gap-2 sm:flex">
@@ -340,7 +408,11 @@ function CardsPageContent() {
               )}
             </div>
             <button type="button" onClick={() => setFiltersExpanded((v) => !v)}
-              className="shrink-0 flex items-center gap-1.5 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700" aria-expanded={filtersExpanded}>
+              className={`shrink-0 flex items-center gap-1.5 rounded border px-3 py-2 text-sm transition ${
+                hasActiveFilters
+                  ? "border-blue-500/50 bg-blue-500/15 text-blue-100 hover:bg-blue-500/20"
+                  : "border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700"
+              }`} aria-expanded={filtersExpanded}>
               {t("cards.filters")}
               {hasActiveFilters && <span className="flex h-2 w-2 shrink-0 rounded-full bg-blue-500" aria-hidden />}
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={filtersExpanded ? "rotate-180" : ""} aria-hidden><path d="m6 9 6 6 6-6" /></svg>
@@ -408,10 +480,10 @@ function CardsPageContent() {
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {visibleCards.map((card) => (
                 <CardTile
-                  key={card.uuid}
+                  key={getCardId(card)}
                   card={card}
                   showTcgPriceChip
-                  onOpenDetail={() => setDetailUuid(card.uuid)}
+                  onOpenDetail={() => setDetailUuid(getCardId(card))}
                 />
               ))}
             </ul>
@@ -425,7 +497,7 @@ function CardsPageContent() {
       </div>
 
       <CardDetailModal
-        uuid={detailUuid}
+        cardId={detailUuid}
         onClose={() => setDetailUuid(null)}
         showTcgPrices
       />

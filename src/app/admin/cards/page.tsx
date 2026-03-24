@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useLocale } from "@/lib/locale-context";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
@@ -10,210 +10,34 @@ import { getCardImageUrl } from "@/lib/cards";
 import {
   listAdminCards,
   getAdminCard,
-  listAdminDomains,
-  listAdminSubtypes,
-  listAdminSupertypes,
-  listAdminAttributes,
   createAdminCard,
   updateAdminCard,
   runAdminTcgSync,
   bumpAdminCatalogVersion,
-  type AdminRefItem,
+  loadAdminCatalogVersion,
   type AdminTcgSyncSummary,
+  type AdminCatalogVersionLoadResponse,
   type CreateCardDto,
   type UpdateCardDto,
 } from "@/lib/admin";
+import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
 import type { Card } from "@/types/card";
+import { getCardId } from "@/lib/card-id";
 
 const LIMIT = 20;
-const SET_OPTIONS = ["OGN", "SFD"] as const;
-
-function ChipsRow({
-  items,
-  tone,
-  max = 6,
-}: {
-  items: string[] | undefined;
-  tone: "amber" | "blue" | "violet";
-  max?: number;
-}) {
-  const list = (items ?? []).filter(Boolean);
-  if (list.length === 0) return null;
-  const shown = list.slice(0, max);
-  const hidden = Math.max(0, list.length - shown.length);
-  const base =
-    "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
-  const cls =
-    tone === "amber"
-      ? `${base} border-amber-500/30 bg-amber-500/10 text-amber-200`
-      : tone === "blue"
-        ? `${base} border-blue-500/30 bg-blue-500/10 text-blue-200`
-        : `${base} border-violet-500/30 bg-violet-500/10 text-violet-200`;
-  return (
-    <div className="mt-1 flex flex-wrap gap-1.5">
-      {shown.map((s) => (
-        <span key={s} className={cls} title={s}>
-          {s}
-        </span>
-      ))}
-      {hidden > 0 && (
-        <span className={`${base} border-gray-700 bg-gray-900/30 text-gray-400`} title={list.join(", ")}>
-          +{hidden}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function MultiSelect({
-  label,
-  items,
-  selectedIds,
-  disabled,
-  onChangeIds,
-}: {
-  label: string;
-  items: AdminRefItem[];
-  selectedIds: number[];
-  disabled?: boolean;
-  onChangeIds: (ids: number[]) => void;
-}) {
-  const { t } = useLocale();
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-
-  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-  const filtered = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return items;
-    return items.filter((it) => it.name.toLowerCase().includes(qq));
-  }, [items, q]);
-  const selectedItems = useMemo(() => {
-    if (selectedIds.length === 0) return [];
-    const byId = new Map(items.map((it) => [it.id, it] as const));
-    return selectedIds.map((id) => byId.get(id)).filter(Boolean) as AdminRefItem[];
-  }, [items, selectedIds]);
-
-  function toggle(id: number) {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    onChangeIds([...next.values()]);
-  }
-
-  return (
-    <div className="relative">
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <label className="block text-xs font-medium text-gray-400">{label}</label>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setOpen((v) => !v)}
-          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition ${
-            disabled
-              ? "border-gray-700 text-gray-600"
-              : open
-                ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
-                : "border-gray-600 bg-gray-800/60 text-gray-300 hover:border-gray-500 hover:bg-gray-800"
-          }`}
-          aria-expanded={open}
-        >
-          {selectedIds.length > 0 ? t("admin.selectedCount", { count: selectedIds.length }) : t("admin.noneSelected")}
-        </button>
-      </div>
-
-      {selectedItems.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {selectedItems.slice(0, 6).map((it) => (
-            <button
-              key={it.id}
-              type="button"
-              disabled={disabled}
-              onClick={() => toggle(it.id)}
-              className="group flex items-center gap-1 rounded-full border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] text-gray-200 hover:border-gray-500"
-              title={t("admin.removeSelection")}
-            >
-              <span className="max-w-[10rem] truncate">{it.name}</span>
-              <span className="text-gray-500 group-hover:text-red-300">×</span>
-            </button>
-          ))}
-          {selectedItems.length > 6 && (
-            <span className="rounded-full border border-gray-800 bg-gray-900 px-2 py-1 text-[11px] text-gray-500">
-              +{selectedItems.length - 6}
-            </span>
-          )}
-        </div>
-      )}
-
-      {open && (
-        <div className="rounded-lg border border-gray-700 bg-gray-900/95 p-3 shadow-xl">
-          <div className="mb-2 flex items-center gap-2">
-            <input
-              type="text"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={t("admin.searchInList")}
-              className="w-full rounded border border-gray-700 bg-gray-950/40 px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-            />
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => onChangeIds([])}
-              className="rounded border border-gray-700 px-2 py-2 text-xs font-medium text-gray-300 hover:bg-gray-800 disabled:opacity-60"
-              title={t("admin.clearSelection")}
-            >
-              {t("admin.clear")}
-            </button>
-          </div>
-          <div className="max-h-52 overflow-y-auto rounded border border-gray-800 bg-gray-950/20">
-            <ul className="divide-y divide-gray-800">
-              {filtered.map((it) => {
-                const checked = selectedSet.has(it.id);
-                return (
-                  <li key={it.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-gray-800/40">
-                    <label className="flex min-w-0 flex-1 items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={disabled}
-                        onChange={() => toggle(it.id)}
-                        className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-amber-500 focus:ring-amber-500"
-                      />
-                      <span className="truncate text-sm text-gray-200">{it.name}</span>
-                    </label>
-                    <span className="text-[10px] text-gray-600">#{it.id}</span>
-                  </li>
-                );
-              })}
-              {filtered.length === 0 && (
-                <li className="px-3 py-3 text-sm text-gray-500">{t("admin.noResults")}</li>
-              )}
-            </ul>
-          </div>
-          <div className="mt-2 flex justify-end">
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="text-xs font-medium text-gray-400 hover:text-white"
-            >
-              {t("admin.done")}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function AdminCardsPage() {
   const { t } = useLocale();
+  const { sets: catalogSets } = useRiotCatalogSets();
   const [cards, setCards] = useState<Card[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncRunning, setSyncRunning] = useState(false);
   const [catalogBumpRunning, setCatalogBumpRunning] = useState(false);
+  const [catalogLoadRunning, setCatalogLoadRunning] = useState(false);
   const [lastCatalogVersion, setLastCatalogVersion] = useState<string | number | null>(null);
+  const [catalogLoadResult, setCatalogLoadResult] = useState<AdminCatalogVersionLoadResponse | null>(null);
   const [syncSummary, setSyncSummary] = useState<AdminTcgSyncSummary | null>(null);
   const [nameFilter, setNameFilter] = useState("");
   const [setFilter, setSetFilter] = useState<string>("");
@@ -229,22 +53,6 @@ export default function AdminCardsPage() {
   const [formCollectorNumber, setFormCollectorNumber] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const [domains, setDomains] = useState<AdminRefItem[]>([]);
-  const [subtypes, setSubtypes] = useState<AdminRefItem[]>([]);
-  const [supertypes, setSupertypes] = useState<AdminRefItem[]>([]);
-  const [attributes, setAttributes] = useState<AdminRefItem[]>([]);
-  const [refsLoading, setRefsLoading] = useState(false);
-
-  const [formDomainIds, setFormDomainIds] = useState<number[]>([]);
-  const [formSubtypeIds, setFormSubtypeIds] = useState<number[]>([]);
-  const [formSupertypeIds, setFormSupertypeIds] = useState<number[]>([]);
-  const [formAttributeIds, setFormAttributeIds] = useState<number[]>([]);
-
-  // Para update: omitir campo mantém; array presente substitui (vazio remove)
-  const [touchedDomainIds, setTouchedDomainIds] = useState(false);
-  const [touchedSubtypeIds, setTouchedSubtypeIds] = useState(false);
-  const [touchedSupertypeIds, setTouchedSupertypeIds] = useState(false);
-  const [touchedAttributeIds, setTouchedAttributeIds] = useState(false);
 
   const [viewId, setViewId] = useState<string | null>(null);
   const [viewCard, setViewCard] = useState<Card | null>(null);
@@ -270,24 +78,6 @@ export default function AdminCardsPage() {
       })
       .join(", ");
   };
-
-  const fetchRefs = useCallback(async () => {
-    setRefsLoading(true);
-    try {
-      const [d, st, su, a] = await Promise.all([
-        listAdminDomains(),
-        listAdminSubtypes(),
-        listAdminSupertypes(),
-        listAdminAttributes(),
-      ]);
-      setDomains(d);
-      setSubtypes(st);
-      setSupertypes(su);
-      setAttributes(a);
-    } finally {
-      setRefsLoading(false);
-    }
-  }, []);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -316,9 +106,6 @@ export default function AdminCardsPage() {
     fetchList();
   }, [fetchList]);
 
-  useEffect(() => {
-    fetchRefs().catch(() => {});
-  }, [fetchRefs]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -329,14 +116,6 @@ export default function AdminCardsPage() {
     setFormRarity("");
     setFormType("");
     setFormCollectorNumber("");
-    setFormDomainIds([]);
-    setFormSubtypeIds([]);
-    setFormSupertypeIds([]);
-    setFormAttributeIds([]);
-    setTouchedDomainIds(true);
-    setTouchedSubtypeIds(true);
-    setTouchedSupertypeIds(true);
-    setTouchedAttributeIds(true);
     setModalOpen(true);
   };
 
@@ -354,28 +133,6 @@ export default function AdminCardsPage() {
       setFormType(card.type ?? "");
       setFormCollectorNumber(card.collectorNumber ?? card.collector_number ?? "");
 
-      // Mapear nomes -> ids usando as refs (se refs não carregaram ainda, tenta carregar agora)
-      const ensureRefs = async () => {
-        if (domains.length && subtypes.length && supertypes.length && attributes.length) return;
-        await fetchRefs();
-      };
-      await ensureRefs();
-
-      const byName = (items: AdminRefItem[]) => new Map(items.map((i) => [i.name, i.id] as const));
-      const domainByName = byName(domains);
-      const subtypeByName = byName(subtypes);
-      const supertypeByName = byName(supertypes);
-      const attributeByName = byName(attributes);
-
-      setFormDomainIds((card.domains ?? []).map((n) => domainByName.get(n)).filter((x): x is number => typeof x === "number"));
-      setFormSubtypeIds((card.subtypes ?? []).map((n) => subtypeByName.get(n)).filter((x): x is number => typeof x === "number"));
-      setFormSupertypeIds((card.supertypes ?? []).map((n) => supertypeByName.get(n)).filter((x): x is number => typeof x === "number"));
-      setFormAttributeIds((card.attributes ?? []).map((n) => attributeByName.get(n)).filter((x): x is number => typeof x === "number"));
-
-      setTouchedDomainIds(false);
-      setTouchedSubtypeIds(false);
-      setTouchedSupertypeIds(false);
-      setTouchedAttributeIds(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
       setModalOpen(false);
@@ -415,10 +172,6 @@ export default function AdminCardsPage() {
           type: formType || undefined,
           collectorNumber: formCollectorNumber.trim() || undefined,
         };
-        if (touchedDomainIds) body.domainIds = formDomainIds;
-        if (touchedSubtypeIds) body.subtypeIds = formSubtypeIds;
-        if (touchedSupertypeIds) body.supertypeIds = formSupertypeIds;
-        if (touchedAttributeIds) body.attributeIds = formAttributeIds;
         const updated = await updateAdminCard(editingId, body);
         setEditPreviewCard(updated);
         toast.success(t("admin.updated"));
@@ -431,10 +184,6 @@ export default function AdminCardsPage() {
           rarity: formRarity || undefined,
           type: formType || undefined,
           collectorNumber: formCollectorNumber.trim() || undefined,
-          domainIds: formDomainIds,
-          subtypeIds: formSubtypeIds,
-          supertypeIds: formSupertypeIds,
-          attributeIds: formAttributeIds,
         };
         const created = await createAdminCard(body);
         setEditPreviewCard(created);
@@ -494,6 +243,40 @@ export default function AdminCardsPage() {
     }
   };
 
+  const handleCatalogVersionLoad = async () => {
+    if (catalogLoadRunning) return;
+    setCatalogLoadRunning(true);
+    try {
+      const result = await loadAdminCatalogVersion();
+      setCatalogLoadResult(result);
+
+      const added = result.metrics?.added;
+      const skippedExisting = result.metrics?.skippedExisting;
+      const loaded = result.metrics?.loaded;
+
+      if (added != null || skippedExisting != null) {
+        toast.success(
+          t("admin.catalogVersionLoadSuccessWithMetrics", {
+            added: String(added ?? 0),
+            skippedExisting: String(skippedExisting ?? 0),
+            loaded: String(loaded ?? 0),
+          })
+        );
+      } else {
+        toast.success(t("admin.catalogVersionLoadSuccess"));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
+        toast.error(t("admin.forbidden"));
+      } else {
+        toast.error(t("admin.catalogVersionLoadError"));
+      }
+    } finally {
+      setCatalogLoadRunning(false);
+    }
+  };
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -510,9 +293,9 @@ export default function AdminCardsPage() {
           className="rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
         >
           <option value="">{t("admin.set")} (all)</option>
-          {SET_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s}
+          {catalogSets.map((s) => (
+            <option key={s.code} value={s.code}>
+              {s.name} ({s.code})
             </option>
           ))}
         </select>
@@ -537,6 +320,17 @@ export default function AdminCardsPage() {
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-transparent" />
           )}
           {catalogBumpRunning ? t("admin.catalogVersionBumpRunning") : t("admin.catalogVersionBumpButton")}
+        </button>
+        <button
+          type="button"
+          onClick={handleCatalogVersionLoad}
+          disabled={catalogLoadRunning}
+          className="inline-flex items-center gap-2 rounded border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-2 text-sm font-semibold text-fuchsia-200 transition hover:bg-fuchsia-500/20 hover:text-fuchsia-100 disabled:opacity-60"
+        >
+          {catalogLoadRunning && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-fuchsia-300 border-t-transparent" />
+          )}
+          {catalogLoadRunning ? t("admin.catalogVersionLoadRunning") : t("admin.catalogVersionLoadButton")}
         </button>
         <button
           type="button"
@@ -576,6 +370,23 @@ export default function AdminCardsPage() {
         </div>
       )}
 
+      {catalogLoadResult?.metrics && (
+        <div className="mb-4 rounded-lg border border-fuchsia-900/60 bg-fuchsia-950/30 p-4 text-sm">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-fuchsia-300">
+            {t("admin.catalogVersionLoadSummaryTitle")}
+          </p>
+          <div className="grid grid-cols-1 gap-2 text-fuchsia-100 md:grid-cols-2">
+            <p>{t("admin.catalogVersionLoadMode")}: {catalogLoadResult.metrics.mode}</p>
+            <p>{t("admin.catalogVersionLoadVersion")}: {String(catalogLoadResult.version ?? "—")}</p>
+            <p>{t("admin.catalogVersionLoadAdded")}: {catalogLoadResult.metrics.added ?? 0}</p>
+            <p>{t("admin.catalogVersionLoadSkippedExisting")}: {catalogLoadResult.metrics.skippedExisting ?? 0}</p>
+            <p>{t("admin.catalogVersionLoadLoaded")}: {catalogLoadResult.metrics.loaded}</p>
+            <p>{t("admin.catalogVersionLoadTotalInJson")}: {catalogLoadResult.metrics.totalInJson}</p>
+            <p>{t("admin.catalogVersionLoadExistingBefore")}: {catalogLoadResult.metrics.existingBefore}</p>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="mb-4 rounded border border-red-800 bg-red-950/50 px-4 py-3 text-sm text-red-300">
           {error}
@@ -594,21 +405,18 @@ export default function AdminCardsPage() {
                 <th className="px-4 py-3 font-semibold text-gray-300">{t("admin.rarity")}</th>
                 <th className="px-4 py-3 font-semibold text-gray-300">{t("admin.type")}</th>
                 <th className="px-4 py-3 font-semibold text-gray-300">{t("admin.collectorNumber")}</th>
-                <th className="px-4 py-3 font-semibold text-gray-300">{t("admin.supertypes")}</th>
-                <th className="px-4 py-3 font-semibold text-gray-300">{t("admin.subtypes")}</th>
-                <th className="px-4 py-3 font-semibold text-gray-300">{t("admin.attributes")}</th>
                 <th className="px-4 py-3 font-semibold text-gray-300">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700">
               {cards.map((card) => (
-                <tr key={card.uuid} className="hover:bg-gray-800/50">
+                <tr key={getCardId(card)} className="hover:bg-gray-800/50">
                   <td className="px-4 py-2 text-white">
                     <CardHoverPreview card={card}>
                       <span className="inline-flex min-w-0 items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => openView(card.uuid)}
+                          onClick={() => openView(getCardId(card))}
                           className="truncate text-left font-medium text-gray-100 hover:text-white hover:underline"
                           title={t("admin.viewCard")}
                         >
@@ -621,26 +429,17 @@ export default function AdminCardsPage() {
                   <td className="px-4 py-2 text-gray-400">{card.rarity ?? "—"}</td>
                   <td className="px-4 py-2 text-gray-400">{card.type ?? "—"}</td>
                   <td className="px-4 py-2 text-gray-400">{card.collectorNumber ?? card.collector_number ?? "—"}</td>
-                  <td className="px-4 py-2 align-top">
-                    <ChipsRow items={(card as unknown as { supertypes?: string[] }).supertypes} tone="amber" max={6} />
-                  </td>
-                  <td className="px-4 py-2 align-top">
-                    <ChipsRow items={(card as unknown as { subtypes?: string[] }).subtypes} tone="violet" max={6} />
-                  </td>
-                  <td className="px-4 py-2 align-top">
-                    <ChipsRow items={(card as unknown as { attributes?: string[] }).attributes} tone="blue" max={6} />
-                  </td>
                   <td className="px-4 py-2">
                     <button
                       type="button"
-                      onClick={() => openView(card.uuid)}
+                      onClick={() => openView(getCardId(card))}
                       className={`mr-2 ${viewBtn}`}
                     >
                       {t("admin.viewCard")}
                     </button>
                     <button
                       type="button"
-                      onClick={() => openEdit(card.uuid)}
+                      onClick={() => openEdit(getCardId(card))}
                       className={editBtn}
                     >
                       {t("admin.editCard")}
@@ -753,8 +552,10 @@ export default function AdminCardsPage() {
                         className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white"
                       >
                         <option value="">—</option>
-                        {SET_OPTIONS.map((s) => (
-                          <option key={s} value={s}>{s}</option>
+                        {catalogSets.map((s) => (
+                          <option key={s.code} value={s.code}>
+                            {s.name} ({s.code})
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -787,36 +588,6 @@ export default function AdminCardsPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 pt-2 md:grid-cols-2">
-                    <MultiSelect
-                      label={t("admin.domains")}
-                      items={domains}
-                      selectedIds={formDomainIds}
-                      disabled={refsLoading || saving}
-                      onChangeIds={(ids) => { setFormDomainIds(ids); setTouchedDomainIds(true); }}
-                    />
-                    <MultiSelect
-                      label={t("admin.subtypes")}
-                      items={subtypes}
-                      selectedIds={formSubtypeIds}
-                      disabled={refsLoading || saving}
-                      onChangeIds={(ids) => { setFormSubtypeIds(ids); setTouchedSubtypeIds(true); }}
-                    />
-                    <MultiSelect
-                      label={t("admin.supertypes")}
-                      items={supertypes}
-                      selectedIds={formSupertypeIds}
-                      disabled={refsLoading || saving}
-                      onChangeIds={(ids) => { setFormSupertypeIds(ids); setTouchedSupertypeIds(true); }}
-                    />
-                    <MultiSelect
-                      label={t("admin.attributes")}
-                      items={attributes}
-                      selectedIds={formAttributeIds}
-                      disabled={refsLoading || saving}
-                      onChangeIds={(ids) => { setFormAttributeIds(ids); setTouchedAttributeIds(true); }}
-                    />
-                  </div>
                 </div>
               </div>
             </div>
@@ -894,24 +665,6 @@ export default function AdminCardsPage() {
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <div className="rounded border border-gray-800 bg-gray-950/20 px-3 py-2">
-                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">{t("admin.domains")}</p>
-                        <p className="text-sm text-gray-200">{(viewCard as unknown as { domains?: string[] }).domains?.join(", ") || "—"}</p>
-                      </div>
-                      <div className="rounded border border-gray-800 bg-gray-950/20 px-3 py-2">
-                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">{t("admin.supertypes")}</p>
-                        <p className="text-sm text-gray-200">{(viewCard as unknown as { supertypes?: string[] }).supertypes?.join(", ") || "—"}</p>
-                      </div>
-                      <div className="rounded border border-gray-800 bg-gray-950/20 px-3 py-2">
-                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">{t("admin.subtypes")}</p>
-                        <p className="text-sm text-gray-200">{(viewCard as unknown as { subtypes?: string[] }).subtypes?.join(", ") || "—"}</p>
-                      </div>
-                      <div className="rounded border border-gray-800 bg-gray-950/20 px-3 py-2">
-                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">{t("admin.attributes")}</p>
-                        <p className="text-sm text-gray-200">{(viewCard as unknown as { attributes?: string[] }).attributes?.join(", ") || "—"}</p>
-                      </div>
-                    </div>
                   </div>
                 )}
               </div>

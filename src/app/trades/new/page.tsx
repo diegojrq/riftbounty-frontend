@@ -9,6 +9,7 @@ import { createTrade } from "@/lib/trades";
 import { CardPickerModal } from "@/components/decks/CardPickerModal";
 import { BackLink } from "@/components/layout/BackLink";
 import type { Card } from "@/types/card";
+import { getCardId } from "@/lib/card-id";
 
 interface DraftItem {
   card: Card;
@@ -35,26 +36,26 @@ function NewTradeContent() {
   function handleCardSelect(card: Card) {
     setShowPicker(false);
     setItems((prev) => {
-      const existing = prev.find((i) => i.card.uuid === card.uuid);
+      const existing = prev.find((i) => getCardId(i.card) === getCardId(card));
       if (existing) return prev; // já existe, não duplica
       return [...prev, { card, quantity: 1 }];
     });
   }
 
-  function updateQty(uuid: string, delta: number) {
+  function updateQty(cardId: string, delta: number) {
     setItems((prev) =>
       prev
-        .map((i) => (i.card.uuid === uuid ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i))
+        .map((i) => (getCardId(i.card) === cardId ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i))
     );
   }
 
-  function setQty(uuid: string, qty: number) {
+  function setQty(cardId: string, qty: number) {
     const val = Math.max(1, qty);
-    setItems((prev) => prev.map((i) => (i.card.uuid === uuid ? { ...i, quantity: val } : i)));
+    setItems((prev) => prev.map((i) => (getCardId(i.card) === cardId ? { ...i, quantity: val } : i)));
   }
 
-  function removeItem(uuid: string) {
-    setItems((prev) => prev.filter((i) => i.card.uuid !== uuid));
+  function removeItem(cardId: string) {
+    setItems((prev) => prev.filter((i) => getCardId(i.card) !== cardId));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -67,7 +68,7 @@ function NewTradeContent() {
     try {
       const trade = await createTrade({
         recipientSlug: recipientSlug.trim(),
-        items: items.map((i) => ({ cardId: i.card.uuid, quantity: i.quantity })),
+        items: items.map((i) => ({ cardId: getCardId(i.card), quantity: i.quantity })),
         message: message.trim() || undefined,
       });
       toast.success(t("trades.tradeProposalSent"));
@@ -136,7 +137,7 @@ function NewTradeContent() {
               <ul className="space-y-2">
                 {items.map((item) => (
                   <li
-                    key={item.card.uuid}
+                    key={getCardId(item.card)}
                     className="flex items-center justify-between gap-3 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5"
                   >
                     <div className="min-w-0">
@@ -149,7 +150,7 @@ function NewTradeContent() {
                       <div className="flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-900">
                         <button
                           type="button"
-                          onClick={() => updateQty(item.card.uuid, -1)}
+                          onClick={() => updateQty(getCardId(item.card), -1)}
                           className="flex h-7 w-7 items-center justify-center rounded-l-lg text-gray-400 hover:bg-gray-700 hover:text-white"
                           aria-label={t("common.decrease")}
                         >
@@ -159,12 +160,12 @@ function NewTradeContent() {
                           type="number"
                           min={1}
                           value={item.quantity}
-                          onChange={(e) => setQty(item.card.uuid, parseInt(e.target.value) || 1)}
+                          onChange={(e) => setQty(getCardId(item.card), parseInt(e.target.value) || 1)}
                           className="w-10 bg-transparent text-center text-sm font-bold text-white outline-none tabular-nums"
                         />
                         <button
                           type="button"
-                          onClick={() => updateQty(item.card.uuid, 1)}
+                          onClick={() => updateQty(getCardId(item.card), 1)}
                           className="flex h-7 w-7 items-center justify-center rounded-r-lg text-gray-400 hover:bg-gray-700 hover:text-white"
                           aria-label={t("common.increase")}
                         >
@@ -173,7 +174,7 @@ function NewTradeContent() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => removeItem(item.card.uuid)}
+                        onClick={() => removeItem(getCardId(item.card))}
                         className="flex h-7 w-7 items-center justify-center rounded text-gray-500 hover:bg-red-900/30 hover:text-red-400"
                         aria-label={t("common.remove")}
                       >

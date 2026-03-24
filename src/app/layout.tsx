@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { LocaleProvider } from "@/lib/locale-context";
 import { AuthProvider } from "@/lib/auth-context";
 import { CardsProvider } from "@/lib/cards-context";
+import { RiotCatalogSetsProvider } from "@/lib/riot-catalog-sets-context";
 import { BackToTop } from "@/components/layout/BackToTop";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
@@ -49,6 +50,7 @@ export default function RootLayout({
         <LocaleProvider>
         <LangSync />
         <AuthProvider>
+          <RiotCatalogSetsProvider>
           <CardsProvider>
           <Header />
           <main className="min-h-screen">{children}</main>
@@ -67,6 +69,7 @@ export default function RootLayout({
             }}
           />
           </CardsProvider>
+          </RiotCatalogSetsProvider>
         </AuthProvider>
         </LocaleProvider>
       </body>

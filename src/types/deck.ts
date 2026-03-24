@@ -50,8 +50,20 @@ export interface DeckBattlefield {
   card?: Card | null;
 }
 
+/** Erro/aviso estruturado para i18n no front (espelha chaves do backend). */
+export interface DeckValidationIssue {
+  key: string;
+  args?: Record<string, unknown>;
+}
+
 export interface DeckValidation {
   valid: boolean;
-  errors: string[];
-  warnings: string[];
+  /** Texto já traduzido pelo backend quando envia Accept-Language (opção A). */
+  errors: unknown[];
+  warnings: unknown[];
+  /** Chaves + args para traduzir no front (opção B); usado se `errors`/`warnings` vierem vazios. */
+  issues?: {
+    errors?: DeckValidationIssue[];
+    warnings?: DeckValidationIssue[];
+  };
 }

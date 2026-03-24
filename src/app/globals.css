@@ -55,3 +55,105 @@
 .animate-minus-one {
   animation: minus-one-fall 650ms ease-out forwards;
 }
+
+/* Skeleton da arte da carta — contraste com bg-gray-800 + faixa luminosa em movimento */
+@keyframes card-img-skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.animate-card-img-skeleton {
+  background: linear-gradient(
+    105deg,
+    rgb(51 65 85) 0%,
+    rgb(71 85 105) 35%,
+    rgb(148 163 184 / 0.35) 50%,
+    rgb(71 85 105) 65%,
+    rgb(51 65 85) 100%
+  );
+  background-size: 220% 100%;
+  animation: card-img-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+/* Selo NOVA — brilho tipo foil (TCG) */
+@keyframes card-flag-foil-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes card-flag-foil-prism {
+  0% {
+    transform: translateX(-120%) skewX(-12deg);
+    opacity: 0.35;
+  }
+  40% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateX(120%) skewX(-12deg);
+    opacity: 0.35;
+  }
+}
+
+.card-flag-new--foil {
+  isolation: isolate;
+  overflow: hidden;
+  background: linear-gradient(
+    118deg,
+    #b45309 0%,
+    #fbbf24 14%,
+    #fef3c7 28%,
+    #fcd34d 42%,
+    #fffbeb 50%,
+    #f59e0b 62%,
+    #fde68a 76%,
+    #d97706 88%,
+    #92400e 100%
+  );
+  background-size: 220% 100%;
+  animation: card-flag-foil-shift 4s ease-in-out infinite alternate;
+}
+
+.card-flag-new--foil::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: linear-gradient(
+    125deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.55) 48%,
+    rgba(255, 255, 255, 0.15) 52%,
+    transparent 65%
+  );
+  background-size: 180% 100%;
+  animation: card-flag-foil-shift 2.8s ease-in-out infinite;
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+}
+
+.card-flag-new--foil::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 200, 120, 0.45),
+    rgba(200, 230, 255, 0.35),
+    rgba(255, 180, 200, 0.3),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: card-flag-foil-prism 3.5s ease-in-out infinite;
+  mix-blend-mode: color-dodge;
+  opacity: 0.7;
+  pointer-events: none;
+}

@@ -6,9 +6,6 @@ const CACHE_KEY = "rb_cards";
 /** TTL de fallback: se o endpoint de versão falhar, expira em 24h. */
 const CACHE_TTL_MS = 1 * 24 * 60 * 60 * 1000;
 
-/** Threshold abaixo do qual o cache é considerado "muito fresco" (skip version check). */
-export const CACHE_FRESH_MS = 5 * 60 * 1000; // 5 minutos
-
 interface CardCacheEntry {
   cards: Card[];
   cachedAt: number;
@@ -17,7 +14,7 @@ interface CardCacheEntry {
 }
 
 function stripUserFields(card: Card): Card {
-  const { inCollection: _ic, collectionQuantity: _cq, imageUrl: _iu, image_path: _ip, ...rest } = card as Card & { imageUrl?: string; image_path?: string };
+  const { inCollection: _ic, collectionQuantity: _cq, ...rest } = card;
   return rest;
 }
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
 import { useLocale } from "@/lib/locale-context";
 import type { Card } from "@/types/card";
+import { getCardId } from "@/lib/card-id";
 import type { CardsListResponse, CardsQueryParams } from "@/types/card";
 
 function toQueryRecord(p: CardsQueryParams): Record<string, string | number | undefined> {
@@ -79,7 +80,7 @@ export function CardPickerModal({ title, onSelect, onClose, typeFilter }: CardPi
           ) : (
             <ul className="space-y-1">
               {items.map((card) => (
-                <li key={card.uuid}>
+                <li key={getCardId(card)}>
                   <button
                     type="button"
                     onClick={() => onSelect(card)}

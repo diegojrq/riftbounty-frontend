@@ -1,14 +1,12 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import {
   getTrade,
   addTradeItem,
-  updateTradeItem,
-  removeTradeItem,
   sendTradeMessage,
   submitTrade,
   acceptTrade,
@@ -18,9 +16,16 @@ import {
 import { CardPickerModal } from "@/components/decks/CardPickerModal";
 import { BackLink } from "@/components/layout/BackLink";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
+import { TradeOfferDomainIconsAndQty } from "@/components/trades/TradeQuantityBadge";
 import { useLocale } from "@/lib/locale-context";
 import type { Trade, TradeItem, TradeStatus } from "@/types/trade";
 import type { Card } from "@/types/card";
+import { getCardId } from "@/lib/card-id";
+import { useCards } from "@/lib/cards-context";
+import { mergePublicProfileCardWithCatalog } from "@/lib/cards";
+import { formatTcgUsd, getCardTcgUnitPriceUsd } from "@/lib/card-tcg-price";
+import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
+import { getCardDomains, getRarityIcon, groupTradeItemsBySetAndType } from "@/lib/trade-offer-grouping";
 
 /* ─── helpers ─────────────────────────────────────── */
 
@@ -34,6 +39,34 @@ const STATUS_COLOR: Record<TradeStatus, string> = {
 
 function isActive(status: TradeStatus) {
   return status === "PENDING" || status === "COUNTERED";
+}
+
+function mergedCardForTradeOfferItem(
+  item: TradeItem,
+  cardCacheMap: Map<string, Card>,
+  scraperIdMap: Map<string, Card>
+): Card {
+  const cached =
+    cardCacheMap.get(item.cardId) ??
+    scraperIdMap.get(item.cardId) ??
+    (item.card ? cardCacheMap.get(getCardId(item.card)) ?? undefined : undefined) ??
+    (item.card?.scraperId ? scraperIdMap.get(item.card.scraperId) : undefined);
+  return mergePublicProfileCardWithCatalog(item.card, cached, item.cardId);
+}
+
+function aggregateTradeItemsByCardId(items: TradeItem[]): TradeItem[] {
+  const byCardId = new Map<string, TradeItem>();
+  for (const item of items) {
+    const existing = byCardId.get(item.cardId);
+    if (!existing) {
+      byCardId.set(item.cardId, { ...item });
+      continue;
+    }
+    existing.quantity += item.quantity;
+    // Prefer a non-null card payload if one of the entries has it.
+    if (!existing.card && item.card) existing.card = item.card;
+  }
+  return [...byCardId.values()];
 }
 
 function TradeDetailSkeleton() {
@@ -56,13 +89,11 @@ interface OfferPanelProps {
   items: TradeItem[];
   isMyPanel: boolean;
   canEdit: boolean;
-  onAddCard: () => void;
-  onUpdateQty: (itemId: string, qty: number) => void;
-  onRemove: (itemId: string) => void;
   busy: boolean;
+  cardCacheMap: Map<string, Card>;
+  scraperIdMap: Map<string, Card>;
   emptyLabelMy?: string;
   emptyLabelTheir?: string;
-  addCardLabel?: string;
 }
 
 function OfferPanel({
@@ -70,93 +101,139 @@ function OfferPanel({
   items,
   isMyPanel,
   canEdit,
-  onAddCard,
-  onUpdateQty,
-  onRemove,
   busy,
+  cardCacheMap,
+  scraperIdMap,
   emptyLabelMy,
   emptyLabelTheir,
-  addCardLabel,
 }: OfferPanelProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { setCodesOrdered, getSetLabel } = useRiotCatalogSets();
+  const displayItems = useMemo(() => aggregateTradeItemsByCardId(items), [items]);
+
+  const grouped = useMemo(
+    () => groupTradeItemsBySetAndType(displayItems, cardCacheMap, scraperIdMap, setCodesOrdered, getSetLabel),
+    [displayItems, cardCacheMap, scraperIdMap, setCodesOrdered, getSetLabel]
+  );
+
+  const panelTcg = useMemo(() => {
+    let sum = 0;
+    let hadAnyPrice = false;
+    let missingAnyPrice = false;
+    for (const item of displayItems) {
+      const card = mergedCardForTradeOfferItem(item, cardCacheMap, scraperIdMap);
+      const unit = getCardTcgUnitPriceUsd(card);
+      if (unit != null) {
+        hadAnyPrice = true;
+        sum += unit * item.quantity;
+      } else {
+        missingAnyPrice = true;
+      }
+    }
+    return {
+      sum,
+      hadAnyPrice,
+      partial: hadAnyPrice && missingAnyPrice,
+    };
+  }, [displayItems, cardCacheMap, scraperIdMap]);
+
   return (
     <div className={`rounded-xl border bg-gray-800 ${isMyPanel ? "border-emerald-700/50" : "border-gray-700"}`}>
-      <div className={`flex items-center justify-between border-b px-4 py-3 ${isMyPanel ? "border-emerald-700/40" : "border-gray-700"}`}>
-        <span className="text-sm font-semibold text-gray-200">{title}</span>
-        {isMyPanel && canEdit && (
-          <button
-            type="button"
-            onClick={onAddCard}
-            disabled={busy}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-600 bg-gray-900 px-2.5 py-1 text-xs font-medium text-gray-300 transition hover:border-emerald-600 hover:text-emerald-400 disabled:opacity-50"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            {addCardLabel}
-          </button>
-        )}
+      <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 ${isMyPanel ? "border-emerald-700/40" : "border-gray-700"}`}>
+        <span className="min-w-0 text-sm font-semibold text-gray-200">{title}</span>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
+          {displayItems.length > 0 && (
+            <span
+              className="text-[10px] font-medium tabular-nums text-emerald-400/90"
+              title={
+                panelTcg.partial ? t("trades.tradeEstimatedPartialHint") : undefined
+              }
+            >
+              {!panelTcg.hadAnyPrice
+                ? "—"
+                : `${t("trades.tradeEstimatedTotal", { value: formatTcgUsd(panelTcg.sum, locale) })}${panelTcg.partial ? "*" : ""}`}
+            </span>
+          )}
+        </div>
       </div>
 
-        <div className="p-3">
-        {items.length === 0 ? (
+      <div className="px-3 py-2">
+        {displayItems.length === 0 ? (
           <p className="py-4 text-center text-xs text-gray-600">
             {isMyPanel ? emptyLabelMy : emptyLabelTheir}
           </p>
         ) : (
-          <ul className="space-y-1">
-            {items.map((item) => (
-              <li
-                key={item.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-gray-700/60 bg-gray-900 px-3 py-1.5"
-              >
-                <div className="min-w-0 flex-1">
-                  <CardHoverPreview card={item.card as unknown as Card}>
-                    <p className="truncate text-sm font-medium text-blue-400">
-                      {item.card?.name ?? item.cardId}
-                    </p>
-                  </CardHoverPreview>
+          <div className="space-y-4">
+            {grouped.map(({ set, label, types }) => (
+              <div key={set}>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-gray-200">{label}</span>
+                  <div className="h-px flex-1 bg-gray-700" />
                 </div>
-
-                {isMyPanel && canEdit ? (
-                  <div className="flex shrink-0 items-center gap-1">
-                    <div className="flex items-center rounded-md border border-gray-700 bg-gray-800">
-                      <button
-                        type="button"
-                        onClick={() => onUpdateQty(item.id, Math.max(1, item.quantity - 1))}
-                        disabled={busy || item.quantity <= 1}
-                        className="flex h-6 w-6 items-center justify-center rounded-l-md text-xs text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-30"
-                      >
-                        −
-                      </button>
-                      <span className="w-7 text-center text-xs font-bold tabular-nums text-white">
-                        {item.quantity}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => onUpdateQty(item.id, item.quantity + 1)}
-                        disabled={busy}
-                        className="flex h-6 w-6 items-center justify-center rounded-r-md text-xs text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-30"
-                      >
-                        +
-                      </button>
+                <div className="space-y-2.5 pl-2">
+                  {types.map(({ type, label: typeLabel, icon, total, items: typeItems }) => (
+                    <div key={type}>
+                      <div className="mb-0.5 flex items-center gap-1.5">
+                        {icon && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={icon} alt={typeLabel} className="h-3.5 w-3.5 object-contain opacity-70" />
+                        )}
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                          {typeLabel} <span className="text-gray-600">({total})</span>
+                        </span>
+                      </div>
+                      <ul className="space-y-0.5 pl-4">
+                        {typeItems.map((item) => {
+                          const cached = cardCacheMap.get(item.cardId) ?? scraperIdMap.get(item.cardId);
+                          const merged = mergedCardForTradeOfferItem(item, cardCacheMap, scraperIdMap);
+                          const unitUsd = getCardTcgUnitPriceUsd(merged);
+                          const domains = getCardDomains(cached ?? item.card ?? undefined);
+                          const rarityIcon = getRarityIcon(item.card?.rarity ?? cached?.rarity);
+                          return (
+                            <li
+                              key={item.id}
+                              className="flex items-center justify-between gap-1 rounded px-1 py-0.5 hover:bg-gray-700/40"
+                            >
+                              <CardHoverPreview card={merged}>
+                                <span className="flex min-w-0 cursor-default items-center gap-1 text-xs">
+                                  <TradeOfferDomainIconsAndQty
+                                    domains={domains}
+                                    quantity={item.quantity}
+                                    fallbackCard={cached ?? item.card ?? undefined}
+                                  />
+                                  <span className="truncate text-blue-400">
+                                    {item.card?.name ?? merged.name ?? item.cardId}
+                                  </span>
+                                  {rarityIcon && (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={rarityIcon}
+                                      alt={item.card?.rarity ?? cached?.rarity ?? ""}
+                                      className="h-3.5 w-3.5 shrink-0 object-contain opacity-70"
+                                    />
+                                  )}
+                                  <span
+                                    className="ml-0.5 shrink-0 text-[10px] font-medium tabular-nums text-emerald-400/90"
+                                    title={
+                                      unitUsd != null && item.quantity > 1
+                                        ? formatTcgUsd(unitUsd * item.quantity, locale)
+                                        : undefined
+                                    }
+                                  >
+                                    {unitUsd != null ? formatTcgUsd(unitUsd, locale) : "—"}
+                                  </span>
+                                </span>
+                              </CardHoverPreview>
+                            </li>
+                          );
+                        })}
+                      </ul>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => onRemove(item.id)}
-                      disabled={busy}
-                      className="flex h-6 w-6 items-center justify-center rounded text-gray-600 hover:bg-red-900/30 hover:text-red-400 disabled:opacity-30"
-                      aria-label={t("common.remove")}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                    </button>
-                  </div>
-                ) : (
-                  <span className="shrink-0 rounded-md border border-gray-700 bg-gray-800 px-2 py-0.5 text-xs font-bold tabular-nums text-gray-300">
-                    ×{item.quantity}
-                  </span>
-                )}
-              </li>
+                  ))}
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>
@@ -347,7 +424,22 @@ export default function TradeDetailPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { t } = useLocale();
+  const { cards: cachedCards } = useCards();
   const tradeId = typeof params.id === "string" ? params.id : "";
+
+  const cardCacheMap = useMemo(
+    () =>
+      new Map(
+        (cachedCards ?? [])
+          .map((c) => [getCardId(c), c] as const)
+          .filter(([id]) => id !== "")
+      ),
+    [cachedCards]
+  );
+  const scraperIdMap = useMemo(
+    () => new Map((cachedCards ?? []).filter((c) => c.scraperId).map((c) => [c.scraperId!, c])),
+    [cachedCards]
+  );
 
   const [trade, setTrade] = useState<Trade | null>(null);
   const [loading, setLoading] = useState(true);
@@ -436,35 +528,11 @@ export default function TradeDetailPage() {
     setShowPicker(false);
     await withBusy(async () => {
       try {
-        await addTradeItem(trade!.id, card.uuid, 1);
+        await addTradeItem(trade!.id, getCardId(card), 1);
         await fetchTrade();
         toast.success(t("trades.cardAdded", { name: card.name }));
       } catch (err) {
         toast.error(err instanceof Error ? err.message : t("trades.addCardToOffer"));
-      }
-    });
-  }
-
-  async function handleUpdateQty(itemId: string, qty: number) {
-    if (qty < 1) return;
-    await withBusy(async () => {
-      try {
-        await updateTradeItem(trade!.id, itemId, qty);
-        await fetchTrade();
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : t("trades.errorUpdatingQty"));
-      }
-    });
-  }
-
-  async function handleRemoveItem(itemId: string) {
-    await withBusy(async () => {
-      try {
-        await removeTradeItem(trade!.id, itemId);
-        await fetchTrade();
-        toast.success(t("trades.cardRemoved"));
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : t("trades.errorLoadingTrade"));
       }
     });
   }
@@ -596,15 +664,13 @@ export default function TradeDetailPage() {
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5"/></svg>
               {t("trades.acceptTrade")}
             </button>
-            <button
-              type="button"
-              onClick={() => setPendingAction("submit")}
-              disabled={busy}
-              className="flex items-center gap-2 rounded-lg border border-blue-600 bg-blue-900/30 px-4 py-2.5 text-sm font-semibold text-blue-300 transition hover:bg-blue-800/40 disabled:opacity-50"
+            <a
+              href={`/${counterpart.slug}`}
+              className="flex items-center gap-2 rounded-lg border border-blue-600 bg-blue-900/30 px-4 py-2.5 text-sm font-semibold text-blue-300 transition hover:bg-blue-800/40"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-              {trade.status === "COUNTERED" ? t("trades.submitCounter") : t("trades.submitOffer")}
-            </button>
+              {t("trades.modifyOffer")}
+            </a>
             <button
               type="button"
               onClick={() => setPendingAction("reject")}
@@ -656,27 +722,24 @@ export default function TradeDetailPage() {
         {/* Offers */}
         <div className="mb-5 grid gap-4 md:grid-cols-2">
           <OfferPanel
-            title={`${t("trades.cardsIAskedFor")} (${myItems.length})`}
+            title={t("trades.tradeSideCards", { slug: mySlug, count: aggregateTradeItemsByCardId(myItems).reduce((sum, it) => sum + it.quantity, 0) })}
             items={myItems}
             isMyPanel
             canEdit={active && isMyTurn}
-            onAddCard={() => setShowPicker(true)}
-            onUpdateQty={handleUpdateQty}
-            onRemove={handleRemoveItem}
             busy={busy}
+            cardCacheMap={cardCacheMap}
+            scraperIdMap={scraperIdMap}
             emptyLabelMy={t("trades.noCardsYet")}
             emptyLabelTheir={t("trades.waitingForTheirOffer")}
-            addCardLabel={t("trades.addCard")}
           />
           <OfferPanel
-            title={`${t("trades.cardsTheyAskedFor", { slug: counterpart.slug })} (${theirItems.length})`}
+            title={t("trades.tradeSideCards", { slug: counterpart.slug, count: aggregateTradeItemsByCardId(theirItems).reduce((sum, it) => sum + it.quantity, 0) })}
             items={theirItems}
             isMyPanel={false}
             canEdit={false}
-            onAddCard={() => {}}
-            onUpdateQty={() => {}}
-            onRemove={() => {}}
             busy={busy}
+            cardCacheMap={cardCacheMap}
+            scraperIdMap={scraperIdMap}
           />
         </div>
 

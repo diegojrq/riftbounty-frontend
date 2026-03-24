@@ -56,12 +56,10 @@ function digitsFromInputValue(raw: string): string {
 }
 
 interface DonateButtonProps {
-  /** Estilo compacto no header vs. link no rodapé */
-  variant?: "header" | "footer";
   className?: string;
 }
 
-export function DonateButton({ variant = "header", className = "" }: DonateButtonProps) {
+export function DonateButton({ className = "" }: DonateButtonProps) {
   const { t, locale } = useLocale();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
@@ -141,22 +139,13 @@ export function DonateButton({ variant = "header", className = "" }: DonateButto
     }
   };
 
-  const buttonClass =
-    variant === "footer"
-      ? `text-emerald-400 underline-offset-2 hover:text-emerald-300 hover:underline ${className}`
-      : `inline-flex items-center justify-center gap-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-300 transition-colors hover:border-emerald-500/60 hover:bg-emerald-500/20 ${className}`;
+  const buttonClass = `inline-flex items-center justify-center gap-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-300 transition-colors hover:border-emerald-500/60 hover:bg-emerald-500/20 ${className}`;
 
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className={buttonClass}>
-        {variant === "footer" ? (
-          t("donate.linkFooter")
-        ) : (
-          <>
-            <IconDollar />
-            {t("nav.donate")}
-          </>
-        )}
+        <IconDollar />
+        {t("nav.donate")}
       </button>
 
       {open &&

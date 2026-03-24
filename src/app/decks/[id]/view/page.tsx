@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { getDeck } from "@/lib/decks";
+import {
+  rawDeckValidationErrors,
+  rawDeckValidationWarnings,
+  formatDeckValidationItem,
+} from "@/lib/deck-validation";
 import { useAuth } from "@/lib/auth-context";
 import { getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
@@ -12,6 +17,7 @@ import { BackLink } from "@/components/layout/BackLink";
 import { useLocale } from "@/lib/locale-context";
 import type { Card } from "@/types/card";
 import type { Deck, DeckMainItem } from "@/types/deck";
+import { getCardId } from "@/lib/card-id";
 
 const VALID_DOMAIN_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
 const UNIT_ICON = "/images/types/unit.webp";
@@ -73,7 +79,7 @@ function CardSlot({ card, label }: { card: Card | null | undefined; label: strin
                 style={{
                   position: "absolute", top: "50%", left: "50%",
                   width: "calc(100% * 2.5 / 3.5)", height: "calc(100% * 3.5 / 2.5)",
-                  objectFit: "cover", transform: "translate(-50%, -50%) rotate(90deg)",
+                  objectFit: "cover", transform: "translate(-50%, -50%) rotate(-90deg)",
                 }}
               />
             ) : (
@@ -240,7 +246,10 @@ export default function DeckViewPage() {
   const sideboardCount = deck.sideboardItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const grouped = groupByType(deck.mainItems ?? []);
   const orderedKeys = TYPE_ORDER.filter((t) => grouped[t]?.length);
-  const isValid = deck.validation?.valid && (deck.validation.errors?.length ?? 0) === 0;
+  const isValid =
+    deck.validation?.valid &&
+    rawDeckValidationErrors(deck.validation).length === 0 &&
+    rawDeckValidationWarnings(deck.validation).length === 0;
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -300,7 +309,7 @@ export default function DeckViewPage() {
                           style={{
                             position: "absolute", top: "50%", left: "50%",
                             width: "calc(100% * 2.5 / 3.5)", height: "calc(100% * 3.5 / 2.5)",
-                            objectFit: "cover", transform: "translate(-50%, -50%) rotate(90deg)",
+                            objectFit: "cover", transform: "translate(-50%, -50%) rotate(-90deg)",
                           }}
                         />
                       ) : null}
@@ -412,7 +421,7 @@ export default function DeckViewPage() {
                             const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
                             const domainImgSrc = domainImageSrc(domain, item.card);
                             return (
-                              <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
+                              <li key={getCardId(item.card as Card) || item.cardId || i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={domainImgSrc} alt={domain ?? "unit"} className="h-3 w-3 shrink-0 object-contain opacity-90" />
                                 <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
@@ -481,7 +490,7 @@ export default function DeckViewPage() {
                       const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
                       const domainImgSrc = domainImageSrc(domain, item.card);
                       return (
-                        <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
+                        <li key={getCardId(item.card as Card) || item.cardId || i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={domainImgSrc} alt={domain ?? "unit"} className="h-3 w-3 shrink-0 object-contain opacity-90" />
                           <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
@@ -517,7 +526,7 @@ export default function DeckViewPage() {
                         const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
                         const domainImgSrcSb = domainImageSrc(domain, item.card);
                         return (
-                          <li key={item.card?.uuid ?? item.cardId ?? i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
+                          <li key={getCardId(item.card as Card) || item.cardId || i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={domainImgSrcSb} alt={domain ?? "unit"} className="h-3 w-3 shrink-0 object-contain opacity-90" />
                             <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
@@ -543,11 +552,11 @@ export default function DeckViewPage() {
               <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
                 <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">{t("decks.validation")}</h2>
                 <div className="space-y-1.5">
-                  {(deck.validation.errors ?? []).map((msg, i) => (
-                    <p key={i} className="text-sm text-red-400">{msg}</p>
+                  {rawDeckValidationErrors(deck.validation).map((msg, i) => (
+                    <p key={i} className="text-sm text-red-400">{formatDeckValidationItem(msg, t)}</p>
                   ))}
-                  {(deck.validation.warnings ?? []).map((msg, i) => (
-                    <p key={i} className="text-sm text-amber-400">{msg}</p>
+                  {rawDeckValidationWarnings(deck.validation).map((msg, i) => (
+                    <p key={i} className="text-sm text-amber-400">{formatDeckValidationItem(msg, t)}</p>
                   ))}
                 </div>
               </div>

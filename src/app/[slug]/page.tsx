@@ -3,17 +3,24 @@
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { BackLink } from "@/components/layout/BackLink";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getPublicProfile, getProfileMatch } from "@/lib/profile";
 import { createTrade, listTrades, addTradeItem, updateTradeItem, removeTradeItem, submitTrade, sendTradeMessage, getTrade } from "@/lib/trades";
+import { getCollection } from "@/lib/collections";
 import { toast } from "sonner";
 import type { TradeSummary, Trade, TradeItem } from "@/types/trade";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
+import { TradeOfferDomainIconsAndQty, TradeQuantityBadge } from "@/components/trades/TradeQuantityBadge";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
 import { useCards } from "@/lib/cards-context";
+import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
 import type { PublicUser, MatchItem, OfferableItem, PublicProfileCard } from "@/types/auth";
 import type { Card } from "@/types/card";
+import { mergePublicProfileCardWithCatalog } from "@/lib/cards";
+import { getCardId } from "@/lib/card-id";
+import {
+} from "@/lib/trade-offer-grouping";
 
 
 const RESERVED_SLUGS = new Set([
@@ -37,6 +44,36 @@ interface BasketItem {
   tradeItemId?: string;
 }
 
+/** Trade detail pode trazer `card: null`; resolve com o catálogo em memória. */
+function publicProfileCardFromCatalog(c: Card): PublicProfileCard {
+  return {
+    id: getCardId(c),
+    uuid: c.uuid,
+    scraperId: c.scraperId ?? c.scraper_id,
+    name: c.name ?? null,
+    slug: c.slug,
+    cardSet: c.cardSet ?? c.set ?? c.card_set ?? null,
+    rarity: c.rarity ?? null,
+    type: c.type ?? null,
+    domain: c.domain ?? null,
+    domains: c.domains ?? null,
+    cardDomains: c.cardDomains as PublicProfileCard["cardDomains"],
+    image_key: c.image_key ?? null,
+    imageUrl: c.imageUrl ?? c.image_url ?? null,
+  };
+}
+
+function resolveBasketCardFromTradeItem(
+  item: TradeItem,
+  cardCacheMap: Map<string, Card>,
+  scraperIdMap: Map<string, Card>
+): PublicProfileCard | null {
+  if (item.card) return item.card;
+  const c = cardCacheMap.get(item.cardId) ?? scraperIdMap.get(item.cardId);
+  if (!c) return null;
+  return publicProfileCardFromCatalog(c);
+}
+
 /* ─── SVGs ─────────────────────────────────────────── */
 function IconPlus({ className }: { className?: string }) {
   return (
@@ -56,11 +93,55 @@ function getRarityIcon(rarity?: string | null): string | null {
   return known.includes(normalized) ? `/images/rarities/${normalized}.svg` : null;
 }
 
-/* ─── Domain helper ─────────────────────────────────── */
-const NO_DOMAIN_ICON = "/images/types/unit.webp";
-const BATTLEFIELD_ICON = "/images/types/battlefields.webp";
-const VALID_DOMAIN_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
+/** TCG USD — mesma prioridade que CardTile (market → mid → low → high). */
+function parseTcgPrice(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const normalized = value.replace(",", ".").trim();
+    const parsed = Number.parseFloat(normalized);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
 
+function getCardTcgUnitPriceUsd(card: Card): number | null {
+  const market = parseTcgPrice(card.tcgMarketPrice ?? card.tcg_market_price);
+  const mid = parseTcgPrice(card.tcgMidPrice ?? card.tcg_mid_price);
+  const low = parseTcgPrice(card.tcgLowPrice ?? card.tcg_low_price);
+  const high = parseTcgPrice(card.tcgHighPrice ?? card.tcg_high_price);
+  return market ?? mid ?? low ?? high;
+}
+
+function formatUsd(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function getCollectorForSort(card: { collectorNumber?: string | null; collector_number?: string | null } | null | undefined): string {
+  return (card?.collectorNumber ?? card?.collector_number ?? "").toString().trim();
+}
+
+function compareCollectorThenName(
+  a: { collectorNumber?: string | null; collector_number?: string | null; name?: string | null } | null | undefined,
+  b: { collectorNumber?: string | null; collector_number?: string | null; name?: string | null } | null | undefined
+): number {
+  const ca = getCollectorForSort(a);
+  const cb = getCollectorForSort(b);
+  if (ca && cb) {
+    const byCollector = ca.localeCompare(cb, undefined, { numeric: true, sensitivity: "base" });
+    if (byCollector !== 0) return byCollector;
+  } else if (ca) {
+    return -1;
+  } else if (cb) {
+    return 1;
+  }
+  return (a?.name ?? "").localeCompare(b?.name ?? "", undefined, { sensitivity: "base" });
+}
+
+/* ─── Domain helper ─────────────────────────────────── */
 function getCardDomains(
   card:
     | {
@@ -87,28 +168,19 @@ function getCardDomains(
   return [...new Set(result)];
 }
 
-/** Domains that have an image under /images/domains/. Others (e.g. "minds", "sprite") fall back to type icon. */
-function getDisplayDomainIcons(domains: string[]): string[] {
-  return domains.filter((d) => VALID_DOMAIN_SLUGS.has(d));
-}
-
-function isBattlefieldCard(card: { type?: string | null; record_type?: string | null } | undefined): boolean {
-  if (!card) return false;
-  const t = (card.type ?? "").toLowerCase();
-  const r = (card.record_type ?? "").toLowerCase();
-  return t === "battlefield" || r.includes("battleground") || t === "battleground";
-}
-
-function getNoDomainIcon(card: { type?: string | null; record_type?: string | null } | undefined): string {
-  return isBattlefieldCard(card) ? BATTLEFIELD_ICON : NO_DOMAIN_ICON;
-}
-
 /* ─── Rarity filter constants ───────────────────────── */
 const RARITIES = ["common", "uncommon", "rare", "epic", "showcase"] as const;
 
 /* ─── Basket grouping constants ─────────────────────── */
-const SET_ORDER = ["OGN", "SFD"];
-const SET_LABEL: Record<string, string> = { OGN: "Origins", SFD: "Spiritforged" };
+function compareSetOrder(a: string, b: string, setOrder: string[]): number {
+  const ai = setOrder.indexOf(a);
+  const bi = setOrder.indexOf(b);
+  if (ai === -1 && bi === -1) return a.localeCompare(b);
+  if (ai === -1) return 1;
+  if (bi === -1) return -1;
+  return ai - bi;
+}
+
 const TYPE_ORDER = ["legend", "champion", "unit", "limit", "gear", "spell", "rune", "battlefield"];
 const TYPE_LABEL: Record<string, string> = {
   legend: "Legend", champion: "Champion", unit: "Unit", limit: "Limit",
@@ -125,7 +197,11 @@ const TYPE_IMAGE: Record<string, string> = {
   battlefield: "/images/types/battlefields.webp",
 };
 
-function groupCardsBySetAndType<T extends { card: PublicProfileCard | null }>(items: T[]) {
+function groupCardsBySetAndType<T extends { card: PublicProfileCard | null }>(
+  items: T[],
+  setOrder: string[],
+  labelForSet: (set: string) => string
+) {
   const bySet = new Map<string, Map<string, T[]>>();
   for (const item of items) {
     const set = item.card?.cardSet ?? "—";
@@ -136,15 +212,10 @@ function groupCardsBySetAndType<T extends { card: PublicProfileCard | null }>(it
     byType.get(type)!.push(item);
   }
   return [...bySet.entries()]
-    .sort(([a], [b]) => {
-      const ai = SET_ORDER.indexOf(a), bi = SET_ORDER.indexOf(b);
-      if (ai === -1 && bi === -1) return a.localeCompare(b);
-      if (ai === -1) return 1; if (bi === -1) return -1;
-      return ai - bi;
-    })
+    .sort(([a], [b]) => compareSetOrder(a, b, setOrder))
     .map(([set, byType]) => ({
       set,
-      label: SET_LABEL[set] ?? set,
+      label: labelForSet(set),
       types: [...byType.entries()]
         .sort(([a], [b]) => {
           const ai = TYPE_ORDER.indexOf(a), bi = TYPE_ORDER.indexOf(b);
@@ -160,29 +231,92 @@ function groupCardsBySetAndType<T extends { card: PublicProfileCard | null }>(it
     }));
 }
 
+function aggregateTradeItemsByCardId(items: TradeItem[]): TradeItem[] {
+  const byCardId = new Map<string, TradeItem>();
+  for (const item of items) {
+    const existing = byCardId.get(item.cardId);
+    if (!existing) {
+      byCardId.set(item.cardId, { ...item });
+      continue;
+    }
+    existing.quantity += item.quantity;
+    if (!existing.card && item.card) existing.card = item.card;
+  }
+  return [...byCardId.values()];
+}
+
 /* ─── BasketPanel ────────────────────────────────────── */
 interface BasketPanelProps {
   basket: Map<string, BasketItem>;
   recipientSlug: string;
   recipientDisplayName: string | null;
-  onUpdateQty: (uuid: string, qty: number) => void;
-  onRemove: (uuid: string) => void;
-  onClear: () => void;
+  onUpdateQty: (cardId: string, qty: number) => void;
+  onRemove: (cardId: string) => void;
   /** O que você pede do outro (só na criação; enviado como requestedItems) */
   requestedBasket?: Map<string, BasketItem>;
-  onUpdateRequestedQty?: (uuid: string, qty: number) => void;
-  onRemoveRequested?: (uuid: string) => void;
-  onClearRequested?: () => void;
+  onUpdateRequestedQty?: (cardId: string, qty: number) => void;
+  onRemoveRequested?: (cardId: string) => void;
   activeTrade?: TradeSummary | null;
   activeTradeDetail?: Trade | null;
   isMyTurn?: boolean;
-  originalItemsMap?: Map<string, TradeItem>;
   onCounterSubmitError?: (tradeId: string) => void;
+  /** Slug do usuário logado (para os dois lados da troca aberta) */
+  mySlug: string;
 }
 
-function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty, onRemove, onClear, requestedBasket, onUpdateRequestedQty, onRemoveRequested, onClearRequested, cardCacheMap, scraperIdMap, activeTrade, activeTradeDetail, isMyTurn, originalItemsMap, onCounterSubmitError }: BasketPanelProps & { cardCacheMap: Map<string, Card>; scraperIdMap: Map<string, Card> }) {
+/** Lista somente leitura: um lado da troca (lista plana, sem agrupamento). */
+function ActiveTradeSideReadOnlyList({
+  items,
+  cardCacheMap,
+  scraperIdMap,
+}: {
+  items: TradeItem[];
+  cardCacheMap: Map<string, Card>;
+  scraperIdMap: Map<string, Card>;
+}) {
+  return (
+    <ul className="space-y-0.5 pl-2">
+      {items.map((item) => {
+        const cached = cardCacheMap.get(item.cardId) ?? scraperIdMap.get(item.cardId);
+        const cardForPreview = mergePublicProfileCardWithCatalog(item.card, cached, item.cardId);
+        const name = cached?.name ?? item.card?.name ?? item.cardId;
+        const domains = getCardDomains(
+          (cached ?? item.card) as {
+            domain?: string;
+            domains?: string[];
+            cardDomains?: { domain: { name: string } }[];
+          } | undefined
+        );
+        const rarity = (cached?.rarity ?? item.card?.rarity ?? "").toLowerCase().replace(/\s+/g, "");
+        const rarityNorm = rarity === "overnumbered" ? "showcase" : rarity;
+        return (
+          <li key={item.id} className="flex items-center gap-1.5 py-0.5">
+            <CardHoverPreview card={cardForPreview}>
+              <span className="flex min-w-0 cursor-default items-center gap-1">
+                <TradeOfferDomainIconsAndQty
+                  domains={domains}
+                  quantity={item.quantity}
+                  fallbackCard={cached ?? item.card ?? undefined}
+                  iconClassName="h-3.5 w-3.5 shrink-0 object-contain"
+                />
+                <span className="truncate text-xs text-blue-400">{name}</span>
+                {rarityNorm && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={`/images/rarities/${rarityNorm}.svg`} alt={rarityNorm} className="h-3 w-3 shrink-0 opacity-60" />
+                )}
+              </span>
+            </CardHoverPreview>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function BasketPanel({ basket, recipientSlug, recipientDisplayName, mySlug, onUpdateQty, onRemove, requestedBasket, onUpdateRequestedQty, onRemoveRequested, cardCacheMap, scraperIdMap, activeTrade, activeTradeDetail, isMyTurn, onCounterSubmitError }: BasketPanelProps & { cardCacheMap: Map<string, Card>; scraperIdMap: Map<string, Card> }) {
   const router = useRouter();
   const { t } = useLocale();
+  const { setCodesOrdered, getSetLabel } = useRiotCatalogSets();
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -191,97 +325,82 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
     () => (requestedBasket ? [...requestedBasket.values()] : []),
     [requestedBasket]
   );
+
   const totalQty = items.reduce((s, i) => s + i.quantity, 0);
-  const hasActiveTrade = !!activeTrade;
-  const isCounterMode = hasActiveTrade && !!isMyTurn;
-  const showRequestedSection = !hasActiveTrade && requestedBasket && requestedBasket.size > 0 && onUpdateRequestedQty && onRemoveRequested && onClearRequested;
+  const requestedTotalQty = requestedItemsList.reduce((s, i) => s + i.quantity, 0);
 
-  // Items the other player placed in the trade (what they're asking from me)
-  // recipientSlug here is the profile being viewed (the other player)
-  const theirRequestedItems = useMemo<TradeItem[]>(() => {
-    if (!activeTradeDetail || !activeTrade) return [];
-    if (activeTrade.initiatorSlug === recipientSlug) {
-      return activeTradeDetail.initiatorItems ?? [];
+  /** Soma TCG (USD) por lado; * = alguma carta sem preço no catálogo. */
+  const requestedBasketTcg = useMemo(() => {
+    let sum = 0;
+    let missingAny = false;
+    let hadAnyPrice = false;
+    for (const item of requestedItemsList) {
+      const cached =
+        cardCacheMap.get(getCardId(item.card)) ?? (item.card.scraperId ? scraperIdMap.get(item.card.scraperId) : undefined);
+      const merged = mergePublicProfileCardWithCatalog(item.card, cached, getCardId(item.card));
+      const p = getCardTcgUnitPriceUsd(merged);
+      if (p == null) missingAny = true;
+      else {
+        hadAnyPrice = true;
+        sum += p * item.quantity;
+      }
     }
-    return activeTradeDetail.recipientItems ?? [];
-  }, [activeTradeDetail, activeTrade, recipientSlug]);
+    return { sum, missingAny, hadAnyPrice };
+  }, [requestedItemsList, cardCacheMap, scraperIdMap]);
 
-  // Group "they asked for" by set and type (same structure as basket below)
-  const theirRequestedGrouped = useMemo(() => {
-    if (theirRequestedItems.length === 0) return [];
-    const bySet = new Map<string, Map<string, TradeItem[]>>();
-    for (const item of theirRequestedItems) {
-      const cached = cardCacheMap.get(item.cardId) ?? scraperIdMap.get(item.cardId);
-      const card = item.card ?? cached;
-      const set = (cached?.cardSet ?? (card as { cardSet?: string })?.cardSet ?? "—").toString();
-      const type = ((cached?.type ?? (card as { type?: string })?.type) ?? "other").toString().toLowerCase();
-      if (!bySet.has(set)) bySet.set(set, new Map());
-      const byType = bySet.get(set)!;
-      if (!byType.has(type)) byType.set(type, []);
-      byType.get(type)!.push(item);
-    }
-    return [...bySet.entries()]
-      .sort(([a], [b]) => {
-        const ai = SET_ORDER.indexOf(a), bi = SET_ORDER.indexOf(b);
-        if (ai === -1 && bi === -1) return a.localeCompare(b);
-        if (ai === -1) return 1; if (bi === -1) return -1;
-        return ai - bi;
-      })
-      .map(([set, byType]) => ({
-        set,
-        label: SET_LABEL[set] ?? set,
-        types: [...byType.entries()]
-          .sort(([a], [b]) => {
-            const ai = TYPE_ORDER.indexOf(a), bi = TYPE_ORDER.indexOf(b);
-            if (ai === -1 && bi === -1) return a.localeCompare(b);
-            if (ai === -1) return 1; if (bi === -1) return -1;
-            return ai - bi;
-          })
-          .map(([type, list]) => ({
-            type,
-            label: TYPE_LABEL[type] ?? (type.charAt(0).toUpperCase() + type.slice(1)),
-            icon: TYPE_IMAGE[type],
-            items: list,
-          })),
-      }));
-  }, [theirRequestedItems, cardCacheMap, scraperIdMap]);
-
-  const grouped = useMemo(() => {
-    const bySet = new Map<string, Map<string, BasketItem[]>>();
+  const offerBasketTcg = useMemo(() => {
+    let sum = 0;
+    let missingAny = false;
+    let hadAnyPrice = false;
     for (const item of items) {
-      const set = item.card.cardSet ?? "—";
-      const type = (item.card.type ?? "other").toLowerCase();
-      if (!bySet.has(set)) bySet.set(set, new Map());
-      const byType = bySet.get(set)!;
-      if (!byType.has(type)) byType.set(type, []);
-      byType.get(type)!.push(item);
+      const cached =
+        cardCacheMap.get(getCardId(item.card)) ?? (item.card.scraperId ? scraperIdMap.get(item.card.scraperId) : undefined);
+      const merged = mergePublicProfileCardWithCatalog(item.card, cached, getCardId(item.card));
+      const p = getCardTcgUnitPriceUsd(merged);
+      if (p == null) missingAny = true;
+      else {
+        hadAnyPrice = true;
+        sum += p * item.quantity;
+      }
     }
-    return [...bySet.entries()]
-      .sort(([a], [b]) => {
-        const ai = SET_ORDER.indexOf(a), bi = SET_ORDER.indexOf(b);
-        if (ai === -1 && bi === -1) return a.localeCompare(b);
-        if (ai === -1) return 1; if (bi === -1) return -1;
-        return ai - bi;
-      })
-      .map(([set, byType]) => ({
-        set,
-        label: SET_LABEL[set] ?? set,
-        types: [...byType.entries()]
-          .sort(([a], [b]) => {
-            const ai = TYPE_ORDER.indexOf(a), bi = TYPE_ORDER.indexOf(b);
-            if (ai === -1 && bi === -1) return a.localeCompare(b);
-            if (ai === -1) return 1; if (bi === -1) return -1;
-            return ai - bi;
-          })
-          .map(([type, cards]) => ({
-            type,
-            label: TYPE_LABEL[type] ?? (type.charAt(0).toUpperCase() + type.slice(1)),
-            icon: TYPE_IMAGE[type],
-            total: cards.reduce((s, c) => s + c.quantity, 0),
-            cards,
-          })),
-      }));
-  }, [items]);
+    return { sum, missingAny, hadAnyPrice };
+  }, [items, cardCacheMap, scraperIdMap]);
+
+  const hasActiveTrade = !!activeTrade;
+  const isWaitingOnOtherParty = hasActiveTrade && isMyTurn !== true;
+  const isCounterMode = hasActiveTrade && isMyTurn === true;
+  const canEditRequestedBasket = !!requestedBasket && !!onUpdateRequestedQty && !!onRemoveRequested;
+  const showRequestedSection = canEditRequestedBasket && (!hasActiveTrade || isCounterMode);
+
+  /** Cartas do usuário logado na troca (initiator ou recipient, conforme o caso). */
+  const myTradeItems = useMemo<TradeItem[]>(() => {
+    if (!activeTradeDetail || !activeTrade) return [];
+    return (
+      activeTrade.initiatorSlug === mySlug
+        ? activeTradeDetail.initiatorItems
+        : activeTradeDetail.recipientItems
+    ) ?? [];
+  }, [activeTradeDetail, activeTrade, mySlug]);
+
+  /** Cartas de quem está no perfil (outro participante). */
+  const theirTradeItems = useMemo<TradeItem[]>(() => {
+    if (!activeTradeDetail || !activeTrade) return [];
+    return (
+      activeTrade.initiatorSlug === mySlug
+        ? activeTradeDetail.recipientItems
+        : activeTradeDetail.initiatorItems
+    ) ?? [];
+  }, [activeTradeDetail, activeTrade, mySlug]);
+
+  const myTradeItemsAggregated = useMemo(
+    () => aggregateTradeItemsByCardId(myTradeItems),
+    [myTradeItems]
+  );
+
+  const theirTradeItemsAggregated = useMemo(
+    () => aggregateTradeItemsByCardId(theirTradeItems),
+    [theirTradeItems]
+  );
 
   async function handleSend() {
     if (items.length === 0 || submitting) return;
@@ -290,27 +409,25 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
     try {
       if (isCounterMode && activeTrade) {
         try {
-          if (originalItemsMap) {
-            for (const [uuid, original] of originalItemsMap) {
-              if (!basket.has(uuid)) {
+          const syncTradeSide = async (originalSideItems: TradeItem[], currentSideItems: Map<string, BasketItem>) => {
+            const originalByCardId = new Map(originalSideItems.map((it) => [it.cardId, it]));
+            for (const original of originalSideItems) {
+              if (!currentSideItems.has(original.cardId)) {
                 await removeTradeItem(activeTrade.id, original.id);
               }
             }
-          }
-        } catch (e) {
-          throw new Error(`Removing items: ${e instanceof Error ? e.message : "Failed"}`);
-        }
-        try {
-          for (const item of items) {
-            const original = originalItemsMap?.get(item.card.uuid);
-            if (original) {
-              if (original.quantity !== item.quantity) {
-                await updateTradeItem(activeTrade.id, original.id, item.quantity);
+            for (const [cardId, current] of currentSideItems) {
+              const original = originalByCardId.get(cardId);
+              if (original) {
+                if (original.quantity !== current.quantity) {
+                  await updateTradeItem(activeTrade.id, original.id, current.quantity);
+                }
+              } else {
+                await addTradeItem(activeTrade.id, cardId, current.quantity);
               }
-            } else {
-              await addTradeItem(activeTrade.id, item.card.uuid, item.quantity);
             }
-          }
+          };
+          await syncTradeSide(myTradeItems, basket);
         } catch (e) {
           throw new Error(`Updating items: ${e instanceof Error ? e.message : "Failed"}`);
         }
@@ -330,11 +447,11 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
       } else {
         const requestedItems =
           requestedBasket && requestedBasket.size > 0
-            ? [...requestedBasket.values()].map((i) => ({ cardId: i.card.uuid, quantity: i.quantity }))
+            ? [...requestedBasket.values()].map((i) => ({ cardId: getCardId(i.card), quantity: i.quantity }))
             : undefined;
         const trade = await createTrade({
           recipientSlug,
-          items: items.map((i) => ({ cardId: i.card.uuid, quantity: i.quantity })),
+          items: items.map((i) => ({ cardId: getCardId(i.card), quantity: i.quantity })),
           ...(requestedItems && requestedItems.length > 0 ? { requestedItems } : {}),
           ...(message.trim() ? { message: message.trim() } : {}),
         });
@@ -367,183 +484,179 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
               {t("trades.addCardsAndSubmitCounterMove")}
             </p>
           )}
-          {hasActiveTrade && !isMyTurn && (
-            <p className="mt-0.5 text-[11px] text-gray-500">
-              {t("trades.waitingFor", { slug: recipientSlug })}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {showRequestedSection && (
-            <button type="button" onClick={onClearRequested} className="text-xs text-gray-600 hover:text-red-400">
-              {t("trades.clearRequested")}
-            </button>
-          )}
-          {items.length > 0 && (
-            <button type="button" onClick={onClear} className="text-xs text-gray-600 hover:text-red-400">
-              {t("common.clearAll")}
-            </button>
+          {isWaitingOnOtherParty && (
+            <div
+              className="mt-2 flex items-start gap-2.5 rounded-lg border border-amber-500/45 bg-gradient-to-r from-amber-950/90 via-amber-950/70 to-amber-900/35 px-3 py-2.5 shadow-[0_0_24px_-10px_rgba(251,191,36,0.45)]"
+              role="status"
+            >
+              <span className="mt-1.5 flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)]" aria-hidden />
+              <div className="min-w-0">
+                <p className="text-sm font-bold leading-snug text-amber-100">
+                  {t("trades.waitingFor", { slug: recipientSlug })}
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-amber-200/80">
+                  {t("trades.waitingForBasketHint")}
+                </p>
+              </div>
+            </div>
           )}
         </div>
       </div>
 
-      {/* O que você pede do outro (só na nova proposta) */}
+      {/* O que você pede — mesmo padrão visual da oferta (agrupado set/tipo + linha com controles à direita) */}
       {showRequestedSection && (
         <div className="border-b border-gray-700 px-3 py-2">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            {t("trades.whatYouAskFor")}
-          </p>
-          <ul className="space-y-1">
+          {!isCounterMode && (
+            <div className="mb-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                {requestedItemsList.length > 0
+                  ? t("trades.pickFromCollectionCount", { slug: recipientSlug, count: requestedTotalQty })
+                  : t("trades.pickFromCollection", { slug: recipientSlug })}
+              </p>
+            </div>
+          )}
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              {isCounterMode
+                ? t("trades.tradeSideCards", { slug: recipientSlug, count: requestedTotalQty })
+                : t("trades.whatYouAskFor")}
+            </p>
+            {requestedItemsList.length > 0 && (
+              <span
+                className="max-w-[58%] text-right text-[10px] font-medium tabular-nums text-emerald-400/90"
+                title={
+                  requestedBasketTcg.missingAny && requestedBasketTcg.hadAnyPrice
+                    ? t("trades.tradeEstimatedPartialHint")
+                    : undefined
+                }
+              >
+                {!requestedBasketTcg.hadAnyPrice
+                  ? "—"
+                  : `${t("trades.tradeEstimatedTotal", { value: formatUsd(requestedBasketTcg.sum) })}${requestedBasketTcg.missingAny ? "*" : ""}`}
+              </span>
+            )}
+          </div>
+          {requestedItemsList.length === 0 ? (
+            <p className="py-1 text-xs text-gray-600">{t("trades.noCardsYet")}</p>
+          ) : (
+          <ul className="space-y-0.5 pl-2">
             {requestedItemsList.map((item) => {
-              const domains = getCardDomains(item.card);
-              const rarity = (item.card.rarity ?? "").toLowerCase().replace(/\s+/g, "");
-              const rarityNorm = rarity === "overnumbered" ? "showcase" : rarity;
+              const atMax = item.quantity >= item.maxQty;
+              const cardId = getCardId(item.card);
+              const cachedReq =
+                cardCacheMap.get(cardId) ??
+                (item.card.scraperId ? scraperIdMap.get(item.card.scraperId) : undefined);
+              const previewCard = mergePublicProfileCardWithCatalog(item.card, cachedReq, cardId);
+              const domains = getCardDomains(cachedReq ?? item.card);
+              const rarityIcon = getRarityIcon(item.card.rarity);
+              const unitPriceUsd = getCardTcgUnitPriceUsd(previewCard);
               return (
-                <li key={item.card.uuid} className="flex items-center gap-2 py-0.5">
-                  <div className="flex items-center gap-1 rounded border border-gray-600 bg-gray-700/50 px-1">
+                <li
+                  key={cardId}
+                  className="flex items-center justify-between gap-1 rounded px-1 py-0.5 hover:bg-gray-700/40"
+                >
+                  <CardHoverPreview card={previewCard}>
+                    <span className="flex min-w-0 cursor-default items-center gap-1 text-xs">
+                      <TradeOfferDomainIconsAndQty
+                        domains={domains}
+                        quantity={item.quantity}
+                        fallbackCard={cachedReq ?? item.card}
+                      />
+                      <span className="truncate text-blue-400">{item.card.name}</span>
+                      {rarityIcon && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={rarityIcon} alt={item.card.rarity ?? ""} className="hidden h-3.5 w-3.5 shrink-0 object-contain opacity-70 sm:block" />
+                      )}
+                      <span className="ml-0.5 shrink-0 text-[10px] font-medium tabular-nums text-emerald-400/90">
+                        {unitPriceUsd != null ? formatUsd(unitPriceUsd) : "—"}
+                      </span>
+                    </span>
+                  </CardHoverPreview>
+                  <span className="flex shrink-0 items-center gap-0 sm:gap-0.5">
                     <button
                       type="button"
-                      disabled={item.quantity <= 1}
-                      onClick={() => onUpdateRequestedQty!(item.card.uuid, item.quantity - 1)}
-                      className="text-gray-400 hover:text-white disabled:opacity-40"
+                      onClick={() => onUpdateRequestedQty!(cardId, item.quantity - 1)}
+                      className="flex h-4 w-4 items-center justify-center rounded bg-gray-700 text-[10px] text-gray-300 hover:bg-gray-600 sm:h-5 sm:w-5 sm:text-xs"
                       aria-label={t("common.decrease")}
                     >
                       −
                     </button>
-                    <span className="min-w-[1.25rem] text-center text-xs tabular-nums text-white">
-                      {item.quantity}
+                    <span
+                      className={`w-7 text-center text-[10px] font-bold tabular-nums sm:w-8 ${atMax ? "text-amber-400" : "text-gray-400"}`}
+                    >
+                      {item.quantity}/{item.maxQty}
                     </span>
                     <button
                       type="button"
-                      disabled={item.quantity >= item.maxQty}
-                      onClick={() => onUpdateRequestedQty!(item.card.uuid, item.quantity + 1)}
-                      className="text-gray-400 hover:text-white disabled:opacity-40"
+                      onClick={() => onUpdateRequestedQty!(cardId, item.quantity + 1)}
+                      disabled={atMax}
+                      className="flex h-4 w-4 items-center justify-center rounded bg-gray-700 text-[10px] text-gray-300 hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-30 sm:h-5 sm:w-5 sm:text-xs"
                       aria-label={t("common.increase")}
                     >
                       +
                     </button>
-                  </div>
-                  <CardHoverPreview card={item.card as unknown as Card}>
-                    <span className="flex min-w-0 flex-1 cursor-default items-center gap-1">
-                      <span className="flex gap-0.5">
-                        {getDisplayDomainIcons(domains).length > 0 ? (
-                          getDisplayDomainIcons(domains).map((d) => (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-3.5 w-3.5 object-contain" />
-                          ))
-                        ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={getNoDomainIcon(item.card)} alt="" className="h-3.5 w-3.5 object-contain opacity-80" />
-                        )}
-                      </span>
-                      <span className="truncate text-xs text-blue-400">{item.card.name}</span>
-                      {rarityNorm && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={`/images/rarities/${rarityNorm}.svg`} alt={rarityNorm} className="h-3 w-3 shrink-0 opacity-60" />
-                      )}
-                    </span>
-                  </CardHoverPreview>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveRequested!(item.card.uuid)}
-                    className="shrink-0 text-gray-500 hover:text-red-400"
-                    aria-label={t("common.remove")}
-                  >
-                    ×
-                  </button>
+                  </span>
                 </li>
               );
             })}
           </ul>
+          )}
         </div>
       )}
 
-      {/* What the other player already requested — grouped by set/type like the bottom section */}
-      {hasActiveTrade && theirRequestedGrouped.length > 0 && (
-        <div className="border-b border-gray-700 px-3 py-2">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            {t("trades.askedFor", { slug: recipientSlug, count: theirRequestedItems.length })}
-          </p>
-          <div className="space-y-3">
-            {theirRequestedGrouped.map(({ set, label, types }) => (
-              <div key={set}>
-                <div className="mb-1.5 flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wide text-gray-400">{label}</span>
-                  <div className="h-px flex-1 bg-gray-700" />
-                </div>
-                <div className="space-y-2 pl-2">
-                  {types.map(({ type, label: typeLabel, icon, items: typeItems }) => {
-                    const typeTotal = typeItems.reduce((s, i) => s + i.quantity, 0);
-                    return (
-                      <div key={type}>
-                        <div className="mb-0.5 flex items-center gap-1.5">
-                          {icon && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={icon} alt={typeLabel} className="h-3.5 w-3.5 object-contain opacity-70" />
-                          )}
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                            {typeLabel} <span className="text-gray-600">({typeTotal})</span>
-                          </span>
-                        </div>
-                        <ul className="space-y-0.5 pl-4">
-                          {typeItems.map((item) => {
-                            const cached = cardCacheMap.get(item.cardId) ?? scraperIdMap.get(item.cardId);
-                            const cardForPreview = (cached ?? item.card) as unknown as Card;
-                            const name = cached?.name ?? item.card?.name ?? item.cardId;
-                            const domains = getCardDomains((cached ?? item.card) as { domain?: string; domains?: string[]; cardDomains?: { domain: { name: string } }[] } | undefined);
-                            const rarity = (cached?.rarity ?? item.card?.rarity ?? "").toLowerCase().replace(/\s+/g, "");
-                            const rarityNorm = rarity === "overnumbered" ? "showcase" : rarity;
-                            return (
-                              <li key={item.id} className="flex items-center gap-1.5 py-0.5">
-                                <span className="text-xs text-gray-400 tabular-nums">×{item.quantity}</span>
-                                <CardHoverPreview card={cardForPreview}>
-                                  <span className="flex min-w-0 cursor-default items-center gap-1">
-                                    <span className="flex gap-0.5">
-                                      {getDisplayDomainIcons(domains).length > 0 ? (
-                                        getDisplayDomainIcons(domains).map((d) => (
-                                          // eslint-disable-next-line @next/next/no-img-element
-                                          <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-3.5 w-3.5 object-contain" />
-                                        ))
-                                      ) : (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={getNoDomainIcon(cached ?? item.card)} alt="" className="h-3.5 w-3.5 object-contain opacity-80" />
-                                      )}
-                                    </span>
-                                    <span className="truncate text-xs text-blue-400">{name}</span>
-                                    {rarityNorm && (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img src={`/images/rarities/${rarityNorm}.svg`} alt={rarityNorm} className="h-3 w-3 shrink-0 opacity-60" />
-                                    )}
-                                  </span>
-                                </CardHoverPreview>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+      {/* Troca aberta: os dois lados (mesma nomenclatura que /trades/[id]) */}
+      {hasActiveTrade && !isCounterMode && (
+        <div className="space-y-5 border-b border-gray-700 px-3 py-3">
+          <div>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                {t("trades.tradeSideCards", { slug: mySlug, count: myTradeItemsAggregated.reduce((sum, it) => sum + it.quantity, 0) })}
+              </p>
+            </div>
+            {myTradeItemsAggregated.length === 0 ? (
+              <p className="py-1 text-xs text-gray-600">{t("trades.noCardsYet")}</p>
+            ) : (
+              <ActiveTradeSideReadOnlyList items={myTradeItemsAggregated} cardCacheMap={cardCacheMap} scraperIdMap={scraperIdMap} />
+            )}
+          </div>
+          <div className="border-t border-gray-700/80 pt-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                {t("trades.tradeSideCards", { slug: recipientSlug, count: theirTradeItemsAggregated.reduce((sum, it) => sum + it.quantity, 0) })}
+              </p>
+            </div>
+            {theirTradeItemsAggregated.length === 0 ? (
+              <p className="py-1 text-xs text-gray-600">{t("trades.noCardsYet")}</p>
+            ) : (
+              <ActiveTradeSideReadOnlyList items={theirTradeItemsAggregated} cardCacheMap={cardCacheMap} scraperIdMap={scraperIdMap} />
+            )}
           </div>
         </div>
       )}
 
       {/* My basket items — only shown when I can act (or no active trade) */}
-      <div className={`flex-1 overflow-y-auto px-3 py-2 ${hasActiveTrade && !isMyTurn ? "hidden" : ""}`}>
-        {isCounterMode && (
-          <div className="mb-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              {items.length > 0
-                ? t("trades.pickFromCollectionCount", { slug: recipientSlug, count: totalQty })
-                : t("trades.pickFromCollection", { slug: recipientSlug })}
-            </p>
-            <p className="mt-0.5 text-[11px] text-amber-400/80">
-              {t("trades.addCardsAndSubmitCounterMove")}
-            </p>
-          </div>
-        )}
+      <div className={`flex-1 overflow-y-auto px-3 py-2 ${isWaitingOnOtherParty ? "hidden" : ""}`}>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            {isCounterMode
+              ? t("trades.tradeSideCards", { slug: mySlug, count: totalQty })
+              : t("trades.whatYouOffer")}
+          </p>
+          {items.length > 0 && (
+            <span
+              className="max-w-[58%] text-right text-[10px] font-medium tabular-nums text-emerald-400/90"
+              title={
+                offerBasketTcg.missingAny && offerBasketTcg.hadAnyPrice
+                  ? t("trades.tradeEstimatedPartialHint")
+                  : undefined
+              }
+            >
+              {!offerBasketTcg.hadAnyPrice
+                ? "—"
+                : `${t("trades.tradeEstimatedTotal", { value: formatUsd(offerBasketTcg.sum) })}${offerBasketTcg.missingAny ? "*" : ""}`}
+            </span>
+          )}
+        </div>
         {items.length === 0 ? (
           <div className="py-6 text-center">
             <p className="text-xs font-medium text-gray-500">
@@ -554,77 +667,45 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {grouped.map(({ set, label, types }) => (
-              <div key={set}>
-                {/* Set header */}
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wide text-gray-200">{label}</span>
-                  <div className="h-px flex-1 bg-gray-700" />
-                </div>
-                <div className="space-y-2.5 pl-2">
-                  {types.map(({ type, label: typeLabel, icon, total, cards }) => (
-                    <div key={type}>
-                      {/* Type row */}
-                      <div className="mb-0.5 flex items-center gap-1.5">
-                        {icon && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={icon} alt={typeLabel} className="h-3.5 w-3.5 object-contain opacity-70" />
-                        )}
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                          {typeLabel} <span className="text-gray-600">({total})</span>
-                        </span>
-                      </div>
-                      {/* Cards */}
-                      <ul className="space-y-0.5 pl-4">
-                        {cards.map(({ card, quantity, maxQty }) => {
-                          const atMax = quantity >= maxQty;
-                          const cached = cardCacheMap.get(card.uuid) ?? (card.scraperId ? scraperIdMap.get(card.scraperId) : undefined);
-                          const domains = getCardDomains(cached);
-                          const rarityIcon = getRarityIcon(card.rarity);
-                          return (
-                            <li key={card.uuid} className="flex items-center justify-between gap-1 rounded px-1 py-0.5 hover:bg-gray-700/40">
-                              <CardHoverPreview card={card as unknown as Card}>
-                                <span className="flex min-w-0 cursor-default items-center gap-1 text-xs">
-                                  {getDisplayDomainIcons(domains).length > 0 ? (
-                                    getDisplayDomainIcons(domains).map((d) => (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
-                                    ))
-                                  ) : (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={getNoDomainIcon(cached)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
-                                  )}
-                                  <span className="shrink-0 tabular-nums text-gray-500">×{quantity}</span>
-                                  <span className="truncate text-blue-400">{card.name}</span>
-                                  {rarityIcon && (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={rarityIcon} alt={card.rarity ?? ""} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
-                                  )}
-                                </span>
-                              </CardHoverPreview>
-                              <span className="flex shrink-0 items-center gap-0.5">
-                                <button type="button" onClick={() => onUpdateQty(card.uuid, quantity - 1)} className="flex h-5 w-5 items-center justify-center rounded bg-gray-700 text-xs text-gray-300 hover:bg-gray-600" aria-label={t("common.decrease")}>−</button>
-                                <span className={`w-8 text-center text-[10px] font-bold tabular-nums ${atMax ? "text-amber-400" : "text-gray-400"}`}>{quantity}/{maxQty}</span>
-                                <button type="button" onClick={() => onUpdateQty(card.uuid, quantity + 1)} disabled={atMax} className="flex h-5 w-5 items-center justify-center rounded bg-gray-700 text-xs text-gray-300 hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-30" aria-label={t("common.increase")}>+</button>
-                                <button type="button" onClick={() => onRemove(card.uuid)} className="ml-0.5 flex h-5 w-5 items-center justify-center rounded text-gray-600 hover:bg-red-900/40 hover:text-red-400" aria-label={t("common.remove")}>×</button>
-                              </span>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <ul className="space-y-0.5 pl-2">
+            {items.map(({ card, quantity, maxQty }) => {
+              const cardId = getCardId(card);
+              const atMax = quantity >= maxQty;
+              const cached = cardCacheMap.get(cardId) ?? (card.scraperId ? scraperIdMap.get(card.scraperId) : undefined);
+              const previewCard = mergePublicProfileCardWithCatalog(card, cached, cardId);
+              const domains = getCardDomains(cached ?? card);
+              const rarityIcon = getRarityIcon(card.rarity);
+              const unitPriceUsd = getCardTcgUnitPriceUsd(previewCard);
+              return (
+                <li key={cardId} className="flex items-center justify-between gap-1 rounded px-1 py-0.5 hover:bg-gray-700/40">
+                  <CardHoverPreview card={previewCard}>
+                    <span className="flex min-w-0 cursor-default items-center gap-1 text-xs">
+                      <TradeOfferDomainIconsAndQty domains={domains} quantity={quantity} fallbackCard={cached ?? card} />
+                      <span className="truncate text-blue-400">{card.name}</span>
+                      {rarityIcon && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={rarityIcon} alt={card.rarity ?? ""} className="hidden h-3.5 w-3.5 shrink-0 object-contain opacity-70 sm:block" />
+                      )}
+                      <span className="ml-0.5 shrink-0 text-[10px] font-medium tabular-nums text-emerald-400/90">
+                        {unitPriceUsd != null ? formatUsd(unitPriceUsd) : "—"}
+                      </span>
+                    </span>
+                  </CardHoverPreview>
+                  <span className="flex shrink-0 items-center gap-0 sm:gap-0.5">
+                    <button type="button" onClick={() => onUpdateQty(cardId, quantity - 1)} className="flex h-4 w-4 items-center justify-center rounded bg-gray-700 text-[10px] text-gray-300 hover:bg-gray-600 sm:h-5 sm:w-5 sm:text-xs" aria-label={t("common.decrease")}>−</button>
+                    <span className={`w-7 text-center text-[10px] font-bold tabular-nums sm:w-8 ${atMax ? "text-amber-400" : "text-gray-400"}`}>{quantity}/{maxQty}</span>
+                    <button type="button" onClick={() => onUpdateQty(cardId, quantity + 1)} disabled={atMax} className="flex h-4 w-4 items-center justify-center rounded bg-gray-700 text-[10px] text-gray-300 hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-30 sm:h-5 sm:w-5 sm:text-xs" aria-label={t("common.increase")}>+</button>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </div>
 
       {/* Footer: view trade link when waiting, or action buttons when I can act */}
       <div className="border-t border-gray-700 p-3 space-y-2">
-        {hasActiveTrade && !isMyTurn ? (
+        {isWaitingOnOtherParty ? (
           <a
             href={`/trades/${activeTrade!.id}`}
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 py-2.5 text-sm font-semibold text-gray-300 transition hover:border-gray-500 hover:text-white"
@@ -634,11 +715,6 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
           </a>
         ) : (
           <>
-            {items.length > 0 && (
-              <p className="text-center text-xs text-gray-500">
-                {t("trades.typesTotal", { types: items.length, total: totalQty })}
-              </p>
-            )}
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -649,6 +725,15 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
             />
             {error && (
               <p className="text-xs text-red-400">{error}</p>
+            )}
+            {hasActiveTrade && (
+              <a
+                href={`/trades/${activeTrade!.id}`}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 py-2 text-xs font-semibold text-gray-300 transition hover:border-gray-500 hover:text-white"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                {t("trades.viewTrade")}
+              </a>
             )}
             <button
               type="button"
@@ -664,7 +749,7 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, onUpdateQty,
                   </svg>
                   {isCounterMode ? t("trades.submittingCounter") : t("trades.creating")}
                 </>
-              ) : isCounterMode ? t("trades.submitCounterOffer") : t("trades.sendTrade")}
+              ) : isCounterMode ? t("trades.submitCounterOffer") : t("trades.requestTrade")}
             </button>
           </>
         )}
@@ -681,9 +766,15 @@ export default function PublicProfilePage() {
   const { user: me, loading: authLoading } = useAuth();
   const { t } = useLocale();
   const { cards: cachedCards } = useCards();
+  const { setCodesOrdered, getSetLabel } = useRiotCatalogSets();
 
   const cardCacheMap = useMemo(
-    () => new Map((cachedCards ?? []).map((c) => [c.uuid, c])),
+    () =>
+      new Map(
+        (cachedCards ?? [])
+          .map((c) => [getCardId(c), c] as const)
+          .filter(([id]) => id !== "")
+      ),
     [cachedCards]
   );
   /** Fallback: lookup por scraperId caso o UUID da API de perfil difira do catálogo */
@@ -707,9 +798,9 @@ export default function PublicProfilePage() {
 
   const [search, setSearch] = useState("");
   const [selectedRarities, setSelectedRarities] = useState<string[]>([]);
-  const [onlyMissing, setOnlyMissing] = useState(false);
-  /** "collection" = coleção pública deles com + onde podemos oferecer; "trade" = listas match + offerable */
-  const [collectionTab, setCollectionTab] = useState<"collection" | "trade">("collection");
+  /** "collection" = coleção pública deles; "tradeDirect" = listas completas; "trade" = preditivo */
+  const [collectionTab, setCollectionTab] = useState<"collection" | "tradeDirect" | "trade">("collection");
+  const autoOpenedTradeTabRef = useRef<string | null>(null);
 
   /* ── Active trade (for counter-offer flow) ─── */
   const [activeTrade, setActiveTrade] = useState<TradeSummary | null>(null);
@@ -748,9 +839,11 @@ export default function PublicProfilePage() {
 
   /* ── Trade basket ──────────────────────────── */
   const [basket, setBasket] = useState<Map<string, BasketItem>>(new Map());
+  const [requestedBasket, setRequestedBasket] = useState<Map<string, BasketItem>>(new Map());
+  const [myCollectionQtyMap, setMyCollectionQtyMap] = useState<Map<string, number>>(new Map());
 
-  // Pre-populate basket with my existing items when entering counter mode.
-  // Basket = my offer; use offerable (canOffer) for maxQty when available.
+  // Pre-populate counter baskets with existing trade items.
+  // basket = minhas cartas; requestedBasket = cartas do outro lado.
   useEffect(() => {
     if (!activeTradeDetail || !activeTrade || !me) return;
     if (matchLoading) return;
@@ -758,28 +851,52 @@ export default function PublicProfilePage() {
       activeTrade.initiatorSlug === me.slug
         ? activeTradeDetail.initiatorItems ?? []
         : activeTradeDetail.recipientItems ?? [];
-    if (myItems.length === 0) return;
-    const offerableQtyMap = new Map(offerable.map((o) => [o.cardUuid, o.canOffer]));
-    setBasket(
-      new Map(
-        myItems.map((item) => {
-          const card = item.card as PublicProfileCard;
-          const uuid = card.uuid ?? item.cardId;
-          const maxQty = offerableQtyMap.get(uuid) ?? item.quantity;
-          return [
-            uuid,
-            {
-              card: { ...card, uuid },
-              quantity: item.quantity,
-              maxQty,
-              tradeItemId: item.id,
-            },
-          ];
-        })
-      )
+    const theirItems =
+      activeTrade.initiatorSlug === me.slug
+        ? activeTradeDetail.recipientItems ?? []
+        : activeTradeDetail.initiatorItems ?? [];
+    const offerableQtyMap = new Map(offerable.map((o) => [o.cardId, o.canOffer]));
+    const myEntries = myItems
+      .map((item) => {
+        const card = resolveBasketCardFromTradeItem(item, cardCacheMap, scraperIdMap);
+        if (!card) return null;
+        const cid = getCardId(card) || item.cardId;
+        const maxQty = offerableQtyMap.get(cid) ?? item.quantity;
+        return [
+          cid,
+          {
+            card: { ...card, id: cid },
+            quantity: item.quantity,
+            maxQty,
+            tradeItemId: item.id,
+          },
+        ] as const;
+      })
+      .filter((e): e is NonNullable<typeof e> => e !== null);
+    setBasket(new Map(myEntries));
+
+    const requestedMaxQtyMap = new Map(
+      match.map((m) => [m.cardId, m.need ?? m.theirQuantity])
     );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTradeDetail?.id, me?.slug, matchLoading, offerable]);
+    const theirEntries = theirItems
+      .map((item) => {
+        const card = resolveBasketCardFromTradeItem(item, cardCacheMap, scraperIdMap);
+        if (!card) return null;
+        const cid = getCardId(card) || item.cardId;
+        const maxQty = requestedMaxQtyMap.get(cid) ?? item.quantity;
+        return [
+          cid,
+          {
+            card: { ...card, id: cid },
+            quantity: item.quantity,
+            maxQty,
+            tradeItemId: item.id,
+          },
+        ] as const;
+      })
+      .filter((e): e is NonNullable<typeof e> => e !== null);
+    setRequestedBasket(new Map(theirEntries));
+  }, [activeTradeDetail?.id, me?.slug, matchLoading, offerable, match, cardCacheMap, scraperIdMap]);
   const [addAnimations, setAddAnimations] = useState<Map<string, string[]>>(new Map());
   const [basketDrawerOpen, setBasketDrawerOpen] = useState(false);
 
@@ -801,14 +918,22 @@ export default function PublicProfilePage() {
     }, 700);
   }
 
-  function addToBasket(card: PublicProfileCard, maxQty: number) {
-    const current = basket.get(card.uuid)?.quantity ?? 0;
+  /** `basketKey` alinhado a `item.cardId` (igual ao `requestedBasket`). */
+  function addToBasket(card: PublicProfileCard, maxQty: number, basketKey?: string) {
+    const key = basketKey ?? getCardId(card);
+    if (!key) return;
+    const current = basket.get(key)?.quantity ?? 0;
     if (current >= maxQty) return;
-    flashAdd(card.uuid);
+    flashAdd(key);
     setBasket((prev) => {
       const next = new Map(prev);
-      const existing = next.get(card.uuid);
-      next.set(card.uuid, { card, quantity: Math.min((existing?.quantity ?? 0) + 1, maxQty), maxQty });
+      const existing = next.get(key);
+      const cardWithKey = { ...card, id: key };
+      next.set(key, {
+        card: cardWithKey,
+        quantity: Math.min((existing?.quantity ?? 0) + 1, maxQty),
+        maxQty,
+      });
       return next;
     });
   }
@@ -830,20 +955,26 @@ export default function PublicProfilePage() {
     setBasket((prev) => { const next = new Map(prev); next.delete(uuid); return next; });
   }
 
-  function clearBasket() {
-    setBasket(new Map());
-  }
+  /* ── Requested basket (o que eu quero dele / lado oposto na contraproposta) ─────────────────── */
 
-  /* ── Requested basket (o que eu quero dele — só na nova proposta) ──────────────────────────── */
-  const [requestedBasket, setRequestedBasket] = useState<Map<string, BasketItem>>(new Map());
-
-  function addToRequestedBasket(card: PublicProfileCard, maxQty: number) {
-    const current = requestedBasket.get(card.uuid)?.quantity ?? 0;
+  /**
+   * `basketKey` deve ser o mesmo identificador usado na lista (`item.cardId`), pois o `id`
+   * vindo do perfil pode divergir e quebrar o lookup → botão "Solicitar" nunca desabilitava.
+   */
+  function addToRequestedBasket(card: PublicProfileCard, maxQty: number, basketKey?: string) {
+    const key = basketKey ?? getCardId(card);
+    if (!key) return;
+    const current = requestedBasket.get(key)?.quantity ?? 0;
     if (current >= maxQty) return;
     setRequestedBasket((prev) => {
       const next = new Map(prev);
-      const existing = next.get(card.uuid);
-      next.set(card.uuid, { card, quantity: Math.min((existing?.quantity ?? 0) + 1, maxQty), maxQty });
+      const existing = next.get(key);
+      const cardWithKey = { ...card, id: key };
+      next.set(key, {
+        card: cardWithKey,
+        quantity: Math.min((existing?.quantity ?? 0) + 1, maxQty),
+        maxQty,
+      });
       return next;
     });
   }
@@ -863,10 +994,6 @@ export default function PublicProfilePage() {
 
   function removeFromRequestedBasket(uuid: string) {
     setRequestedBasket((prev) => { const next = new Map(prev); next.delete(uuid); return next; });
-  }
-
-  function clearRequestedBasket() {
-    setRequestedBasket(new Map());
   }
 
   /* ── Data loading ─────────────────────────── */
@@ -901,6 +1028,28 @@ export default function PublicProfilePage() {
     return () => { cancelled = true; };
   }, [me, user, slug, matchLoaded]);
 
+  // Minha coleção (quantidades) para a aba "Trade" completa.
+  useEffect(() => {
+    if (!me || !user || me.slug === user.slug) return;
+    let cancelled = false;
+    getCollection()
+      .then((data) => {
+        if (cancelled) return;
+        const map = new Map<string, number>();
+        for (const item of data.items ?? []) {
+          const id = getCardId(item.card) || item.cardId || item.cardUuid;
+          if (id) map.set(id, (map.get(id) ?? 0) + (item.quantity ?? 0));
+        }
+        setMyCollectionQtyMap(map);
+      })
+      .catch(() => {
+        if (!cancelled) setMyCollectionQtyMap(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [me?.slug, user?.slug]);
+
   const publicCollection = useMemo(() => user?.publicCollection ?? [], [user]);
 
   // When viewing another user's profile and logged in, show match data. Otherwise show full public collection.
@@ -914,7 +1063,7 @@ export default function PublicProfilePage() {
       }
       if (!q) return true;
       if ((item.card.name ?? "").toLowerCase().includes(q)) return true;
-      const cached = cardCacheMap.get(item.cardUuid);
+      const cached = cardCacheMap.get(item.cardId);
       if (!cached) return false;
       if (cached.subtypes?.some((s: string) => s.toLowerCase().includes(q))) return true;
       const cardSubtypes = cached.cardSubtypes as Array<{ subtype?: { name?: string }; name?: string }> | undefined;
@@ -927,7 +1076,8 @@ export default function PublicProfilePage() {
     const q = search.trim().toLowerCase();
     return match.filter((item) => {
       if (!item.card) return false;
-      if (onlyMissing && item.myQuantity > 0) return false;
+      // No trade preditivo sempre mostramos somente faltantes.
+      if (item.myQuantity > 0) return false;
       if (selectedRarities.length > 0) {
         const raw = item.card.rarity?.toLowerCase().replace(/\s+/g, "") ?? "";
         const r = raw === "overnumbered" ? "showcase" : raw;
@@ -936,7 +1086,7 @@ export default function PublicProfilePage() {
       if (!q) return true;
       return (item.card.name ?? "").toLowerCase().includes(q);
     });
-  }, [match, search, selectedRarities, onlyMissing]);
+  }, [match, search, selectedRarities]);
 
   const filteredOfferable = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -952,45 +1102,68 @@ export default function PublicProfilePage() {
     });
   }, [offerable, search, selectedRarities]);
 
+  const filteredMyTradeCollection = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (cachedCards ?? []).filter((card) => {
+      const cardId = getCardId(card);
+      const qty = myCollectionQtyMap.get(cardId) ?? 0;
+      if (qty <= 0) return false;
+      if (selectedRarities.length > 0) {
+        const raw = card.rarity?.toLowerCase().replace(/\s+/g, "") ?? "";
+        const r = raw === "overnumbered" ? "showcase" : raw;
+        if (!selectedRarities.includes(r)) return false;
+      }
+      if (!q) return true;
+      if ((card.name ?? "").toLowerCase().includes(q)) return true;
+      if (card.subtypes?.some((s) => s.toLowerCase().includes(q))) return true;
+      const cardSubtypes = card.cardSubtypes as Array<{ subtype?: { name?: string }; name?: string }> | undefined;
+      if (cardSubtypes?.some((cs) => ((cs?.subtype?.name ?? cs?.name) ?? "").toLowerCase().includes(q))) return true;
+      return false;
+    });
+  }, [cachedCards, myCollectionQtyMap, search, selectedRarities]);
+
+  const sortedTradeDirectPublic = useMemo(
+    () => [...filteredCollection].sort((a, b) => {
+      const ac = cardCacheMap.get(a.cardId) ?? a.card;
+      const bc = cardCacheMap.get(b.cardId) ?? b.card;
+      return compareCollectorThenName(ac, bc);
+    }),
+    [filteredCollection, cardCacheMap]
+  );
+
+  const sortedTradeDirectMine = useMemo(
+    () => [...filteredMyTradeCollection].sort((a, b) => compareCollectorThenName(a, b)),
+    [filteredMyTradeCollection]
+  );
+
+  const sortedPredictiveMatch = useMemo(
+    () => [...filteredMatch].sort((a, b) => {
+      const ac = lookupCached(a.cardId, a.card?.scraperId) ?? a.card;
+      const bc = lookupCached(b.cardId, b.card?.scraperId) ?? b.card;
+      return compareCollectorThenName(ac, bc);
+    }),
+    [filteredMatch, cardCacheMap, scraperIdMap]
+  );
+
+  const sortedPredictiveOfferable = useMemo(
+    () => [...filteredOfferable].sort((a, b) => {
+      const ac = lookupCached(a.cardId, a.card?.scraperId) ?? a.card;
+      const bc = lookupCached(b.cardId, b.card?.scraperId) ?? b.card;
+      return compareCollectorThenName(ac, bc);
+    }),
+    [filteredOfferable, cardCacheMap, scraperIdMap]
+  );
+
   const groupedCollection = useMemo(
-    () => groupCardsBySetAndType(filteredCollection),
-    [filteredCollection]
+    () => groupCardsBySetAndType(filteredCollection, setCodesOrdered, getSetLabel),
+    [filteredCollection, setCodesOrdered, getSetLabel]
   );
 
-  const groupedMatch = useMemo(
-    () => groupCardsBySetAndType(filteredMatch),
-    [filteredMatch]
-  );
-
-  const groupedOfferable = useMemo(
-    () => groupCardsBySetAndType(filteredOfferable),
-    [filteredOfferable]
-  );
-
-  /** Para aba Coleção: cardUuid → offerable (para mostrar + e canOffer na coleção pública deles) */
-  const offerableByCardUuid = useMemo(
-    () => new Map(offerable.map((o) => [o.cardUuid, o])),
+  /** Para aba Coleção: cardId → offerable (para mostrar + e canOffer na coleção pública deles) */
+  const offerableByCardId = useMemo(
+    () => new Map(offerable.map((o) => [o.cardId, o])),
     [offerable]
   );
-
-  /** Para aba Coleção: cardUuid → minha quantidade (match + offerable) */
-  const myQuantityByCardUuid = useMemo(
-    () => new Map<string, number>([
-      ...match.map((m) => [m.cardUuid, m.myQuantity] as const),
-      ...offerable.map((o) => [o.cardUuid, o.myQuantity] as const),
-    ]),
-    [match, offerable]
-  );
-
-  // Map of cardUuid → existing TradeItem for my side (used for diff on counter submit)
-  const originalItemsMap = useMemo<Map<string, TradeItem>>(() => {
-    if (!activeTradeDetail || !activeTrade || !me) return new Map();
-    const myItems =
-      activeTrade.initiatorSlug === me.slug
-        ? activeTradeDetail.initiatorItems ?? []
-        : activeTradeDetail.recipientItems ?? [];
-    return new Map(myItems.map((item) => [item.card?.uuid ?? item.cardId, item]));
-  }, [activeTradeDetail, activeTrade, me]);
 
   const handleCounterSubmitError = useCallback(
     (tradeId: string) => {
@@ -1002,30 +1175,53 @@ export default function PublicProfilePage() {
             detail.initiatorSlug === me.slug
               ? detail.initiatorItems ?? []
               : detail.recipientItems ?? [];
-          const offerableQtyMap = new Map(offerable.map((o) => [o.cardUuid, o.canOffer]));
-          setBasket(
-            new Map(
-              myItems.map((item) => {
-                const card = item.card as PublicProfileCard;
-                const uuid = card.uuid ?? item.cardId;
-                const maxQty = offerableQtyMap.get(uuid) ?? item.quantity;
-                return [
-                  uuid,
-                  {
-                    card: { ...card, uuid },
-                    quantity: item.quantity,
-                    maxQty,
-                    tradeItemId: item.id,
-                  },
-                ];
-              })
-            )
-          );
+          const offerableQtyMap = new Map(offerable.map((o) => [o.cardId, o.canOffer]));
+          const entries = myItems
+            .map((item) => {
+              const card = resolveBasketCardFromTradeItem(item, cardCacheMap, scraperIdMap);
+              if (!card) return null;
+              const cid = getCardId(card) || item.cardId;
+              const maxQty = offerableQtyMap.get(cid) ?? item.quantity;
+              return [
+                cid,
+                {
+                  card: { ...card, id: cid },
+                  quantity: item.quantity,
+                  maxQty,
+                  tradeItemId: item.id,
+                },
+              ] as const;
+            })
+            .filter((e): e is NonNullable<typeof e> => e !== null);
+          setBasket(new Map(entries));
         })
         .catch(() => {});
     },
-    [me, offerable]
+    [me, offerable, cardCacheMap, scraperIdMap]
   );
+
+  /** Vez de quem age: prioriza detalhe da troca quando já carregou (lista resumida pode atrasar). */
+  const tradeIsMyTurn = useMemo(() => {
+    if (!activeTrade || !me?.slug) return false;
+    const turn = activeTradeDetail?.currentTurnSlug ?? activeTrade.currentTurnSlug;
+    return turn === me.slug;
+  }, [activeTrade, activeTradeDetail, me?.slug]);
+
+  // Se já existe troca ativa com esse perfil, abrir direto na aba de trade preditivo.
+  useEffect(() => {
+    const canTradeWithProfile =
+      !!me?.slug &&
+      !!user?.slug &&
+      me.slug !== user.slug &&
+      publicCollection.length > 0;
+    if (!canTradeWithProfile || !activeTrade || !me?.slug || !user?.slug) return;
+    const autoOpenKey = `${me.slug}->${user.slug}:${activeTrade.id}`;
+    if (autoOpenedTradeTabRef.current === autoOpenKey) return;
+    autoOpenedTradeTabRef.current = autoOpenKey;
+    if (collectionTab === "collection") {
+      setCollectionTab("trade");
+    }
+  }, [me?.slug, user?.slug, publicCollection.length, activeTrade?.id]);
 
   /* ── Loading / not found ─────────────────── */
   if (loading || authLoading) {
@@ -1064,7 +1260,8 @@ export default function PublicProfilePage() {
   const showTradePanel = !!me && !isOwnProfile && hasPublicCollection;
   const showTradeCTA = !me && !isOwnProfile && hasPublicCollection;
   const registerReturnTo = pathname ? `/register?returnTo=${encodeURIComponent(pathname)}` : "/register";
-  const tradeIsMyTurn = activeTrade ? activeTrade.currentTurnSlug === me?.slug : false;
+  /** Troca aberta e aguardando a outra parte — não alterar pedido/oferta pela coleção. */
+  const tradeActionsLocked = !!activeTrade && tradeIsMyTurn !== true;
   const basketCount = [...basket.values()].reduce((s, i) => s + i.quantity, 0);
 
   return (
@@ -1086,19 +1283,17 @@ export default function PublicProfilePage() {
               basket={basket}
               recipientSlug={user.slug}
               recipientDisplayName={user.displayName}
+              mySlug={me.slug}
               onUpdateQty={updateBasketQty}
               onRemove={removeFromBasket}
-              onClear={clearBasket}
-              requestedBasket={!activeTrade ? requestedBasket : undefined}
-              onUpdateRequestedQty={!activeTrade ? updateRequestedBasketQty : undefined}
-              onRemoveRequested={!activeTrade ? removeFromRequestedBasket : undefined}
-              onClearRequested={!activeTrade ? clearRequestedBasket : undefined}
+              requestedBasket={!activeTrade || tradeIsMyTurn ? requestedBasket : undefined}
+              onUpdateRequestedQty={!activeTrade || tradeIsMyTurn ? updateRequestedBasketQty : undefined}
+              onRemoveRequested={!activeTrade || tradeIsMyTurn ? removeFromRequestedBasket : undefined}
               cardCacheMap={cardCacheMap}
               scraperIdMap={scraperIdMap}
               activeTrade={activeTrade}
               activeTradeDetail={activeTradeDetail}
               isMyTurn={tradeIsMyTurn}
-              originalItemsMap={originalItemsMap}
               onCounterSubmitError={handleCounterSubmitError}
             />
           </div>
@@ -1147,6 +1342,15 @@ export default function PublicProfilePage() {
                         </button>
                         <button
                           type="button"
+                          onClick={() => setCollectionTab("tradeDirect")}
+                          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                            collectionTab === "tradeDirect" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
+                          }`}
+                        >
+                          {t("profile.tabTradeDirect")}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setCollectionTab("trade")}
                           className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                             collectionTab === "trade" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
@@ -1157,6 +1361,14 @@ export default function PublicProfilePage() {
                       </div>
                     )}
                   </div>
+                  {showTradePanel && (
+                    <Link
+                      href="/trades"
+                      className="text-xs font-medium text-blue-400 hover:text-blue-300 hover:underline"
+                    >
+                      {t("trades.viewTrades")}
+                    </Link>
+                  )}
                 </div>
                 {collectionTab === "collection" && (
                   publicCollection.length > 0 && (
@@ -1176,7 +1388,15 @@ export default function PublicProfilePage() {
                     <p className="mt-1 text-[11px] text-gray-600">{t("profile.tradePredictiveExplain")}</p>
                   </>
                 )}
+                {showTradePanel && collectionTab === "tradeDirect" && !matchLoading && (publicCollection.length > 0 || filteredMyTradeCollection.length > 0) && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    {t("trades.tradeSideCards", { slug: user.slug, count: filteredCollection.length })}
+                    {" · "}
+                    {t("trades.tradeSideCards", { slug: me?.slug ?? "", count: filteredMyTradeCollection.length })}
+                  </p>
+                )}
                 {((showTradePanel && collectionTab === "collection" && publicCollection.length > 0) ||
+                  (showTradePanel && collectionTab === "tradeDirect" && (publicCollection.length > 0 || filteredMyTradeCollection.length > 0)) ||
                   (showTradePanel && collectionTab === "trade" && !matchLoading && (match.length > 0 || offerable.length > 0)) ||
                   (!showTradePanel && publicCollection.length > 0)) && (
                   <div className="mt-3 space-y-2">
@@ -1222,22 +1442,6 @@ export default function PublicProfilePage() {
                           </button>
                         )}
                       </div>
-                      {showTradePanel && collectionTab === "trade" && (
-                        <button
-                          type="button"
-                          onClick={() => setOnlyMissing((v) => !v)}
-                          className={`ml-auto flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
-                            onlyMissing
-                              ? "border-amber-500 bg-amber-500/15 text-amber-400"
-                              : "border-gray-600 text-gray-500 hover:border-gray-400 hover:text-gray-300"
-                          }`}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
-                          </svg>
-                          {t("profile.missingOnly")}
-                        </button>
-                      )}
                     </div>
                   </div>
                 )}
@@ -1259,6 +1463,22 @@ export default function PublicProfilePage() {
                         <p className="py-6 text-center text-sm text-gray-500">{t("profile.noCardsMatchSearchGeneric")}</p>
                       ) : (
                         <div className="space-y-4">
+                          {tradeActionsLocked && (
+                            <div
+                              className="flex items-start gap-2.5 rounded-lg border border-amber-500/45 bg-gradient-to-r from-amber-950/90 via-amber-950/70 to-amber-900/35 px-3 py-2.5 shadow-[0_0_24px_-10px_rgba(251,191,36,0.45)]"
+                              role="status"
+                            >
+                              <span className="mt-1.5 flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)]" aria-hidden />
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold leading-snug text-amber-100">
+                                  {t("trades.waitingFor", { slug: user.slug })}
+                                </p>
+                                <p className="mt-1 text-[11px] leading-relaxed text-amber-200/80">
+                                  {t("trades.waitingForBasketHint")}
+                                </p>
+                              </div>
+                            </div>
+                          )}
                           {groupedCollection.map(({ set, label, types }) => (
                             <div key={set}>
                               <div className="mb-2 flex items-center gap-2">
@@ -1281,49 +1501,26 @@ export default function PublicProfilePage() {
                                       </div>
                                       <ul className="space-y-0.5 pl-4">
                                         {cards.map((item) => {
-                                          const maxRequested = item.quantity;
-                                          const requestedItem = requestedBasket.get(item.cardUuid);
-                                          const inRequested = !!requestedItem;
-                                          const atMaxRequested = inRequested && requestedItem.quantity >= maxRequested;
-                                          const myQty = myQuantityByCardUuid.get(item.cardUuid) ?? 0;
-                                          const cached = lookupCached(item.cardUuid, item.card?.scraperId);
+                                          const cached = lookupCached(item.cardId, item.card?.scraperId);
+                                          const previewCard = mergePublicProfileCardWithCatalog(item.card, cached, item.cardId);
                                           const domains = getCardDomains(cached ?? item.card);
                                           const rarityIcon = getRarityIcon(item.card?.rarity);
-                                          const cardForRequested = { ...(item.card ?? cached), uuid: (item.card as { uuid?: string })?.uuid ?? item.cardUuid } as PublicProfileCard;
                                           return (
-                                            <li key={item.cardUuid} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
-                                              <CardHoverPreview card={(item.card ?? cached) as unknown as Card}>
+                                            <li key={item.cardId} className="relative flex items-center gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
+                                              <CardHoverPreview card={previewCard}>
                                                 <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
-                                                  {getDisplayDomainIcons(domains).length > 0 ? (
-                                                    getDisplayDomainIcons(domains).map((d) => (
-                                                      // eslint-disable-next-line @next/next/no-img-element
-                                                      <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
-                                                    ))
-                                                  ) : (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img src={getNoDomainIcon(cached ?? item.card)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
-                                                  )}
-                                                  <span className="shrink-0 tabular-nums text-gray-500">×{item.quantity}</span>
-                                                  <span className="truncate text-blue-400">{item.card?.name ?? item.cardUuid}</span>
+                                                  <TradeOfferDomainIconsAndQty
+                                                    domains={domains}
+                                                    quantity={item.quantity}
+                                                    fallbackCard={cached ?? item.card}
+                                                  />
+                                                  <span className="truncate text-blue-400">{item.card?.name ?? item.cardId}</span>
                                                   {rarityIcon && (
                                                     // eslint-disable-next-line @next/next/no-img-element
                                                     <img src={rarityIcon} alt={item.card?.rarity ?? ""} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
                                                   )}
                                                 </span>
                                               </CardHoverPreview>
-                                              <span className="flex shrink-0 items-center gap-2">
-                                                <span className="text-[10px] tabular-nums text-gray-500">{t("profile.mine")} ×{myQty}</span>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => addToRequestedBasket(cardForRequested, maxRequested)}
-                                                  disabled={atMaxRequested}
-                                                  className={`flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${atMaxRequested ? "border-amber-600/60 bg-amber-900/30 text-amber-400" : inRequested ? "border-blue-500 bg-blue-700/60 text-blue-300 hover:bg-blue-700" : "border-gray-700 bg-blue-800/40 text-blue-400 hover:bg-blue-700/60"}`}
-                                                  title={atMaxRequested ? t("trades.maxQuantity", { count: maxRequested }) : inRequested ? `${requestedItem.quantity}/${maxRequested}` : t("trades.requestOne")}
-                                                  aria-label={t("trades.requestOne")}
-                                                >
-                                                  {t("trades.requestOne")}
-                                                </button>
-                                              </span>
                                             </li>
                                           );
                                         })}
@@ -1342,6 +1539,130 @@ export default function PublicProfilePage() {
                       <p className="text-sm text-gray-500">{t("profile.noPublicCollection")}</p>
                     </div>
                   )
+                ) : collectionTab === "tradeDirect" ? (
+                  filteredCollection.length === 0 && filteredMyTradeCollection.length === 0 ? (
+                    <div className="px-6 py-8 text-center">
+                      <p className="text-sm text-gray-500">{t("profile.noCardsMatchSearchGeneric")}</p>
+                    </div>
+                  ) : (
+                  <div className="px-4 py-3">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 min-w-0">
+                      {filteredCollection.length > 0 && (
+                        <div className="min-w-0 flex flex-col">
+                          <h3 className="mb-3 flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-950/30 px-3 py-2 text-sm font-bold uppercase tracking-wider text-blue-200">
+                            <span className="flex h-2 w-2 shrink-0 rounded-full bg-blue-400" aria-hidden />
+                            {t("trades.tradeSideCards", { slug: user.slug, count: filteredCollection.length })}
+                          </h3>
+                          <ul className="space-y-0.5 pl-2">
+                            {sortedTradeDirectPublic.map((item) => {
+                              const maxRequested = item.quantity;
+                              const requestedItem = requestedBasket.get(item.cardId);
+                              const inRequested = !!requestedItem;
+                              const atMaxRequested =
+                                maxRequested <= 0 ||
+                                (requestedItem?.quantity ?? 0) >= maxRequested;
+                              const cached = lookupCached(item.cardId, item.card?.scraperId);
+                              const previewCard = mergePublicProfileCardWithCatalog(item.card, cached, item.cardId);
+                              const domains = getCardDomains(cached ?? item.card);
+                              const unitPriceUsd = getCardTcgUnitPriceUsd(previewCard);
+                              const cardForRequested = {
+                                ...(item.card ?? cached),
+                                id: item.cardId,
+                              } as PublicProfileCard;
+                              return (
+                                <li key={item.cardId} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
+                                  <CardHoverPreview card={previewCard}>
+                                    <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
+                                      <TradeOfferDomainIconsAndQty
+                                        domains={domains}
+                                        quantity={item.quantity}
+                                        fallbackCard={cached ?? item.card}
+                                      />
+                                      <span className="truncate text-blue-400">{item.card?.name ?? item.cardId}</span>
+                                      <span className="ml-0.5 shrink-0 text-[10px] font-medium tabular-nums text-emerald-400/90">
+                                        {unitPriceUsd != null ? formatUsd(unitPriceUsd) : "—"}
+                                      </span>
+                                    </span>
+                                  </CardHoverPreview>
+                                  <button
+                                    type="button"
+                                    onClick={() => addToRequestedBasket(cardForRequested, maxRequested, item.cardId)}
+                                    disabled={atMaxRequested || tradeActionsLocked}
+                                    className={`flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${atMaxRequested || tradeActionsLocked ? "border-amber-600/60 bg-amber-900/30 text-amber-400" : inRequested ? "border-blue-500 bg-blue-700/60 text-blue-300 hover:bg-blue-700" : "border-gray-700 bg-blue-800/40 text-blue-400 hover:bg-blue-700/60"}`}
+                                    title={
+                                      tradeActionsLocked
+                                        ? t("trades.waitingBeforeTradeActions", { slug: user.slug })
+                                        : atMaxRequested
+                                          ? t("trades.maxQuantity", { count: maxRequested })
+                                          : inRequested && requestedItem
+                                            ? `${requestedItem.quantity}/${maxRequested}`
+                                            : t("trades.requestOne")
+                                    }
+                                    aria-label={t("trades.requestOne")}
+                                  >
+                                    +
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
+                      {filteredMyTradeCollection.length > 0 && (
+                        <div className="min-w-0 flex flex-col">
+                          <h3 className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-950/30 px-3 py-2 text-sm font-bold uppercase tracking-wider text-emerald-200">
+                            <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-400" aria-hidden />
+                            {t("trades.tradeSideCards", { slug: me?.slug ?? "", count: filteredMyTradeCollection.length })}
+                          </h3>
+                          <ul className="space-y-0.5 pl-2">
+                            {sortedTradeDirectMine.map((card) => {
+                              const cardId = getCardId(card);
+                              const myQty = myCollectionQtyMap.get(cardId) ?? 0;
+                              const basketItem = basket.get(cardId);
+                              const inBasket = !!basketItem;
+                              const atMax = myQty <= 0 || (basketItem?.quantity ?? 0) >= myQty;
+                              const previewCard = mergePublicProfileCardWithCatalog(card, card, cardId);
+                              const domains = getCardDomains(card);
+                              const unitPriceUsd = getCardTcgUnitPriceUsd(previewCard);
+                              const cardForBasket = { ...card, id: cardId } as PublicProfileCard;
+                              return (
+                                <li key={cardId} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
+                                  <CardHoverPreview card={previewCard}>
+                                    <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
+                                      <TradeOfferDomainIconsAndQty domains={domains} quantity={myQty} fallbackCard={card} />
+                                      <span className="truncate text-blue-400">{card.name ?? cardId}</span>
+                                      <span className="ml-0.5 shrink-0 text-[10px] font-medium tabular-nums text-emerald-400/90">
+                                        {unitPriceUsd != null ? formatUsd(unitPriceUsd) : "—"}
+                                      </span>
+                                    </span>
+                                  </CardHoverPreview>
+                                  <button
+                                    type="button"
+                                    onClick={() => addToBasket(cardForBasket, myQty, cardId)}
+                                    disabled={atMax || tradeActionsLocked}
+                                    className={`flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${atMax || tradeActionsLocked ? "border-amber-600/60 bg-amber-900/30 text-amber-400" : inBasket ? "border-green-500 bg-green-700/60 text-green-300 hover:bg-green-700" : "border-gray-700 bg-green-800/40 text-green-400 hover:bg-green-700/60"}`}
+                                    title={
+                                      tradeActionsLocked
+                                        ? t("trades.waitingBeforeTradeActions", { slug: user.slug })
+                                        : atMax
+                                          ? t("trades.maxQuantity", { count: myQty })
+                                          : inBasket && basketItem
+                                            ? `${basketItem.quantity}/${myQty}`
+                                            : t("trades.offerOne")
+                                    }
+                                    aria-label={t("trades.offerOne")}
+                                  >
+                                    +
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  )
                 ) : collectionTab === "trade" ? (
                   match.length === 0 && offerable.length === 0 ? (
                     <div className="px-6 py-8 text-center">
@@ -1352,6 +1673,22 @@ export default function PublicProfilePage() {
                     {search && (match.length > 0 || offerable.length > 0) && (
                       <p className="mb-2 text-xs text-gray-500">{t("profile.matching", { count: filteredMatch.length + filteredOfferable.length, total: match.length + offerable.length, search })}</p>
                     )}
+                    {tradeActionsLocked && (
+                      <div
+                        className="mb-3 flex items-start gap-2.5 rounded-lg border border-amber-500/45 bg-gradient-to-r from-amber-950/90 via-amber-950/70 to-amber-900/35 px-3 py-2.5 shadow-[0_0_24px_-10px_rgba(251,191,36,0.45)]"
+                        role="status"
+                      >
+                        <span className="mt-1.5 flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)]" aria-hidden />
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold leading-snug text-amber-100">
+                            {t("trades.waitingFor", { slug: user.slug })}
+                          </p>
+                          <p className="mt-1 text-[11px] leading-relaxed text-amber-200/80">
+                            {t("trades.waitingForBasketHint")}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 min-w-0">
                       {/* Coluna esquerda: Cartas que @fulano tem que eu não tenho (match) */}
@@ -1361,83 +1698,61 @@ export default function PublicProfilePage() {
                           <span className="flex h-2 w-2 shrink-0 rounded-full bg-blue-400" aria-hidden />
                           {t("profile.cardsTheyHaveINeed", { slug: user.slug })}
                         </h3>
-                        <div className="space-y-4 min-h-0">
-                      {groupedMatch.map(({ set, label, types }) => (
-                        <div key={set}>
-                          <div className="mb-2 flex items-center gap-2">
-                            <span className="text-sm font-bold uppercase tracking-wide text-gray-200">{label}</span>
-                            <div className="h-px flex-1 bg-gray-700" />
-                          </div>
-                          <div className="space-y-2.5 pl-2">
-                            {types.map(({ type, label: typeLabel, cards }) => {
-                              const icon = TYPE_IMAGE[type];
+                        <div className="min-h-0">
+                          <ul className="space-y-0.5 pl-2">
+                            {sortedPredictiveMatch.map((item) => {
+                              const cardData = item.card;
+                              if (!cardData) return null;
+                              const maxRequested = item.need ?? item.theirQuantity;
+                              const requestedItem = requestedBasket.get(item.cardId);
+                              const inRequested = !!requestedItem;
+                              const atMaxRequested =
+                                maxRequested <= 0 ||
+                                (requestedItem?.quantity ?? 0) >= maxRequested;
+                              const cached = lookupCached(item.cardId, cardData.scraperId);
+                              const previewCard = mergePublicProfileCardWithCatalog(cardData, cached, item.cardId);
+                              const domains = getCardDomains(cached);
+                              const unitPriceUsd = getCardTcgUnitPriceUsd(previewCard);
+                              const cardForRequested = { ...cardData, id: item.cardId } as PublicProfileCard;
                               return (
-                                <div key={type}>
-                                  <div className="mb-0.5 flex items-center gap-1.5">
-                                    {icon && (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img src={icon} alt={typeLabel} className="h-3.5 w-3.5 object-contain opacity-70" />
-                                    )}
-                                    <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                                      {typeLabel} <span className="text-gray-600">({cards.length})</span>
+                                <li key={item.cardId} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
+                                  <CardHoverPreview card={previewCard}>
+                                    <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
+                                      <TradeOfferDomainIconsAndQty
+                                        domains={domains}
+                                        quantity={item.theirQuantity}
+                                        fallbackCard={cached ?? cardData}
+                                      />
+                                      <span className="truncate text-blue-400">{cardData.name}</span>
+                                      <span className="ml-0.5 shrink-0 text-[10px] font-medium tabular-nums text-emerald-400/90">
+                                        {unitPriceUsd != null ? formatUsd(unitPriceUsd) : "—"}
+                                      </span>
                                     </span>
-                                  </div>
-                                  <ul className="space-y-0.5 pl-4">
-                                    {cards.map((item) => {
-                                      const cardData = item.card;
-                                      if (!cardData) return null;
-                                      const maxRequested = item.need ?? item.theirQuantity;
-                                      const requestedItem = requestedBasket.get(item.cardUuid);
-                                      const inRequested = !!requestedItem;
-                                      const atMaxRequested = inRequested && requestedItem.quantity >= maxRequested;
-                                      const cached = lookupCached(item.cardUuid, cardData.scraperId);
-                                      const domains = getCardDomains(cached);
-                                      const rarityIcon = getRarityIcon(cardData.rarity);
-                                      const cardForRequested = { ...cardData, uuid: (cardData as { uuid?: string }).uuid ?? item.cardUuid } as PublicProfileCard;
-                                      return (
-                                        <li key={item.cardUuid} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
-                                          <CardHoverPreview card={cardData as unknown as Card}>
-                                            <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
-                                              {getDisplayDomainIcons(domains).length > 0 ? (
-                                                getDisplayDomainIcons(domains).map((d) => (
-                                                  // eslint-disable-next-line @next/next/no-img-element
-                                                  <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
-                                                ))
-                                              ) : (
-                                                // eslint-disable-next-line @next/next/no-img-element
-                                                <img src={getNoDomainIcon(cached ?? cardData)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
-                                              )}
-                                              <span className="shrink-0 tabular-nums text-emerald-500">×{item.theirQuantity}</span>
-                                              <span className="truncate text-blue-400">{cardData.name}</span>
-                                              {rarityIcon && (
-                                                // eslint-disable-next-line @next/next/no-img-element
-                                                <img src={rarityIcon} alt={cardData.rarity ?? ""} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
-                                              )}
-                                            </span>
-                                          </CardHoverPreview>
-                                          <span className="flex shrink-0 items-center gap-2">
-                                            <span className="text-[10px] tabular-nums text-gray-500">{t("profile.mine")} ×{item.myQuantity}</span>
-                                            <button
-                                              type="button"
-                                              onClick={() => addToRequestedBasket(cardForRequested, maxRequested)}
-                                              disabled={atMaxRequested}
-                                              className={`flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${atMaxRequested ? "border-amber-600/60 bg-amber-900/30 text-amber-400" : inRequested ? "border-blue-500 bg-blue-700/60 text-blue-300 hover:bg-blue-700" : "border-gray-700 bg-blue-800/40 text-blue-400 hover:bg-blue-700/60"}`}
-                                              title={atMaxRequested ? t("trades.maxQuantity", { count: maxRequested }) : inRequested ? `${requestedItem.quantity}/${maxRequested}` : t("trades.requestOne")}
-                                              aria-label={t("trades.requestOne")}
-                                            >
-                                              {t("trades.requestOne")}
-                                            </button>
-                                          </span>
-                                        </li>
-                                      );
-                                    })}
-                                  </ul>
-                                </div>
+                                  </CardHoverPreview>
+                                  <span className="flex shrink-0 items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => addToRequestedBasket(cardForRequested, maxRequested, item.cardId)}
+                                      disabled={atMaxRequested || tradeActionsLocked}
+                                      className={`flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${atMaxRequested || tradeActionsLocked ? "border-amber-600/60 bg-amber-900/30 text-amber-400" : inRequested ? "border-blue-500 bg-blue-700/60 text-blue-300 hover:bg-blue-700" : "border-gray-700 bg-blue-800/40 text-blue-400 hover:bg-blue-700/60"}`}
+                                      title={
+                                        tradeActionsLocked
+                                          ? t("trades.waitingBeforeTradeActions", { slug: user.slug })
+                                          : atMaxRequested
+                                            ? t("trades.maxQuantity", { count: maxRequested })
+                                            : inRequested && requestedItem
+                                              ? `${requestedItem.quantity}/${maxRequested}`
+                                              : t("trades.requestOne")
+                                      }
+                                      aria-label={t("trades.requestOne")}
+                                    >
+                                      +
+                                    </button>
+                                  </span>
+                                </li>
                               );
                             })}
-                          </div>
-                        </div>
-                      ))}
+                          </ul>
                         </div>
                       </div>
                       )}
@@ -1449,91 +1764,65 @@ export default function PublicProfilePage() {
                           <span className="flex h-2 w-2 shrink-0 rounded-full bg-emerald-400" aria-hidden />
                           {t("profile.cardsIHaveTheyDont", { slug: user.slug })}
                         </h3>
-                        <div className="space-y-4 min-h-0">
-                          {groupedOfferable.map(({ set, label, types }) => (
-                            <div key={set}>
-                              <div className="mb-2 flex items-center gap-2">
-                                <span className="text-sm font-bold uppercase tracking-wide text-gray-200">{label}</span>
-                                <div className="h-px flex-1 bg-gray-700" />
-                              </div>
-                              <div className="space-y-2.5 pl-2">
-                                {types.map(({ type, label: typeLabel, cards }) => {
-                                  const icon = TYPE_IMAGE[type];
-                                  return (
-                                    <div key={type}>
-                                      <div className="mb-0.5 flex items-center gap-1.5">
-                                        {icon && (
-                                          // eslint-disable-next-line @next/next/no-img-element
-                                          <img src={icon} alt={typeLabel} className="h-3.5 w-3.5 object-contain opacity-70" />
-                                        )}
-                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                                          {typeLabel} <span className="text-gray-600">({cards.length})</span>
-                                        </span>
+                        <div className="min-h-0">
+                          <ul className="space-y-0.5 pl-2">
+                            {sortedPredictiveOfferable.map((item) => {
+                              const animKeys = addAnimations.get(item.cardId) ?? [];
+                              const basketItem = basket.get(item.cardId);
+                              const inBasket = !!basketItem;
+                              const atMax =
+                                item.canOffer <= 0 ||
+                                (basketItem?.quantity ?? 0) >= item.canOffer;
+                              const cached = lookupCached(item.cardId, item.card?.scraperId);
+                              const card = item.card ?? cached;
+                              if (!card) return null;
+                              const previewCard = mergePublicProfileCardWithCatalog(item.card, cached, item.cardId);
+                              const domains = getCardDomains(cached ?? item.card ?? undefined);
+                              const unitPriceUsd = getCardTcgUnitPriceUsd(previewCard);
+                              const cardForBasket = { ...card, id: item.cardId } as PublicProfileCard;
+                              return (
+                                <li key={item.cardId} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
+                                  {animKeys.map((key, i) => (
+                                    <div key={key} className="pointer-events-none absolute inset-0 z-10">
+                                      <div className="animate-card-added absolute inset-0 rounded bg-green-400/20 ring-1 ring-green-500/40" />
+                                      <div className="animate-plus-one absolute right-10 flex" style={{ top: `calc(50% - ${i * 16}px - 10px)` }}>
+                                        <span className="rounded-full bg-green-500 px-1.5 py-0.5 text-xs font-bold text-white shadow">+1</span>
                                       </div>
-                                      <ul className="space-y-0.5 pl-4">
-                                        {cards.map((item) => {
-                                          const animKeys = addAnimations.get(item.cardUuid) ?? [];
-                                          const basketItem = basket.get(item.cardUuid);
-                                          const inBasket = !!basketItem;
-                                          const atMax = inBasket && basketItem.quantity >= item.canOffer;
-                                          const cached = lookupCached(item.cardUuid, item.card?.scraperId);
-                                          const card = item.card ?? cached;
-                                          if (!card) return null;
-                                          const domains = getCardDomains(card);
-                                          const rarityIcon = getRarityIcon(card.rarity);
-                                          const cardForBasket = { ...card, uuid: (card as { uuid?: string }).uuid ?? item.cardUuid } as PublicProfileCard;
-                                          return (
-                                            <li key={item.cardUuid} className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-gray-700/40">
-                                              {animKeys.map((key, i) => (
-                                                <div key={key} className="pointer-events-none absolute inset-0 z-10">
-                                                  <div className="animate-card-added absolute inset-0 rounded bg-green-400/20 ring-1 ring-green-500/40" />
-                                                  <div className="animate-plus-one absolute right-10 flex" style={{ top: `calc(50% - ${i * 16}px - 10px)` }}>
-                                                    <span className="rounded-full bg-green-500 px-1.5 py-0.5 text-xs font-bold text-white shadow">+1</span>
-                                                  </div>
-                                                </div>
-                                              ))}
-                                              <CardHoverPreview card={card as unknown as Card}>
-                                                <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
-                                                  {getDisplayDomainIcons(domains).length > 0 ? (
-                                                    getDisplayDomainIcons(domains).map((d) => (
-                                                      // eslint-disable-next-line @next/next/no-img-element
-                                                      <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
-                                                    ))
-                                                  ) : (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img src={getNoDomainIcon(card)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
-                                                  )}
-                                                  <span className="shrink-0 tabular-nums text-emerald-500">×{item.myQuantity}</span>
-                                                  <span className="truncate text-blue-400">{(card as { name?: string | null }).name ?? item.cardUuid}</span>
-                                                  {rarityIcon && (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img src={rarityIcon} alt={(card as { rarity?: string }).rarity ?? ""} className="h-3.5 w-3.5 shrink-0 object-contain opacity-70" />
-                                                  )}
-                                                </span>
-                                              </CardHoverPreview>
-                                              <span className="flex shrink-0 items-center gap-2">
-                                                <span className="text-[10px] tabular-nums text-gray-500">{t("profile.mine")} ×{item.myQuantity}</span>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => addToBasket(cardForBasket, item.canOffer)}
-                                                  disabled={atMax}
-                                                  className={`flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${atMax ? "border-amber-600/60 bg-amber-900/30 text-amber-400" : inBasket ? "border-green-500 bg-green-700/60 text-green-300 hover:bg-green-700" : "border-gray-700 bg-green-800/40 text-green-400 hover:bg-green-700/60"}`}
-                                                  title={atMax ? t("trades.maxQuantity", { count: item.canOffer }) : inBasket ? `${basketItem!.quantity}/${item.canOffer}` : t("trades.offerOne")}
-                                                  aria-label={t("trades.offerOne")}
-                                                >
-                                                  {t("trades.offerOne")}
-                                                </button>
-                                              </span>
-                                            </li>
-                                          );
-                                        })}
-                                      </ul>
                                     </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
+                                  ))}
+                                  <CardHoverPreview card={previewCard}>
+                                    <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
+                                      <TradeOfferDomainIconsAndQty domains={domains} quantity={item.myQuantity} fallbackCard={card} />
+                                      <span className="truncate text-blue-400">{(card as { name?: string | null }).name ?? item.cardId}</span>
+                                      <span className="ml-0.5 shrink-0 text-[10px] font-medium tabular-nums text-emerald-400/90">
+                                        {unitPriceUsd != null ? formatUsd(unitPriceUsd) : "—"}
+                                      </span>
+                                    </span>
+                                  </CardHoverPreview>
+                                  <span className="flex shrink-0 items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => addToBasket(cardForBasket, item.canOffer, item.cardId)}
+                                      disabled={atMax || tradeActionsLocked}
+                                      className={`flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${atMax || tradeActionsLocked ? "border-amber-600/60 bg-amber-900/30 text-amber-400" : inBasket ? "border-green-500 bg-green-700/60 text-green-300 hover:bg-green-700" : "border-gray-700 bg-green-800/40 text-green-400 hover:bg-green-700/60"}`}
+                                      title={
+                                        tradeActionsLocked
+                                          ? t("trades.waitingBeforeTradeActions", { slug: user.slug })
+                                          : atMax
+                                            ? t("trades.maxQuantity", { count: item.canOffer })
+                                            : inBasket && basketItem
+                                              ? `${basketItem.quantity}/${item.canOffer}`
+                                              : t("trades.offerOne")
+                                      }
+                                      aria-label={t("trades.offerOne")}
+                                    >
+                                      +
+                                    </button>
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
                         </div>
                       </div>
                       )}
@@ -1575,23 +1864,19 @@ export default function PublicProfilePage() {
                                     </div>
                                     <ul className="space-y-0.5 pl-4">
                                       {cards.map((item) => {
-                                        const cached = lookupCached(item.cardUuid, item.card.scraperId);
+                                        const cached = lookupCached(item.cardId, item.card.scraperId);
+                                        const previewCard = mergePublicProfileCardWithCatalog(item.card, cached, item.cardId);
                                         const domains = getCardDomains(cached);
                                         const rarityIcon = getRarityIcon(item.card.rarity);
                                         return (
-                                          <li key={item.cardUuid} className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:bg-gray-700/40">
-                                            <CardHoverPreview card={item.card as unknown as Card}>
+                                          <li key={item.cardId} className="flex items-center gap-1.5 rounded px-1 py-0.5 hover:bg-gray-700/40">
+                                            <CardHoverPreview card={previewCard}>
                                               <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
-                                                {getDisplayDomainIcons(domains).length > 0 ? (
-                                                  getDisplayDomainIcons(domains).map((d) => (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img key={d} src={`/images/domains/${d}.webp`} alt={d} className="h-4 w-4 shrink-0 object-contain" />
-                                                  ))
-                                                ) : (
-                                                  // eslint-disable-next-line @next/next/no-img-element
-                                                  <img src={getNoDomainIcon(cached ?? item.card)} alt="" className="h-4 w-4 shrink-0 object-contain opacity-80" />
-                                                )}
-                                                <span className="shrink-0 tabular-nums text-gray-500">×{item.quantity}</span>
+                                                <TradeOfferDomainIconsAndQty
+                                                  domains={domains}
+                                                  quantity={item.quantity}
+                                                  fallbackCard={cached ?? item.card}
+                                                />
                                                 <span className="truncate text-blue-400">{item.card.name}</span>
                                                 {rarityIcon && (
                                                   // eslint-disable-next-line @next/next/no-img-element
@@ -1631,19 +1916,17 @@ export default function PublicProfilePage() {
                     basket={basket}
                     recipientSlug={user.slug}
                     recipientDisplayName={user.displayName}
+                    mySlug={me.slug}
                     onUpdateQty={updateBasketQty}
                     onRemove={removeFromBasket}
-                    onClear={clearBasket}
-                    requestedBasket={!activeTrade ? requestedBasket : undefined}
-                    onUpdateRequestedQty={!activeTrade ? updateRequestedBasketQty : undefined}
-                    onRemoveRequested={!activeTrade ? removeFromRequestedBasket : undefined}
-                    onClearRequested={!activeTrade ? clearRequestedBasket : undefined}
+                    requestedBasket={!activeTrade || tradeIsMyTurn ? requestedBasket : undefined}
+                    onUpdateRequestedQty={!activeTrade || tradeIsMyTurn ? updateRequestedBasketQty : undefined}
+                    onRemoveRequested={!activeTrade || tradeIsMyTurn ? removeFromRequestedBasket : undefined}
                     cardCacheMap={cardCacheMap}
                     scraperIdMap={scraperIdMap}
                     activeTrade={activeTrade}
                     activeTradeDetail={activeTradeDetail}
                     isMyTurn={tradeIsMyTurn}
-                    originalItemsMap={originalItemsMap}
                     onCounterSubmitError={handleCounterSubmitError}
                   />
                 ) : (

@@ -41,7 +41,10 @@ export interface AuthResponse {
 
 /** Card summary in public profile (GET /auth/profile/:slug) and match/offerable (GET /auth/profile/:slug/match) */
 export interface PublicProfileCard {
-  uuid: string;
+  /** Alinhado ao `id` do catálogo GET /v1/cards. */
+  id: string;
+  /** @deprecated Legado; preferir `id`. */
+  uuid?: string;
   scraperId?: string;
   name: string | null;
   slug?: string;
@@ -53,11 +56,12 @@ export interface PublicProfileCard {
   cardDomains?: Array<{ domain: { name: string } }> | null;
   image_key?: string | null;
   imageUrl?: string | null;
+  image_url?: string | null;
 }
 
 /** Item in publicCollection (GET /auth/profile/:slug) */
 export interface PublicCollectionItem {
-  cardUuid: string;
+  cardId: string;
   quantity: number;
   card: PublicProfileCard;
 }
@@ -72,7 +76,7 @@ export interface PublicUser {
 
 /** Item in match result (GET /auth/profile/:slug/match) — cards they have more of that I want */
 export interface MatchItem {
-  cardUuid: string;
+  cardId: string;
   card: PublicProfileCard | null;
   theirQuantity: number;
   myQuantity: number;
@@ -81,7 +85,7 @@ export interface MatchItem {
 
 /** Item in offerable result (GET /auth/profile/:slug/match) — cards I have more of that I can offer */
 export interface OfferableItem {
-  cardUuid: string;
+  cardId: string;
   card: PublicProfileCard | null;
   myQuantity: number;
   theirQuantity: number;

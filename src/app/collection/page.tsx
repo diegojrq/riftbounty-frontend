@@ -16,10 +16,16 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { useCards } from "@/lib/cards-context";
 import { useLocale } from "@/lib/locale-context";
+import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
+import { getCardSetFilterValue } from "@/lib/card-set";
+import { cardDescriptionPlainText } from "@/lib/html-description";
 import { toast } from "sonner";
 import { RangeSlider } from "@/components/filters/RangeSlider";
-import { AttributesFilter } from "@/components/filters/AttributesFilter";
+import { AbilitiesFilter } from "@/components/filters/AbilitiesFilter";
+import { cardMatchesAnyAbility } from "@/lib/card-ability-filter";
+import { formatAbilityFilterLabel, resolveAbilityFilterChipClass } from "@/lib/card-description";
 import type { Card } from "@/types/card";
+import { getCardId } from "@/lib/card-id";
 
 const LIMIT = 24;
 const MIN_SEARCH_LENGTH = 3;
@@ -27,26 +33,9 @@ const MIN_SEARCH_LENGTH = 3;
 const DOMAINS = ["fury", "calm", "mind", "body", "chaos", "order"] as const;
 const RARITY_OPTIONS = ["common", "uncommon", "rare", "epic", "showcase"] as const;
 const TYPE_OPTIONS = ["gear", "spell", "rune", "legend", "unit", "battlefield", "champion"] as const;
-const SET_OPTIONS = [
-  { value: "OGN", label: "Origins Main Set" },
-  { value: "SFD", label: "Spiritforged" },
-] as const;
 const ENERGY_BOUNDS = { min: 0, max: 12 };
 const POWER_BOUNDS = { min: 0, max: 10 };
 const MIGHT_BOUNDS = { min: 0, max: 10 };
-
-function getCardAttributes(card: Card): string[] {
-  if (card.attributes) {
-    if (Array.isArray(card.attributes)) return card.attributes as string[];
-    return Object.keys(card.attributes);
-  }
-  if (Array.isArray(card.cardAttributes)) {
-    return (card.cardAttributes as Array<{ attribute?: { name?: string }; name?: string }>)
-      .map((ca) => ca.attribute?.name ?? ca.name ?? "")
-      .filter(Boolean);
-  }
-  return [];
-}
 
 function getCardDomains(card: Card): string[] {
   const result: string[] = [];
@@ -105,6 +94,7 @@ export default function CollectionPage() {
   const { user, loading: authLoading } = useAuth();
   const { cards: allCards, loading: cardsLoading } = useCards();
   const { t } = useLocale();
+  const { sets, formatSetWithCode } = useRiotCatalogSets();
 
   // Collection data: map uuid → quantity
   const [collectionMap, setCollectionMap] = useState<Map<string, number>>(new Map());
@@ -133,7 +123,7 @@ export default function CollectionPage() {
   const [powerRange, setPowerRange] = useState<[number, number]>([POWER_BOUNDS.min, POWER_BOUNDS.max]);
   const [mightRange, setMightRange] = useState<[number, number]>([MIGHT_BOUNDS.min, MIGHT_BOUNDS.max]);
   const [collectionStatus, setCollectionStatus] = useState<"all" | "owned" | "missing">("all");
-  const [selectedAttributes, setSelectedAttributes] = useState<string[]>([]);
+  const [selectedAbilities, setSelectedAbilities] = useState<string[]>([]);
 
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
 
@@ -151,7 +141,7 @@ export default function CollectionPage() {
       const data = await getCollection();
       const map = new Map<string, number>();
       for (const item of data.items ?? []) {
-        const id = item.card?.uuid ?? item.cardUuid ?? item.cardId;
+        const id = getCardId(item.card) || item.cardId || item.cardUuid;
         if (id) map.set(id, (map.get(id) ?? 0) + (item.quantity ?? 0));
       }
       setCollectionMap(map);
@@ -185,19 +175,25 @@ export default function CollectionPage() {
   // Reset visible count when filters change
   useEffect(() => {
     setVisibleCount(LIMIT);
-  }, [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, collectionStatus, selectedAttributes, energyRange, powerRange, mightRange]);
+  }, [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, collectionStatus, selectedAbilities, energyRange, powerRange, mightRange]);
 
   // Enrich cards with collection data
   const enrichedCards = useMemo(() => {
     return allCards.map((card) => ({
       ...card,
-      inCollection: collectionMap.has(card.uuid),
-      collectionQuantity: collectionMap.get(card.uuid) ?? 0,
+      inCollection: collectionMap.has(getCardId(card)),
+      collectionQuantity: collectionMap.get(getCardId(card)) ?? 0,
     }));
   }, [allCards, collectionMap]);
 
   // Apply all filters locally
   const filteredCards = useMemo(() => {
+    const energyFilterActive =
+      energyRange[0] > ENERGY_BOUNDS.min || energyRange[1] < ENERGY_BOUNDS.max;
+    const powerFilterActive =
+      powerRange[0] > POWER_BOUNDS.min || powerRange[1] < POWER_BOUNDS.max;
+    const mightFilterActive =
+      mightRange[0] > MIGHT_BOUNDS.min || mightRange[1] < MIGHT_BOUNDS.max;
     return enrichedCards.filter((card) => {
       if (nameFilter) {
         const q = nameFilter.toLowerCase();
@@ -207,7 +203,9 @@ export default function CollectionPage() {
           (card.cardSubtypes as Array<{ subtype?: { name?: string }; name?: string }> | undefined)?.some(
             (cs) => ((cs?.subtype?.name ?? cs?.name) ?? "").toLowerCase().includes(q)
           );
-        const descriptionMatch = card.description?.toLowerCase().includes(q) ?? false;
+        const descriptionMatch =
+          card.description != null &&
+          cardDescriptionPlainText(card.description).toLowerCase().includes(q);
         if (!nameMatch && !subtypeMatch && !descriptionMatch) return false;
       }
       if (selectedDomains.length > 0) {
@@ -220,27 +218,26 @@ export default function CollectionPage() {
       if (selectedRarity && card.rarity?.toLowerCase() !== selectedRarity) return false;
       if (selectedType && card.type?.toLowerCase() !== selectedType) return false;
       if (selectedSet) {
-        const cardSetVal = (card.set ?? card.cardSet ?? "").toUpperCase();
-        if (cardSetVal !== selectedSet) return false;
+        if (getCardSetFilterValue(card) !== selectedSet) return false;
       }
       if (collectionStatus === "owned" && !card.inCollection) return false;
       if (collectionStatus === "missing" && card.inCollection) return false;
-      if (selectedAttributes.length > 0) {
-        const attrs = getCardAttributes(card).map((a) => a.toLowerCase());
-        if (!selectedAttributes.some((a) => attrs.includes(a.toLowerCase()))) return false;
-      }
-      if (card.energy != null) {
+      if (!cardMatchesAnyAbility(card, selectedAbilities)) return false;
+      if (energyFilterActive) {
+        if (card.energy == null) return false;
         if (card.energy < energyRange[0] || (energyRange[1] < ENERGY_BOUNDS.max && card.energy > energyRange[1])) return false;
       }
-      if (card.power != null) {
+      if (powerFilterActive) {
+        if (card.power == null) return false;
         if (card.power < powerRange[0] || (powerRange[1] < POWER_BOUNDS.max && card.power > powerRange[1])) return false;
       }
-      if (card.might != null) {
+      if (mightFilterActive) {
+        if (card.might == null) return false;
         if (card.might < mightRange[0] || (mightRange[1] < MIGHT_BOUNDS.max && card.might > mightRange[1])) return false;
       }
       return true;
     });
-  }, [enrichedCards, nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, collectionStatus, selectedAttributes, energyRange, powerRange, mightRange]);
+  }, [enrichedCards, nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, collectionStatus, selectedAbilities, energyRange, powerRange, mightRange]);
 
   const totalCount = filteredCards.length;
   const visibleCards = filteredCards.slice(0, visibleCount);
@@ -302,15 +299,15 @@ export default function CollectionPage() {
 
   async function handleAdd(card: Card) {
     if (!user) return;
-    setActionCardId(card.uuid);
+    setActionCardId(getCardId(card));
     try {
-      await addToCollection(card.uuid, 1);
+      await addToCollection(getCardId(card), 1);
       setCollectionMap((prev) => {
         const next = new Map(prev);
-        next.set(card.uuid, (next.get(card.uuid) ?? 0) + 1);
+        next.set(getCardId(card), (next.get(getCardId(card)) ?? 0) + 1);
         return next;
       });
-      flashCard(card.uuid);
+      flashCard(getCardId(card));
       setStatsRefreshTrigger((t) => t + 1);
     } catch {
       // could set error toast
@@ -321,15 +318,15 @@ export default function CollectionPage() {
 
   async function handleRemove(card: Card) {
     if (!user) return;
-    setActionCardId(card.uuid);
+    setActionCardId(getCardId(card));
     try {
-      await removeFromCollection(card.uuid);
+      await removeFromCollection(getCardId(card));
       setCollectionMap((prev) => {
         const next = new Map(prev);
-        next.delete(card.uuid);
+        next.delete(getCardId(card));
         return next;
       });
-      flashRemove(card.uuid);
+      flashRemove(getCardId(card));
       setStatsRefreshTrigger((t) => t + 1);
     } catch {
       // could set error toast
@@ -340,21 +337,21 @@ export default function CollectionPage() {
 
   async function handleDecrease(card: Card) {
     if (!user) return;
-    const qty = collectionMap.get(card.uuid) ?? 1;
+    const qty = collectionMap.get(getCardId(card)) ?? 1;
     if (qty <= 1) {
       await handleRemove(card);
       return;
     }
-    setActionCardId(card.uuid);
+    setActionCardId(getCardId(card));
     try {
-      const data = await updateQuantity(card.uuid, qty - 1);
+      const data = await updateQuantity(getCardId(card), qty - 1);
       setCollectionMap((prev) => {
         const next = new Map(prev);
-        const id = data.cardId ?? data.cardUuid ?? data.card?.uuid ?? card.uuid;
+        const id = data.cardId ?? data.cardUuid ?? getCardId(data.card) ?? getCardId(card);
         next.set(id, data.quantity);
         return next;
       });
-      flashRemove(card.uuid);
+      flashRemove(getCardId(card));
       setStatsRefreshTrigger((t) => t + 1);
     } catch {
       // could set error toast
@@ -370,7 +367,7 @@ export default function CollectionPage() {
   const hasActiveFilters =
     !!(nameFilter || selectedDomains.length > 0 || selectedRarity || selectedType || selectedSet
     || collectionStatus !== "all"
-    || selectedAttributes.length > 0
+    || selectedAbilities.length > 0
     || energyRange[0] > ENERGY_BOUNDS.min || energyRange[1] < ENERGY_BOUNDS.max
     || powerRange[0] > POWER_BOUNDS.min || powerRange[1] < POWER_BOUNDS.max
     || mightRange[0] > MIGHT_BOUNDS.min || mightRange[1] < MIGHT_BOUNDS.max);
@@ -382,7 +379,7 @@ export default function CollectionPage() {
     setSelectedType(undefined);
     setSelectedSet(undefined);
     setCollectionStatus("all");
-    setSelectedAttributes([]);
+    setSelectedAbilities([]);
     setEnergyRange([ENERGY_BOUNDS.min, ENERGY_BOUNDS.max]);
     setPowerRange([POWER_BOUNDS.min, POWER_BOUNDS.max]);
     setMightRange([MIGHT_BOUNDS.min, MIGHT_BOUNDS.max]);
@@ -465,7 +462,11 @@ export default function CollectionPage() {
           <select id="collection-filter-set" value={selectedSet ?? ""} onChange={(e) => setSelectedSet(e.target.value || undefined)}
             className="rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-sm text-white">
             <option value="">{t("cards.allSets")}</option>
-            {SET_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            {sets.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -473,16 +474,22 @@ export default function CollectionPage() {
 
       {/* Range sliders */}
       <div className="border-t border-gray-700 pt-3">
-        <div className="grid grid-cols-1 gap-4 sm:flex sm:flex-wrap sm:gap-x-6 sm:gap-y-2">
-          <div className="w-full sm:w-44"><RangeSlider label={t("cards.energy")} minBound={ENERGY_BOUNDS.min} maxBound={ENERGY_BOUNDS.max} valueMin={energyRange[0]} valueMax={energyRange[1]} onChange={(min, max) => setEnergyRange([min, max])} anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} /></div>
-          <div className="w-full sm:w-44"><RangeSlider label={t("cards.power")} minBound={POWER_BOUNDS.min} maxBound={POWER_BOUNDS.max} valueMin={powerRange[0]} valueMax={powerRange[1]} onChange={(min, max) => setPowerRange([min, max])} anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} /></div>
-          <div className="w-full sm:w-44"><RangeSlider label={t("cards.might")} minBound={MIGHT_BOUNDS.min} maxBound={MIGHT_BOUNDS.max} valueMin={mightRange[0]} valueMax={mightRange[1]} onChange={(min, max) => setMightRange([min, max])} anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} /></div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-x-6 sm:gap-y-2">
+          <div className="min-w-0">
+            <RangeSlider label={t("cards.energy")} minBound={ENERGY_BOUNDS.min} maxBound={ENERGY_BOUNDS.max} valueMin={energyRange[0]} valueMax={energyRange[1]} onChange={(min, max) => setEnergyRange([min, max])} anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} />
+          </div>
+          <div className="min-w-0">
+            <RangeSlider label={t("cards.power")} minBound={POWER_BOUNDS.min} maxBound={POWER_BOUNDS.max} valueMin={powerRange[0]} valueMax={powerRange[1]} onChange={(min, max) => setPowerRange([min, max])} anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} />
+          </div>
+          <div className="min-w-0">
+            <RangeSlider label={t("cards.might")} minBound={MIGHT_BOUNDS.min} maxBound={MIGHT_BOUNDS.max} valueMin={mightRange[0]} valueMax={mightRange[1]} onChange={(min, max) => setMightRange([min, max])} anyLabel={t("cards.any")} minLabel={t("common.min")} maxLabel={t("common.max")} minAriaSuffix={` ${t("common.minimum")}`} maxAriaSuffix={` ${t("common.maximum")}`} />
+          </div>
         </div>
       </div>
 
-      {/* Attributes */}
+      {/* Abilities (GET /v1/abilities) */}
       <div className="border-t border-gray-700 pt-3">
-        <AttributesFilter selected={selectedAttributes} onChange={setSelectedAttributes} />
+        <AbilitiesFilter selected={selectedAbilities} onChange={setSelectedAbilities} />
       </div>
 
       {hasActiveFilters && (
@@ -502,8 +509,23 @@ export default function CollectionPage() {
       {selectedDomains.map((d) => <span key={d} className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.domain")}: {d === "colorless" ? t("cards.colorless") : d.charAt(0).toUpperCase() + d.slice(1)}<button type="button" onClick={() => setSelectedDomains((prev) => prev.filter((x) => x !== d))} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearDomain")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>)}
       {selectedRarity && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.rarity")}: {selectedRarity.charAt(0).toUpperCase() + selectedRarity.slice(1)}<button type="button" onClick={() => setSelectedRarity(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearRarity")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
       {selectedType && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.type")}: {selectedType.charAt(0).toUpperCase() + selectedType.slice(1)}<button type="button" onClick={() => setSelectedType(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearType")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
-      {selectedSet && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.set")}: {SET_OPTIONS.find((s) => s.value === selectedSet)?.label ?? selectedSet}<button type="button" onClick={() => setSelectedSet(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearSet")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
-      {selectedAttributes.map((attr) => <span key={attr} className="inline-flex items-center gap-1 rounded-full bg-blue-900/60 px-2.5 py-0.5 text-xs text-blue-300">{attr}<button type="button" onClick={() => setSelectedAttributes(selectedAttributes.filter((a) => a !== attr))} className="rounded-full p-0.5 hover:bg-blue-800/60" aria-label={`${t("cards.clearSearch")} ${attr}`}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>)}
+      {selectedSet && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.set")}: {formatSetWithCode(selectedSet)}<button type="button" onClick={() => setSelectedSet(undefined)} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearSet")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
+      {selectedAbilities.map((attr) => (
+        <span
+          key={attr}
+          className={`inline-flex max-w-full items-center gap-1 truncate rounded-md px-2 py-0.5 text-xs ${resolveAbilityFilterChipClass(attr)} ring-2 ring-blue-400 ring-offset-2 ring-offset-gray-950`}
+        >
+          {formatAbilityFilterLabel(attr)}
+          <button
+            type="button"
+            onClick={() => setSelectedAbilities(selectedAbilities.filter((a) => a !== attr))}
+            className="shrink-0 rounded-full p-0.5 hover:bg-black/25"
+            aria-label={`${t("cards.clearSearch")} ${attr}`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </span>
+      ))}
       {(energyRange[0] > ENERGY_BOUNDS.min || energyRange[1] < ENERGY_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.energy")}: {energyRange[0]}–{energyRange[1] === ENERGY_BOUNDS.max ? t("cards.any") : energyRange[1]}<button type="button" onClick={() => setEnergyRange([ENERGY_BOUNDS.min, ENERGY_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearEnergy")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
       {(powerRange[0] > POWER_BOUNDS.min || powerRange[1] < POWER_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.power")}: {powerRange[0]}–{powerRange[1] === POWER_BOUNDS.max ? t("cards.any") : powerRange[1]}<button type="button" onClick={() => setPowerRange([POWER_BOUNDS.min, POWER_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearPower")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
       {(mightRange[0] > MIGHT_BOUNDS.min || mightRange[1] < MIGHT_BOUNDS.max) && <span className="inline-flex items-center gap-1 rounded-full bg-gray-700 px-2.5 py-0.5 text-xs text-white">{t("cards.might")}: {mightRange[0]}–{mightRange[1] === MIGHT_BOUNDS.max ? t("cards.any") : mightRange[1]}<button type="button" onClick={() => setMightRange([MIGHT_BOUNDS.min, MIGHT_BOUNDS.max])} className="rounded-full p-0.5 hover:bg-gray-600" aria-label={t("cards.clearMight")}><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>}
@@ -681,9 +703,9 @@ export default function CollectionPage() {
             </p>
             <ul className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {visibleCards.map((card) => {
-                const isCardLoading = actionCardId === card.uuid;
+                const isCardLoading = actionCardId === getCardId(card);
                 return (
-                  <li key={card.uuid} className="relative">
+                  <li key={getCardId(card)} className="relative">
                     {isCardLoading && (
                       <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/60" aria-hidden>
                         <span className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -696,12 +718,12 @@ export default function CollectionPage() {
                       inCollection={card.inCollection}
                       quantity={card.collectionQuantity}
                       showCollectionActions
-                      onOpenDetail={() => setDetailUuid(card.uuid)}
+                      onOpenDetail={() => setDetailUuid(getCardId(card))}
                       grayscaleWhenNoImage
                       grayscaleWhenNotInCollection
                       actionDisabled={isCardLoading}
-                      addKeys={addAnimations.get(card.uuid) ?? []}
-                      removeKeys={removeAnimations.get(card.uuid) ?? []}
+                      addKeys={addAnimations.get(getCardId(card)) ?? []}
+                      removeKeys={removeAnimations.get(getCardId(card)) ?? []}
                       onAdd={() => handleAdd(card)}
                       onDecrease={() => handleDecrease(card)}
                     />
@@ -719,7 +741,7 @@ export default function CollectionPage() {
       </div>
 
       <CardDetailModal
-        uuid={detailUuid}
+        cardId={detailUuid}
         onClose={() => setDetailUuid(null)}
         onCollectionChange={loadCollection}
         showTcgPrices

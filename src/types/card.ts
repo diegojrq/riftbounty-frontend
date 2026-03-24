@@ -1,8 +1,16 @@
 /** API contract: /v1/cards – data.items (cards with relations), data.totalCount. */
 
+/** Flags de exibição (ex.: `{ "id": "new", "label": "New" }`). */
+export interface CardFlag {
+  id: string;
+  label: string;
+}
+
 export interface Card {
-  /** Primary key (UUID). Identificador principal da carta. */
-  uuid: string;
+  /** Primary key from GET /v1/cards. */
+  id: string;
+  /** @deprecated Legado; preferir `id`. */
+  uuid?: string;
   /** ID do scraper (legado); único, não é PK. API retorna camelCase. */
   scraper_id?: string;
   scraperId?: string;
@@ -10,9 +18,10 @@ export interface Card {
   description?: string;
   altText?: string;
   slug?: string;
-  /** API retorna "set" ou "cardSet" dependendo do endpoint. */
+  /** API retorna "set", "cardSet" ou "card_set" dependendo do endpoint. */
   set?: string;
   cardSet?: string;
+  card_set?: string;
   rarity?: string;
   orientation?: string;
   /** API retorna "record_type" ou "recordType". */
@@ -45,6 +54,9 @@ export interface Card {
   collectorNumber?: string;
   /** Chave para imagem: nome do arquivo sem extensão (ex.: OGN-001-298). Usado em getCardImageUrl. */
   image_key?: string;
+  /** URL completa da imagem (quando backend já resolve caminho final). */
+  imageUrl?: string;
+  image_url?: string;
   /** TCGplayer product ID vinculado à carta. */
   tcg_product_id?: number | null;
   tcgProductId?: number | null;
@@ -59,6 +71,8 @@ export interface Card {
   tcgMarketPrice?: number | null;
   tcg_price_updated_at?: string | null;
   tcgPriceUpdatedAt?: string | null;
+  /** Ex.: `[{ "id": "new", "label": "New" }]` — usado para chips na UI. */
+  flags?: CardFlag[];
 }
 
 /** GET /v1/cards response: items (cards with relations), totalCount. */

@@ -1,5 +1,38 @@
 import { apiGet, apiPatch } from "./api";
-import type { MatchItem, OfferableItem, PublicUser, User } from "@/types/auth";
+import type { MatchItem, OfferableItem, PublicProfileCard, PublicUser, User } from "@/types/auth";
+
+/** API legada pode enviar `cardUuid`; normaliza para `cardId` + `PublicProfileCard.id`. */
+function normalizePublicProfileCard(card: PublicProfileCard | null): PublicProfileCard | null {
+  if (!card) return null;
+  const id = card.id ?? card.uuid ?? "";
+  return { ...card, id };
+}
+
+function normalizeMatchItem(m: MatchItem & { cardUuid?: string }): MatchItem {
+  return {
+    ...m,
+    cardId: m.cardId ?? m.cardUuid ?? "",
+    card: normalizePublicProfileCard(m.card),
+  };
+}
+
+function normalizeOfferableItem(m: OfferableItem & { cardUuid?: string }): OfferableItem {
+  return {
+    ...m,
+    cardId: m.cardId ?? m.cardUuid ?? "",
+    card: normalizePublicProfileCard(m.card),
+  };
+}
+
+function normalizePublicCollectionItem(
+  item: import("@/types/auth").PublicCollectionItem & { cardUuid?: string }
+): import("@/types/auth").PublicCollectionItem {
+  return {
+    ...item,
+    cardId: item.cardId ?? item.cardUuid ?? "",
+    card: normalizePublicProfileCard(item.card) as PublicProfileCard,
+  };
+}
 
 /** Payload for PATCH /auth/me — all fields optional */
 export interface UpdateProfilePayload {
@@ -36,7 +69,11 @@ export async function checkSlugAvailable(slug: string): Promise<{ available: boo
 /** GET /auth/profile/:slug — public profile by username (no auth). Returns 404 if not found. Includes publicCollection when isPublic. */
 export async function getPublicProfile(slug: string): Promise<PublicUser> {
   const res = await apiGet<PublicUser>(`/auth/profile/${encodeURIComponent(slug)}`);
-  return res.data;
+  const data = res.data;
+  return {
+    ...data,
+    publicCollection: data.publicCollection?.map(normalizePublicCollectionItem),
+  };
 }
 
 /** GET /auth/profile/:slug/match — authenticated. Returns match (what they have more of) and offerable (what I can offer). */
@@ -48,7 +85,7 @@ export interface ProfileMatchResponse {
 export async function getProfileMatch(slug: string): Promise<ProfileMatchResponse> {
   const res = await apiGet<ProfileMatchResponse>(`/auth/profile/${encodeURIComponent(slug)}/match`);
   return {
-    match: res.data?.match ?? [],
-    offerable: res.data?.offerable ?? [],
+    match: (res.data?.match ?? []).map((m) => normalizeMatchItem(m as MatchItem & { cardUuid?: string })),
+    offerable: (res.data?.offerable ?? []).map((m) => normalizeOfferableItem(m as OfferableItem & { cardUuid?: string })),
   };
 }

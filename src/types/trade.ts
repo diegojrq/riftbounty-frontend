@@ -11,7 +11,8 @@ export interface TradeItem {
   quantity: number;
   /** "initiator" | "recipient" — de qual lado é este item */
   side: "initiator" | "recipient";
-  card: PublicProfileCard;
+  /** Pode vir null no GET /trades/:id se o backend não embutir a carta */
+  card: PublicProfileCard | null;
 }
 
 export interface TradeMessage {

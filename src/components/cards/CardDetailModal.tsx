@@ -3,18 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { getCard, getCardImageUrl } from "@/lib/cards";
+import { cardHasFlag, getCard, getCardImageUrl } from "@/lib/cards";
 import { addToCollection, removeFromCollection, updateQuantity } from "@/lib/collections";
 import { CardImg } from "@/components/cards/CardImg";
+import { CardNewFlagChip } from "@/components/cards/CardNewFlagChip";
 import { CardDescription } from "@/components/cards/CardDescription";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
+import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
 import type { Card } from "@/types/card";
-
-const SET_DISPLAY: Record<string, string> = {
-  OGN: "Origins Main Set",
-  SFD: "Spiritforged",
-};
+import { getCardId } from "@/lib/card-id";
 
 function fmt(s: string) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
@@ -79,7 +77,8 @@ function getCardSupertypes(card: Card): string[] {
 }
 
 interface CardDetailModalProps {
-  uuid: string | null;
+  /** Identificador da carta (GET /v1/cards → `id`). */
+  cardId: string | null;
   onClose: () => void;
   /** Called after any collection mutation so the parent can refresh its data */
   onCollectionChange?: () => void;
@@ -105,38 +104,43 @@ function getNumeric(value: unknown): number | null {
   return null;
 }
 
-export function CardDetailModal({ uuid, onClose, onCollectionChange, showTcgPrices = false }: CardDetailModalProps) {
+export function CardDetailModal({ cardId, onClose, onCollectionChange, showTcgPrices = false }: CardDetailModalProps) {
   const { user } = useAuth();
   const { t } = useLocale();
+  const { formatSetWithCode } = useRiotCatalogSets();
   const [card, setCard] = useState<Card | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
 
   useEffect(() => { setPortalRoot(document.body); }, []);
 
   const fetchCard = useCallback(async () => {
-    if (!uuid) return;
+    if (!cardId) return;
     setLoading(true);
     setCard(null);
+    setLoadError(null);
     try {
-      setCard(await getCard(uuid));
+      setCard(await getCard(cardId));
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [uuid]);
+  }, [cardId]);
 
   useEffect(() => { fetchCard(); }, [fetchCard]);
 
   // Close on Escape
   useEffect(() => {
-    if (!uuid) return;
+    if (!cardId) return;
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [uuid, onClose]);
+  }, [cardId, onClose]);
 
-  if (!uuid || !portalRoot) return null;
+  if (!cardId || !portalRoot) return null;
 
   const qty = Number(card?.collectionQuantity ?? 0);
   const inCollection = card?.inCollection ?? false;
@@ -148,9 +152,7 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange, showTcgPric
       (card.record_type?.toLowerCase().includes("battleground") ?? false) ||
       card.type?.toLowerCase() === "battlefield");
   const collectorNumber = card?.collector_number ?? card?.collectorNumber ?? "—";
-  const setDisplay = card?.set && SET_DISPLAY[card.set.toUpperCase()]
-    ? SET_DISPLAY[card.set.toUpperCase()]
-    : card?.set;
+  const setDisplay = card?.set ? formatSetWithCode(card.set) : card?.set;
   const tcgLowPrice = getNumeric(card?.tcgLowPrice ?? card?.tcg_low_price);
   const tcgMidPrice = getNumeric(card?.tcgMidPrice ?? card?.tcg_mid_price);
   const tcgHighPrice = getNumeric(card?.tcgHighPrice ?? card?.tcg_high_price);
@@ -162,8 +164,8 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange, showTcgPric
     if (!user || !card) return;
     setActionLoading(true);
     try {
-      if (card.inCollection) await addToCollection(card.uuid, 1);
-      else await addToCollection(card.uuid);
+      if (card.inCollection) await addToCollection(getCardId(card), 1);
+      else await addToCollection(getCardId(card));
       await fetchCard();
       onCollectionChange?.();
     } finally { setActionLoading(false); }
@@ -173,8 +175,8 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange, showTcgPric
     if (!user || !card) return;
     setActionLoading(true);
     try {
-      if (qty <= 1) await removeFromCollection(card.uuid);
-      else await updateQuantity(card.uuid, qty - 1);
+      if (qty <= 1) await removeFromCollection(getCardId(card));
+      else await updateQuantity(getCardId(card), qty - 1);
       await fetchCard();
       onCollectionChange?.();
     } finally { setActionLoading(false); }
@@ -213,12 +215,23 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange, showTcgPric
           </div>
         )}
 
+        {!loading && loadError && (
+          <div className="px-5 py-8 sm:px-6">
+            <div className="rounded-lg border border-red-800/80 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+              {loadError}
+            </div>
+          </div>
+        )}
+
         {/* Content */}
-        {!loading && card && (
+        {!loading && !loadError && card && (
           <div className="overflow-y-auto p-5 sm:p-6">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
               {/* Image */}
-              <div className={`mx-auto w-full shrink-0 ${isLandscape ? "max-w-[360px] sm:max-w-[420px]" : "max-w-[300px] sm:max-w-[360px]"}`}>
+              <div
+                className={`relative mx-auto w-full shrink-0 overflow-visible ${cardHasFlag(card, "new") ? "pt-3" : ""} ${isLandscape ? "max-w-[360px] sm:max-w-[420px]" : "max-w-[300px] sm:max-w-[360px]"}`}
+              >
+                {cardHasFlag(card, "new") && <CardNewFlagChip />}
                 <div className={`relative overflow-hidden rounded-xl border border-gray-600 bg-gray-800 shadow-xl ${isLandscape ? "aspect-[3.5/2.5]" : "aspect-[2.5/3.5]"}`}>
                   {imageUrl ? (
                     isLandscape ? (
@@ -232,7 +245,7 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange, showTcgPric
                           width: "calc(100% * 2.5 / 3.5)",
                           height: "calc(100% * 3.5 / 2.5)",
                           objectFit: "cover",
-                          transform: "translate(-50%, -50%) rotate(90deg)",
+                          transform: "translate(-50%, -50%) rotate(-90deg)",
                         }}
                         className="h-full w-full"
                       />
@@ -264,23 +277,23 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange, showTcgPric
                 {/* Tags: Set, Rarity, Type, Domains */}
                 <div className="flex flex-wrap gap-2">
                   {card.set && (
-                    <span className="inline-flex items-center rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-200">
+                    <span className="inline-flex items-center rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-bold italic text-gray-200">
                       {fmt(setDisplay ?? card.set)}
                     </span>
                   )}
                   {card.rarity && (
-                    <span className="inline-flex items-center rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-200">
+                    <span className="inline-flex items-center rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-bold italic text-gray-200">
                       {fmt(card.rarity)}
                     </span>
                   )}
                   {card.type && (
-                    <span className="inline-flex items-center rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-200">
+                    <span className="inline-flex items-center rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-bold italic text-gray-200">
                       {fmt(card.type)}
                     </span>
                   )}
                   {getCardDomains(card).length > 0 ? (
                     getCardDomains(card).map((domain) => (
-                      <span key={domain} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-200">
+                      <span key={domain} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-bold italic text-gray-200">
                         <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                           {DOMAIN_IMAGE_SLUGS.has(domain) ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -294,7 +307,7 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange, showTcgPric
                       </span>
                     ))
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-medium text-gray-200">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-600 bg-gray-800/80 px-2.5 py-1 text-xs font-bold italic text-gray-200">
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={getNoDomainIcon(card)} alt="" className="h-full w-full object-contain opacity-90" />
@@ -382,9 +395,9 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange, showTcgPric
                 {(card.description ?? card.altText) && (
                   <div className="rounded-xl border border-gray-700/80 bg-gray-800/40 p-3">
                     <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-500">{t("cards.description")}</p>
-                    <p className="text-sm leading-relaxed text-gray-300">
+                    <div className="text-sm leading-relaxed text-gray-300">
                       <CardDescription text={card.description ?? card.altText ?? ""} domain={getCardDomains(card)[0]} />
-                    </p>
+                    </div>
                   </div>
                 )}
 
@@ -394,17 +407,17 @@ export function CardDetailModal({ uuid, onClose, onCollectionChange, showTcgPric
                     <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-500">{t("cards.traits")}</p>
                     <div className="flex flex-wrap gap-2">
                       {getCardSupertypes(card).map((s) => (
-                        <span key={s} className="rounded-md bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-200 border border-amber-700/40">
+                        <span key={s} className="rounded-md bg-amber-900/30 px-2 py-0.5 text-xs font-bold italic text-amber-200 border border-amber-700/40">
                           {fmt(s)}
                         </span>
                       ))}
                       {getCardSubtypes(card).map((s) => (
-                        <span key={s} className="rounded-md bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-200 border border-blue-700/40">
+                        <span key={s} className="rounded-md bg-blue-900/30 px-2 py-0.5 text-xs font-bold italic text-blue-200 border border-blue-700/40">
                           {fmt(s)}
                         </span>
                       ))}
                       {getCardAttributes(card).map((a) => (
-                        <span key={a} className="rounded-md bg-gray-700/60 px-2 py-0.5 text-xs font-medium text-gray-300 border border-gray-600">
+                        <span key={a} className="rounded-md bg-gray-700/60 px-2 py-0.5 text-xs font-bold italic text-gray-300 border border-gray-600">
                           {fmt(a)}
                         </span>
                       ))}

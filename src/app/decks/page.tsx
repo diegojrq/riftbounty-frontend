@@ -10,6 +10,7 @@ import { useLocale } from "@/lib/locale-context";
 import { getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
 import type { Deck } from "@/types/deck";
+import { rawDeckValidationErrors, rawDeckValidationWarnings } from "@/lib/deck-validation";
 
 function DecksSkeleton() {
   return (
@@ -140,7 +141,9 @@ export default function DecksPage() {
               const runeCount = deck.runeItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
               const bfCount = deck.battlefields?.filter((b) => b.card ?? b.cardId).length ?? 0;
               const domains = legend?.cardDomains ?? [];
-              const noErrors = (deck.validation?.errors?.length ?? 0) === 0;
+              const noValidationIssues =
+                rawDeckValidationErrors(deck.validation).length === 0 &&
+                rawDeckValidationWarnings(deck.validation).length === 0;
               const structurallyComplete =
                 mainCount === 39 &&
                 runeCount === 12 &&
@@ -149,7 +152,7 @@ export default function DecksPage() {
                 !!legend &&
                 !!champion;
               const isValid =
-                noErrors &&
+                noValidationIssues &&
                 (deck.validation?.valid === true || structurallyComplete);
 
               return (

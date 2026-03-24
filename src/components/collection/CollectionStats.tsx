@@ -6,8 +6,28 @@ import { getCollection, getCollectionStats, getCollectionValue } from "@/lib/col
 import { getCard, getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
 import { useLocale } from "@/lib/locale-context";
+import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
 import type { CollectionStats as CollectionStatsType } from "@/types/collection";
 import type { Card } from "@/types/card";
+import { getCardId } from "@/lib/card-id";
+import { useCards } from "@/lib/cards-context";
+
+/** Resolve carta do catálogo quando o `id` do stats não bate byte-a-byte com o Map. */
+function resolveCatalogCard(cards: Card[], cardMap: Map<string, Card>, raw: Card): Card | undefined {
+  const id = getCardId(raw);
+  if (id) {
+    const direct = cardMap.get(id);
+    if (direct) return direct;
+    const lower = id.toLowerCase();
+    const byCase = cards.find((c) => getCardId(c).toLowerCase() === lower);
+    if (byCase) return byCase;
+  }
+  const sid = raw.scraperId ?? raw.scraper_id;
+  if (sid) {
+    return cards.find((c) => (c.scraperId ?? c.scraper_id) === sid);
+  }
+  return undefined;
+}
 
 const DOMAIN_ORDER = ["fury", "calm", "mind", "body", "chaos", "order"];
 
@@ -24,22 +44,15 @@ const TYPE_ICON: Record<string, string> = {
 };
 const DOMAIN_IMAGE_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
 
-const SET_DISPLAY_NAMES: Record<string, string> = {
-  OGN: "Origins Main Set (OGN)",
-  ogn: "Origins Main Set (OGN)",
-  Ogn: "Origins Main Set (OGN)",
-  SFD: "Spiritforged (SFD)",
-  sfd: "Spiritforged (SFD)",
-  Sfd: "Spiritforged (SFD)",
-};
+/**
+ * Miniatura retrato no hero (proporção carta TCG) — só cartas mais possuída / mais valiosa.
+ */
+const HERO_STAT_CARD_THUMB =
+  "relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg border-2 bg-gray-900/95 shadow-lg aspect-[2.5/3.5] w-[3.35rem] sm:w-[4.25rem]";
 
 function formatLabel(s: string): string {
   if (!s || s.startsWith("(")) return s;
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-}
-
-function setDisplayName(setValue: string): string {
-  return SET_DISPLAY_NAMES[setValue] ?? formatLabel(setValue);
 }
 
 function parseNumeric(value: unknown): number | null {
@@ -200,6 +213,12 @@ function StatsSkeleton({ compact = false }: { compact?: boolean }) {
 
 export function CollectionStats({ refreshTrigger = 0, breakdown = true }: CollectionStatsProps) {
   const { t, locale } = useLocale();
+  const { cards: catalogCards, cardMap } = useCards();
+  const { formatSetWithCode } = useRiotCatalogSets();
+  const setDisplayName = useCallback((setValue: string) => {
+    if (!setValue || setValue.startsWith("(")) return setValue;
+    return formatSetWithCode(setValue);
+  }, [formatSetWithCode]);
   const [stats, setStats] = useState<CollectionStatsType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -282,14 +301,35 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
     load();
   }, [load, refreshTrigger]);
 
+  /** Stats API manda carta resumida; catálogo /cards tem image_key — mescla antes da URL. */
   useEffect(() => {
-    if (!stats?.mostOwnedCard) { setMostOwnedFull(null); return; }
-    const card = stats.mostOwnedCard.card;
-    if (getCardImageUrl(card)) { setMostOwnedFull(null); return; }
+    if (!stats?.mostOwnedCard) {
+      setMostOwnedFull(null);
+      return;
+    }
+    const raw = stats.mostOwnedCard.card as Card;
+    const id = getCardId(raw);
+    const fromCatalog = resolveCatalogCard(catalogCards, cardMap, raw);
+    const merged = fromCatalog ? ({ ...fromCatalog, ...raw, id: fromCatalog.id ?? id } as Card) : raw;
+    if (getCardImageUrl(merged)) {
+      setMostOwnedFull(null);
+      return;
+    }
+    const fetchId = id || (fromCatalog ? getCardId(fromCatalog) : "");
+    if (!fetchId) {
+      setMostOwnedFull(null);
+      return;
+    }
     let cancelled = false;
-    getCard(card.uuid).then((full) => { if (!cancelled) setMostOwnedFull(full); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [stats?.mostOwnedCard]);
+    getCard(fetchId)
+      .then((full) => {
+        if (!cancelled) setMostOwnedFull(full);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [stats?.mostOwnedCard, cardMap, catalogCards]);
 
   if (loading && !stats) {
     return <StatsSkeleton compact={!breakdown} />;
@@ -341,9 +381,9 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
       <div className="relative">
       {/* Hero: completion + main numbers */}
       <div
-        className={`flex flex-wrap items-start gap-4 sm:gap-8 ${breakdown ? "mb-8" : ""}`}
+        className={`flex flex-wrap items-center gap-4 sm:gap-8 ${breakdown ? "mb-8" : ""}`}
       >
-        <div className="flex items-center gap-4 sm:gap-6">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6">
           <div className="relative flex size-24 shrink-0 items-center justify-center">
             <svg className="size-24 -rotate-90" viewBox="0 0 36 36">
               <path
@@ -427,70 +467,87 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
               </div>
             </div>
           )}
-          {stats.mostOwnedCard && (() => {
-            const mostOwnedImgUrl = getCardImageUrl(mostOwnedFull ?? stats.mostOwnedCard.card);
-            return (
-            <div className="hidden w-full items-center gap-3 sm:flex sm:w-auto">
-              <div
-                className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-gray-600 bg-gray-800 ring-2 ring-gray-700/80"
-                title={stats.mostOwnedCard.card.name}
-              >
-                {mostOwnedImgUrl ? (
-                  <CardImg
-                    src={mostOwnedImgUrl}
-                    alt={stats.mostOwnedCard.card.name}
-                    className="size-full object-cover object-[center_10%] opacity-80"
-                  />
-                ) : (
-                  <span className="text-2xl text-gray-500" aria-hidden>🃏</span>
-                )}
-              </div>
-              <div>
-                <p className="text-sm font-medium uppercase tracking-wider text-gray-500">
-                  {t("collectionStats.mostOwnedCard")}
-                </p>
-                <p className="mt-0.5 text-lg font-bold text-white">
-                  {stats.mostOwnedCard.card.name}
-                </p>
-                <p className="mt-0.5 text-xs text-gray-400">
-                  {stats.mostOwnedCard.quantity} {stats.mostOwnedCard.quantity === 1 ? t("collectionStats.copy") : t("collectionStats.copies")}
-                </p>
-              </div>
+          {(stats.mostOwnedCard || mostValuableCard) && (
+            <div className="hidden w-full flex-col gap-4 sm:flex sm:w-auto sm:flex-row sm:items-center sm:gap-6">
+              {stats.mostOwnedCard && (() => {
+                const raw = stats.mostOwnedCard.card as Card;
+                const id = getCardId(raw);
+                const fromCatalog = resolveCatalogCard(catalogCards, cardMap, raw);
+                const mergedForUrl: Card = fromCatalog
+                  ? ({ ...fromCatalog, ...raw, id: fromCatalog.id ?? id } as Card)
+                  : mostOwnedFull ?? raw;
+                const mostOwnedImgUrl = getCardImageUrl(mergedForUrl);
+                return (
+                  <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
+                    <div
+                      className={`${HERO_STAT_CARD_THUMB} border-gray-600 shadow-black/40`}
+                      title={stats.mostOwnedCard.card.name}
+                    >
+                      {mostOwnedImgUrl ? (
+                        <CardImg
+                          src={mostOwnedImgUrl}
+                          alt={stats.mostOwnedCard.card.name}
+                          className="size-full object-cover object-center opacity-95"
+                        />
+                      ) : (
+                        <span className="text-xl text-gray-500 sm:text-2xl" aria-hidden>🃏</span>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 sm:flex-initial sm:max-w-[14rem]">
+                      <p className="text-sm font-medium uppercase tracking-wider text-gray-500">
+                        {t("collectionStats.mostOwnedCard")}
+                      </p>
+                      <p className="mt-0.5 truncate text-lg font-bold text-white">
+                        {stats.mostOwnedCard.card.name}
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-300">
+                        {stats.mostOwnedCard.quantity}{" "}
+                        {stats.mostOwnedCard.quantity === 1 ? t("collectionStats.copy") : t("collectionStats.copies")}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+              {mostValuableCard && (() => {
+                const raw = mostValuableCard.card as Card;
+                const id = getCardId(raw);
+                const fromCatalog = resolveCatalogCard(catalogCards, cardMap, raw);
+                const mergedForUrl: Card = fromCatalog
+                  ? ({ ...fromCatalog, ...raw, id: fromCatalog.id ?? id } as Card)
+                  : raw;
+                const mostValuableImgUrl = getCardImageUrl(mergedForUrl);
+                return (
+                  <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
+                    <div
+                      className={`${HERO_STAT_CARD_THUMB} border-emerald-600/80 shadow-emerald-950/35`}
+                      title={mostValuableCard.card.name}
+                    >
+                      {mostValuableImgUrl ? (
+                        <CardImg
+                          src={mostValuableImgUrl}
+                          alt={mostValuableCard.card.name}
+                          className="size-full object-cover object-center opacity-95"
+                        />
+                      ) : (
+                        <span className="text-xl text-emerald-300 sm:text-2xl" aria-hidden>💰</span>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1 sm:flex-initial sm:max-w-[14rem]">
+                      <p className="text-sm font-medium uppercase tracking-wider text-emerald-400">
+                        {t("collectionStats.mostValuableCard")}
+                      </p>
+                      <p className="mt-0.5 truncate text-lg font-bold text-white">
+                        {mostValuableCard.card.name}
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-300">
+                        {formatCurrency(mostValuableCard.totalValue, currency, locale)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
-            );
-          })()}
-          {mostValuableCard && (() => {
-            const mostValuableImgUrl = getCardImageUrl(mostValuableCard.card);
-            return (
-              <div className="hidden w-full items-center gap-3 sm:flex sm:w-auto">
-                <div
-                  className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-emerald-600/70 bg-gray-800 ring-2 ring-emerald-500/30"
-                  title={mostValuableCard.card.name}
-                >
-                  {mostValuableImgUrl ? (
-                    <CardImg
-                      src={mostValuableImgUrl}
-                      alt={mostValuableCard.card.name}
-                      className="size-full object-cover object-[center_10%] opacity-85"
-                    />
-                  ) : (
-                    <span className="text-2xl text-emerald-300" aria-hidden>💰</span>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-medium uppercase tracking-wider text-emerald-400">
-                    {t("collectionStats.mostValuableCard")}
-                  </p>
-                  <p className="mt-0.5 text-lg font-bold text-white">
-                    {mostValuableCard.card.name}
-                  </p>
-                  <p className="mt-0.5 text-xs text-gray-300">
-                    {formatCurrency(mostValuableCard.totalValue, currency, locale)}
-                  </p>
-                </div>
-              </div>
-            );
-          })()}
+          )}
         </div>
       </div>
       {!breakdown && (
@@ -549,7 +606,7 @@ export function CollectionStats({ refreshTrigger = 0, breakdown = true }: Collec
                       ? []
                       : topValuableCards.map((entry, index) => (
                           <div
-                            key={`${entry.card.uuid}-${index}`}
+                            key={`${getCardId(entry.card as Card)}-${index}`}
                             className="grid grid-cols-[20px_1fr_auto] items-center gap-2 rounded border border-gray-700/40 bg-gray-800/30 px-2 py-1.5"
                           >
                             <span className="text-xs font-semibold tabular-nums text-emerald-400">#{index + 1}</span>

@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useAuth } from "@/lib/auth-context";
 import { useCards } from "@/lib/cards-context";
 import { useLocale } from "@/lib/locale-context";
+import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
 
 const DOMAINS = [
   { slug: "fury",  color: "from-red-900/40 to-transparent",   ring: "ring-red-700/50"   },
@@ -29,12 +30,20 @@ const FEATURE_ICONS = [
   <svg key="decks" xmlns="http://www.w3.org/2000/svg" width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 17.5 16 19l-2-2"/><circle cx="17" cy="17" r="5"/></svg>,
 ];
 
-const SETS = [{ code: "OGN", nameKey: "home.sets.OGN", descKey: "home.sets.OGN_desc", color: "from-amber-900/20" }, { code: "SFD", nameKey: "home.sets.SFD", descKey: "home.sets.SFD_desc", color: "from-blue-900/20" }];
+const SET_CARD_COLORS = [
+  "from-amber-900/20",
+  "from-blue-900/20",
+  "from-violet-900/25",
+  "from-emerald-900/20",
+  "from-rose-900/20",
+  "from-cyan-900/20",
+] as const;
 
 export default function HomePage() {
   const { user } = useAuth();
   const { cards } = useCards();
   const { t } = useLocale();
+  const { sets } = useRiotCatalogSets();
   const cardCount = cards.length;
 
   return (
@@ -68,8 +77,20 @@ export default function HomePage() {
           <p className="mx-auto mb-3 max-w-xl text-lg font-medium text-gray-300 sm:text-xl">
             {t("home.tagline")}
           </p>
-          <p className="mx-auto mb-10 max-w-lg text-sm text-gray-500">
+          <p className="mx-auto mb-6 max-w-lg text-sm text-gray-500">
             {t("home.heroDesc")}
+          </p>
+
+          <p className="mx-auto mb-8">
+            <Link
+              href="/cards?set=UNL"
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/35 bg-gradient-to-r from-emerald-950/70 via-emerald-900/35 to-emerald-950/70 px-3.5 py-2 text-sm font-medium text-emerald-100 shadow-[0_0_24px_-14px_rgba(16,185,129,0.85)] backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-emerald-400/60 hover:from-emerald-900/75 hover:to-emerald-900/60"
+            >
+              <span className="card-flag-new--foil relative inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-950 ring-1 ring-amber-900/25">
+                <span className="relative z-20">Novo</span>
+              </span>
+              {t("home.unleashedAvailable")}
+            </Link>
           </p>
 
           {/* CTAs */}
@@ -169,17 +190,19 @@ export default function HomePage() {
             {t("home.availableSets")}
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            {SETS.map((set) => (
+            {sets.map((set, i) => (
               <Link
                 key={set.code}
                 href={`/cards?set=${set.code}`}
-                className={`group flex min-w-[200px] flex-1 flex-col rounded-2xl border border-gray-800 bg-gradient-to-br ${set.color} to-gray-900 p-6 transition hover:border-gray-700 hover:brightness-110`}
+                className={`group flex min-w-[200px] flex-1 flex-col rounded-2xl border border-gray-800 bg-gradient-to-br ${SET_CARD_COLORS[i % SET_CARD_COLORS.length]} to-gray-900 p-6 transition hover:border-gray-700 hover:brightness-110`}
               >
                 <span className="mb-1 text-xs font-bold uppercase tracking-widest text-gray-600 group-hover:text-gray-500">
                   {set.code}
                 </span>
-                <span className="mb-2 text-lg font-bold text-white">{t(set.nameKey)}</span>
-                <span className="text-sm text-gray-500">{t(set.descKey)}</span>
+                <span className="mb-2 text-lg font-bold text-white">{set.name}</span>
+                <span className="text-sm text-gray-500">
+                  {set.description?.trim() || t("home.setDescriptionFallback")}
+                </span>
               </Link>
             ))}
           </div>

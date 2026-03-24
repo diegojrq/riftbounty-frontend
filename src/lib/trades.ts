@@ -9,6 +9,7 @@ import type {
   TradeStatusFilter,
   TradeRoleFilter,
 } from "@/types/trade";
+import type { PublicProfileCard } from "@/types/auth";
 
 const BASE = "/trades";
 
@@ -25,14 +26,19 @@ function normalizeItem(raw: any, initiatorId: string): TradeItem {
       ? "initiator"
       : "recipient";
 
+  const cardId = raw.cardId ?? raw.cardUuid ?? "";
+  let card: PublicProfileCard | null = raw.card ?? null;
+  if (card) {
+    const id = card.id ?? card.uuid ?? cardId;
+    card = { ...card, id };
+  }
   return {
     id: raw.id,
     tradeId: raw.tradeId ?? "",
-    // API may use cardUuid or cardId
-    cardId: raw.cardId ?? raw.cardUuid ?? "",
+    cardId,
     quantity: raw.quantity ?? 1,
     side,
-    card: raw.card ?? null,
+    card,
   };
 }
 
@@ -60,11 +66,15 @@ function normalizeTrade(raw: Record<string, any>): Trade {
 
   const initiatorItems: TradeItem[] =
     raw.initiatorItems != null
-      ? raw.initiatorItems
+      ? raw.initiatorItems.map((i: any) =>
+          normalizeItem({ ...i, side: i.side ?? "initiator" }, initiatorId)
+        )
       : normalizedItems.filter((i) => i.side === "initiator");
   const recipientItems: TradeItem[] =
     raw.recipientItems != null
-      ? raw.recipientItems
+      ? raw.recipientItems.map((i: any) =>
+          normalizeItem({ ...i, side: i.side ?? "recipient" }, initiatorId)
+        )
       : normalizedItems.filter((i) => i.side === "recipient");
 
   // currentTurnSlug: derive from status if not provided

@@ -11,18 +11,39 @@ import React, {
 } from "react";
 import { apiGet } from "./api";
 import {
-  CACHE_FRESH_MS,
   clearCache,
   isCacheStale,
   readCache,
   writeCache,
 } from "./card-cache";
 import type { Card, CardsListResponse } from "@/types/card";
+import { getCardId } from "./card-id";
+
+/**
+ * Mesma ordem lógica do backend (collector_number asc) e um registro por `id` (catálogo /cards).
+ * Evita desalinhamento carta/preço quando várias páginas são mescladas em paralelo
+ * ou há duplicatas no array.
+ */
+export function normalizeCatalogCards(cards: Card[]): Card[] {
+  const byId = new Map<string, Card>();
+  for (const c of cards) {
+    const id = getCardId(c);
+    if (!id) continue;
+    byId.set(id, { ...c, id });
+  }
+  return Array.from(byId.values()).sort((a, b) => {
+    const sa = String(a.collectorNumber ?? a.collector_number ?? "");
+    const sb = String(b.collectorNumber ?? b.collector_number ?? "");
+    const cmp = sa.localeCompare(sb, undefined, { numeric: true });
+    if (cmp !== 0) return cmp;
+    return String(getCardId(a)).localeCompare(String(getCardId(b)));
+  });
+}
 
 interface CardsContextValue {
   /** Todas as cartas do catálogo (campos estáticos, sem inCollection/collectionQuantity). */
   cards: Card[];
-  /** Lookup O(1) por uuid. */
+  /** Lookup O(1) por `id` (GET /v1/cards). */
   cardMap: Map<string, Card>;
   /** True enquanto o fetch inicial ainda está acontecendo. */
   loading: boolean;
@@ -67,7 +88,7 @@ async function fetchAllCards(): Promise<Card[]> {
     items.push(...pages.flat());
   }
 
-  return items;
+  return normalizeCatalogCards(items);
 }
 
 export function CardsProvider({ children }: { children: React.ReactNode }) {
@@ -81,21 +102,15 @@ export function CardsProvider({ children }: { children: React.ReactNode }) {
     fetchedRef.current = true;
 
     const cached = readCache();
-    const cacheAge = cached ? Date.now() - cached.cachedAt : Infinity;
 
     // Mostra o cache imediatamente para melhor UX (stale-while-revalidate)
     if (!force && cached) {
-      setCards(cached.cards);
+      setCards(normalizeCatalogCards(cached.cards));
     }
 
     // Sem cache nenhum: ativa loading imediatamente para o usuário não ver "no cards"
     if (!cached) {
       setLoading(true);
-    }
-
-    // Cache muito fresco: confia sem bater no endpoint de versão
-    if (!force && cached && cacheAge < CACHE_FRESH_MS) {
-      return;
     }
 
     // Verifica versão no backend (chamada leve)
@@ -119,7 +134,7 @@ export function CardsProvider({ children }: { children: React.ReactNode }) {
       }
       writeCache(fetched, backendVersion ?? undefined);
       const fresh = readCache();
-      setCards(fresh?.cards ?? fetched);
+      setCards(normalizeCatalogCards(fresh?.cards ?? fetched));
     } catch {
       // Mantém o que estiver no estado; permite retry na próxima navegação
       fetchedRef.current = false;
@@ -138,10 +153,12 @@ export function CardsProvider({ children }: { children: React.ReactNode }) {
     load(true);
   }, [load]);
 
-  const cardMap = useMemo(
-    () => new Map(cards.map((c) => [c.uuid, c])),
-    [cards]
-  );
+  const cardMap = useMemo(() => {
+    const entries = cards
+      .map((c) => [getCardId(c), c] as [string, Card])
+      .filter((e): e is [string, Card] => e[0] !== "");
+    return new Map<string, Card>(entries);
+  }, [cards]);
 
   const value = useMemo<CardsContextValue>(
     () => ({ cards, cardMap, loading, invalidate }),

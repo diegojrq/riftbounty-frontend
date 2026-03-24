@@ -72,7 +72,8 @@ export interface CollectionStatsByType {
 /** GET /v1/collections/me/stats – most owned card (card with highest quantity in collection) */
 export interface CollectionStatsMostOwnedCard {
   card: {
-    uuid: string;
+    id: string;
+    uuid?: string;
     scraperId?: string;
     scraper_id?: string;
     name: string;

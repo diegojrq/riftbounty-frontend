@@ -7,7 +7,8 @@ import { getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
 
 interface CardHoverPreviewProps {
-  card: Card;
+  /** Pode ser null em itens de troca (GET /trades) se o backend não embutir a carta */
+  card: Card | null | undefined;
   children: React.ReactNode;
   /** When true, cards with type Battlefield use landscape aspect (only set on deck edit/view) */
   battlefieldAsLandscape?: boolean;
@@ -34,6 +35,10 @@ export function CardHoverPreview({ card, children, battlefieldAsLandscape = fals
   useEffect(() => {
     setPortalRoot(document.body);
   }, []);
+
+  if (card == null) {
+    return <>{children}</>;
+  }
 
   const isLandscape =
     card.orientation?.toLowerCase() === "landscape" ||
@@ -117,7 +122,7 @@ export function CardHoverPreview({ card, children, battlefieldAsLandscape = fals
           width: "calc(100% * 2.5 / 3.5)",
           height: "calc(100% * 3.5 / 2.5)",
           objectFit: "cover",
-          transform: "translate(-50%, -50%) rotate(90deg)",
+          transform: "translate(-50%, -50%) rotate(-90deg)",
         }}
       />
     </div>
@@ -151,7 +156,7 @@ export function CardHoverPreview({ card, children, battlefieldAsLandscape = fals
             zIndex: 2147483647,
             pointerEvents: "none",
           }}
-          className="overflow-hidden rounded-lg border border-gray-600 shadow-2xl"
+          className="overflow-hidden rounded-lg shadow-2xl"
         >
           {previewImg}
         </div>,

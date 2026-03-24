@@ -1,7 +1,8 @@
 "use client";
 
 import type { Card } from "@/types/card";
-import { getCardImageUrl } from "@/lib/cards";
+import { cardHasFlag, getCardImageUrl } from "@/lib/cards";
+import { CardNewFlagChip } from "@/components/cards/CardNewFlagChip";
 import { CardImg } from "@/components/cards/CardImg";
 import { useLocale } from "@/lib/locale-context";
 
@@ -10,7 +11,7 @@ interface CardTileProps {
   inCollection?: boolean;
   quantity?: number;
   showCollectionActions?: boolean;
-  /** When true, the card image links to /cards/[uuid] */
+  /** When true, the card image links to /cards/[id] */
   linkToDetail?: boolean;
   /** When linkToDetail is true, add ?from=collection or ?from=cards so the detail page can show the right back link */
   detailFrom?: "collection" | "cards";
@@ -54,8 +55,9 @@ function IconMinus({ className }: { className?: string }) {
 
 const portraitClass = "aspect-[2.5/3.5]";
 const landscapeClass = "aspect-[3.5/2.5]";
+/** `z-0` cria contexto de empilhamento para filhos (ex. chip z-30) não ficarem acima da barra de filtros sticky (z-20). */
 const cardBaseClass =
-  "group relative w-full overflow-hidden rounded-lg border border-gray-700/50 bg-gray-800 shadow-lg transition-all duration-200 ease-out hover:-translate-y-2 hover:shadow-xl hover:shadow-black/30";
+  "group relative z-0 w-full overflow-hidden rounded-lg border border-gray-700/50 bg-gray-800 shadow-lg transition-all duration-200 ease-out hover:-translate-y-2 hover:shadow-xl hover:shadow-black/30";
 
 const SUPPRESS_CARD_IMAGES = false;
 
@@ -69,11 +71,13 @@ function parseTcgPrice(value: unknown): number | null {
   return null;
 }
 
+/** Mesma prioridade que CollectionStats.getCardTcgPrice (market → mid → low → high). */
 function getChipPrice(card: Card): number | null {
   const market = parseTcgPrice(card.tcgMarketPrice ?? card.tcg_market_price);
   const mid = parseTcgPrice(card.tcgMidPrice ?? card.tcg_mid_price);
   const low = parseTcgPrice(card.tcgLowPrice ?? card.tcg_low_price);
-  return market ?? mid ?? low;
+  const high = parseTcgPrice(card.tcgHighPrice ?? card.tcg_high_price);
+  return market ?? mid ?? low ?? high;
 }
 
 function formatUsd(value: number): string {
@@ -127,7 +131,7 @@ export function CardTile({
        * Imagem portrait dentro de container landscape:
        * - largura do img = altura do container  → calc(100% * 2.5/3.5) da largura do container
        * - altura do img  = largura do container → calc(100% * 3.5/2.5) da altura do container
-       * - centralizado e rotacionado 90° → visual preenche exatamente o container
+       * - centralizado e rotacionado -90° → mesmo sentido que o modal de detalhes
        */
       <CardImg
         src={cardImageUrl}
@@ -139,7 +143,7 @@ export function CardTile({
           width: "calc(100% * 2.5 / 3.5)",
           height: "calc(100% * 3.5 / 2.5)",
           objectFit: "cover",
-          transform: "translate(-50%, -50%) rotate(90deg)",
+          transform: "translate(-50%, -50%) rotate(-90deg)",
         }}
         className={useGrayscale ? "grayscale" : ""}
       />
@@ -154,11 +158,16 @@ export function CardTile({
 
   const collectorNumber = card.collector_number ?? card.collectorNumber;
 
+  const showNewFlag = cardHasFlag(card, "new");
+
   return (
-    <Wrapper className={cardClassName}>
+    <Wrapper
+      className={`${cardClassName}${showNewFlag ? " !overflow-visible pt-3" : ""}`}
+    >
+      {showNewFlag && <CardNewFlagChip />}
       {tcgChipPrice != null && !showCollectionActions && (
         <div className="pointer-events-none absolute bottom-2 left-2 z-30">
-          <span className="inline-flex items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2.5 py-1 text-xs font-semibold text-emerald-50 shadow-md">
+          <span className="inline-flex items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2.5 py-1 text-xs font-bold italic text-emerald-50 shadow-md">
             {formatUsd(tcgChipPrice)}
           </span>
         </div>
@@ -245,14 +254,14 @@ export function CardTile({
                 {(collectorNumber || tcgChipPrice != null) && (
                   <div className="flex items-center justify-between gap-1">
                     {tcgChipPrice != null ? (
-                      <span className="inline-flex h-9 items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2 text-xs font-semibold text-emerald-50 shadow-md">
+                      <span className="inline-flex h-9 items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2 text-xs font-bold italic text-emerald-50 shadow-md">
                         {formatUsd(tcgChipPrice)}
                       </span>
                     ) : (
                       <span />
                     )}
                     {collectorNumber && (
-                      <span className="flex h-9 min-w-9 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold tabular-nums text-gray-300">
+                      <span className="flex h-9 min-w-9 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold italic tabular-nums text-gray-300">
                         {collectorNumber}
                       </span>
                     )}
@@ -326,14 +335,14 @@ export function CardTile({
                 {(collectorNumber || tcgChipPrice != null) && (
                   <div className="flex items-center justify-between gap-1">
                     {tcgChipPrice != null ? (
-                      <span className="inline-flex h-9 items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2 text-xs font-semibold text-emerald-50 shadow-md">
+                      <span className="inline-flex h-9 items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2 text-xs font-bold italic text-emerald-50 shadow-md">
                         {formatUsd(tcgChipPrice)}
                       </span>
                     ) : (
                       <span />
                     )}
                     {collectorNumber && (
-                      <span className="flex h-9 min-w-9 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold tabular-nums text-gray-300">
+                      <span className="flex h-9 min-w-9 shrink-0 items-center justify-center rounded-md border border-white/20 bg-black/70 px-2 text-xs font-bold italic tabular-nums text-gray-300">
                         {collectorNumber}
                       </span>
                     )}

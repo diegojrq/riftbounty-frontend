@@ -44,12 +44,14 @@ export async function DELETE(
 const ALLOWED_PATH_PREFIXES = [
   "auth",
   "cards",
+  "abilities",
   "trades",
   "collections",
   "decks",
   "notifications",
   "admin",
   "donations",
+  "riot-catalog",
 ];
 
 function validatePath(segments: string[]): string {
