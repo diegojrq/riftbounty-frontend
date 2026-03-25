@@ -124,7 +124,7 @@ function DeckCardThumb({
             <div className="flex h-full items-center justify-center p-2 text-center text-[10px] leading-tight text-gray-500">{label}</div>
           )}
           {showQtyBadge && (
-            <span className="absolute bottom-1.5 right-1.5 z-20 flex size-9 shrink-0 items-center justify-center rounded-md border border-white/30 bg-black/70 text-xs font-bold tabular-nums text-white shadow">
+            <span className="absolute bottom-1.5 right-1.5 z-20 flex size-9 shrink-0 items-center justify-center rounded-md border border-zinc-400/70 bg-zinc-950 text-xs font-bold tabular-nums text-white shadow-md">
               ×{quantity}
             </span>
           )}
@@ -146,30 +146,32 @@ function CardSlot({ card, label }: { card: Card | null | undefined; label: strin
               <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{label}</span>
 
       {card ? (
-        <div className={`relative w-full overflow-hidden rounded-xl border border-gray-700 bg-gray-800 shadow-xl ${isLandscape ? "aspect-[3.5/2.5]" : "aspect-[2.5/3.5]"}`}>
-          {getCardImageUrl(card) ? (
-            isLandscape ? (
-              <CardImg
-                src={getCardImageUrl(card)!}
-                alt={displayName}
-                style={{
-                  position: "absolute", top: "50%", left: "50%",
-                  width: "calc(100% * 2.5 / 3.5)", height: "calc(100% * 3.5 / 2.5)",
-                  objectFit: "cover", transform: "translate(-50%, -50%) rotate(-90deg)",
-                }}
-              />
+        <CardHoverPreview card={card} battlefieldAsLandscape={isLandscape}>
+          <div className={`relative w-full overflow-hidden rounded-xl border border-gray-700 bg-gray-800 shadow-xl ${isLandscape ? "aspect-[3.5/2.5]" : "aspect-[2.5/3.5]"}`}>
+            {getCardImageUrl(card) ? (
+              isLandscape ? (
+                <CardImg
+                  src={getCardImageUrl(card)!}
+                  alt={displayName}
+                  style={{
+                    position: "absolute", top: "50%", left: "50%",
+                    width: "calc(100% * 2.5 / 3.5)", height: "calc(100% * 3.5 / 2.5)",
+                    objectFit: "cover", transform: "translate(-50%, -50%) rotate(-90deg)",
+                  }}
+                />
+              ) : (
+                <CardImg src={getCardImageUrl(card)!} alt={displayName} className="absolute inset-0 h-full w-full object-cover" />
+              )
             ) : (
-              <CardImg src={getCardImageUrl(card)!} alt={displayName} className="absolute inset-0 h-full w-full object-cover" />
-            )
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center p-3 text-center">
-              <span className="text-sm text-gray-400">{displayName}</span>
+              <div className="absolute inset-0 flex items-center justify-center p-3 text-center">
+                <span className="text-sm text-gray-400">{displayName}</span>
+              </div>
+            )}
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
+              <p className="truncate text-xs font-medium text-white">{displayName}</p>
             </div>
-          )}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
-            <p className="truncate text-xs font-medium text-white">{displayName}</p>
           </div>
-        </div>
+        </CardHoverPreview>
       ) : (
         <div className="flex aspect-[2.5/3.5] w-full items-center justify-center rounded-xl border-2 border-dashed border-gray-700 bg-gray-800/30">
           <span className="text-xs text-gray-600">{t("decks.empty")}</span>
@@ -394,23 +396,25 @@ export default function DeckViewPage() {
                 {([1, 2, 3] as const).map((pos) => {
                   const bf = deck.battlefields?.find((b) => b.position === pos);
                   return bf?.card ? (
-                    <div key={pos} className="relative overflow-hidden rounded-lg border border-gray-700 bg-gray-800 aspect-[3.5/2.5]">
-                      {getCardImageUrl(bf.card) ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={getCardImageUrl(bf.card)!}
-                          alt={getCardDisplayName(bf.card)}
-                          style={{
-                            position: "absolute", top: "50%", left: "50%",
-                            width: "calc(100% * 2.5 / 3.5)", height: "calc(100% * 3.5 / 2.5)",
-                            objectFit: "cover", transform: "translate(-50%, -50%) rotate(-90deg)",
-                          }}
-                        />
-                      ) : null}
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
-                        <p className="truncate text-xs font-medium text-white">{getCardDisplayName(bf.card)}</p>
+                    <CardHoverPreview key={pos} card={bf.card} battlefieldAsLandscape>
+                      <div className="relative aspect-[3.5/2.5] w-full overflow-hidden rounded-lg border border-gray-700 bg-gray-800">
+                        {getCardImageUrl(bf.card) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={getCardImageUrl(bf.card)!}
+                            alt={getCardDisplayName(bf.card)}
+                            style={{
+                              position: "absolute", top: "50%", left: "50%",
+                              width: "calc(100% * 2.5 / 3.5)", height: "calc(100% * 3.5 / 2.5)",
+                              objectFit: "cover", transform: "translate(-50%, -50%) rotate(-90deg)",
+                            }}
+                          />
+                        ) : null}
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
+                          <p className="truncate text-xs font-medium text-white">{getCardDisplayName(bf.card)}</p>
+                        </div>
                       </div>
-                    </div>
+                    </CardHoverPreview>
                   ) : (
                     <div key={pos} className="flex aspect-[3.5/2.5] items-center justify-center rounded-lg border-2 border-dashed border-gray-700 bg-gray-800/30">
                       <span className="text-xs text-gray-600">{t("decks.slotEmpty", { pos })}</span>
