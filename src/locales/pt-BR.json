@@ -512,6 +512,11 @@
     "failedToAddRune": "Falha ao adicionar runa",
     "failedToAddSideboard": "Falha ao adicionar ao sideboard",
     "failedToSetBattlefield": "Falha ao definir campo de batalha",
+    "mainDeckFull": "O deck principal já tem 39 cartas.",
+    "runeDeckFull": "O deck de runas já tem 12 runas.",
+    "sideboardFull": "O sideboard já tem 8 cartas.",
+    "copyLimitReached": "Já há 3 cópias desta carta entre o deck principal e o sideboard.",
+    "clientCopyLimitDetail": "Principal + sideboard: no máximo 3 cópias por carta (\"{name}\" tem {count}).",
     "deleteDeckConfirm": "Excluir este deck?",
     "youHaveInCollection": "Você tem {count} na sua coleção",
     "inLegendChampion": "em lenda/campeão"

@@ -40,8 +40,70 @@ import {
 import type { Card } from "@/types/card";
 import type { Deck } from "@/types/deck";
 import { getCardId } from "@/lib/card-id";
+import { toast } from "sonner";
 
 const DOMAINS = ["fury", "calm", "mind", "body", "chaos", "order"] as const;
+
+/** Cópias da mesma carta no principal + sideboard (limite de 3; independente da coleção). */
+function combinedMainAndSbQtyForCard(cardId: string, deck: Deck): number {
+  const mainQty = (deck.mainItems ?? []).reduce(
+    (s, it) => s + ((getCardId(it.card as Card) || it.cardId) === cardId ? it.quantity : 0),
+    0
+  );
+  const sbQty = (deck.sideboardItems ?? []).reduce(
+    (s, it) => s + ((getCardId(it.card as Card) || it.cardId) === cardId ? it.quantity : 0),
+    0
+  );
+  return mainQty + sbQty;
+}
+
+function aggregateMainSideboardQtyByCardId(deck: Deck): Map<string, { name: string; qty: number }> {
+  const qtyById = new Map<string, { name: string; qty: number }>();
+  for (const item of deck.mainItems ?? []) {
+    const id = getCardId(item.card as Card) || item.cardId;
+    if (!id) continue;
+    const prev = qtyById.get(id);
+    const nm = item.card?.name ?? id;
+    qtyById.set(id, { name: prev?.name ?? nm, qty: (prev?.qty ?? 0) + item.quantity });
+  }
+  for (const item of deck.sideboardItems ?? []) {
+    const id = getCardId(item.card as Card) || item.cardId;
+    if (!id) continue;
+    const prev = qtyById.get(id);
+    const nm = item.card?.name ?? id;
+    qtyById.set(id, { name: prev?.name ?? nm, qty: (prev?.qty ?? 0) + item.quantity });
+  }
+  return qtyById;
+}
+
+function hasMainSideboardCopyOverflow(deck: Deck | null | undefined): boolean {
+  if (!deck) return false;
+  for (const { qty } of aggregateMainSideboardQtyByCardId(deck).values()) {
+    if (qty > 3) return true;
+  }
+  return false;
+}
+
+function mainSideboardCopyViolationNames(deck: Deck): Set<string> {
+  const names = new Set<string>();
+  for (const { name, qty } of aggregateMainSideboardQtyByCardId(deck).values()) {
+    if (qty > 3 && name) names.add(name.toLowerCase());
+  }
+  return names;
+}
+
+function buildClientCopyLimitMessages(
+  deck: Deck,
+  t: (key: string, opts?: Record<string, string | number>) => string
+): string[] {
+  const out: string[] = [];
+  for (const { name, qty } of aggregateMainSideboardQtyByCardId(deck).values()) {
+    if (qty > 3) {
+      out.push(t("decks.clientCopyLimitDetail", { name, count: qty }));
+    }
+  }
+  return out;
+}
 
 function CardWarning({ errors }: { errors: string[] }) {
   const [pos, setPos] = useState<{ top: number; left: number; above: boolean } | null>(null);
@@ -290,8 +352,13 @@ function getNextPicker(deck: Deck, t: DeckValidationTranslate): PickerMode {
     if (match) cardErrors.set(match[1].toLowerCase(), true);
   }
 
+  const clientCopyViolations = mainSideboardCopyViolationNames(deck);
   const sectionHasErrors = (items: { card?: { name?: string } | null }[]) =>
-    items.some((i) => cardErrors.has(i.card?.name?.toLowerCase() ?? ""));
+    items.some(
+      (i) =>
+        cardErrors.has(i.card?.name?.toLowerCase() ?? "") ||
+        clientCopyViolations.has(i.card?.name?.toLowerCase() ?? "")
+    );
 
   const mainCount = deck.mainItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   if (mainCount < 39 || sectionHasErrors(deck.mainItems ?? [])) return "main";
@@ -398,17 +465,8 @@ export default function DeckBuilderPage() {
   const [battlefieldSlotBeingEdited, setBattlefieldSlotBeingEdited] = useState<1 | 2 | 3 | null>(null);
   const [mobilePickerOpen, setMobilePickerOpen] = useState(false);
   const [addAnimations, setAddAnimations] = useState<Map<string, string[]>>(new Map());
-  const [deckMutationLoading, setDeckMutationLoading] = useState(false);
   const prevValidRef = useRef<boolean | null>(null);
 
-  async function runWithDeckMutation<T>(fn: () => Promise<T>): Promise<T> {
-    setDeckMutationLoading(true);
-    try {
-      return await fn();
-    } finally {
-      setDeckMutationLoading(false);
-    }
-  }
   const pickerContainerRef = useRef<HTMLDivElement>(null);
   const savedScrollRef = useRef<number>(0);
 
@@ -599,6 +657,10 @@ export default function DeckBuilderPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picker]);
 
+  const clientCopyLimitErrors = useMemo(() => {
+    if (!deck) return [] as string[];
+    return buildClientCopyLimitMessages(deck, t);
+  }, [deck, t]);
 
   // Opens the modal only when deck transitions from invalid → valid during editing
   useEffect(() => {
@@ -613,7 +675,9 @@ export default function DeckBuilderPage() {
     const noErrors = rawDeckValidationErrors(deck.validation).length === 0;
     const noWarnings = rawDeckValidationWarnings(deck.validation).length === 0;
     const validationValid = deck.validation?.valid === true;
-    const isValid = noErrors && noWarnings && (validationValid || structurallyComplete);
+    const noClientCopyOverflow = !hasMainSideboardCopyOverflow(deck);
+    const isValid =
+      noErrors && noWarnings && (validationValid || structurallyComplete) && noClientCopyOverflow;
     if (isValid && prevValidRef.current !== true) {
       setShowValidModal(true);
     }
@@ -634,9 +698,9 @@ export default function DeckBuilderPage() {
     }
   }
 
-  async function handleSetLegend(card: Card) {
+  function handleSetLegend(card: Card) {
     if (!deck) return;
-    await runWithDeckMutation(async () => {
+    void (async () => {
       try {
         const currentChampion = deck.championCard ?? deck.champion;
         if (currentChampion) {
@@ -649,12 +713,12 @@ export default function DeckBuilderPage() {
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToSetLegend"));
       }
-    });
+    })();
   }
 
-  async function handleSetChampion(card: Card) {
+  function handleSetChampion(card: Card) {
     if (!deck) return;
-    await runWithDeckMutation(async () => {
+    void (async () => {
       try {
         const updated = await setChampion(deck.id, getCardId(card));
         setDeck(updated);
@@ -663,7 +727,6 @@ export default function DeckBuilderPage() {
         if (next === "battlefields") setBattlefieldSlotBeingEdited(null);
         setMobilePickerOpen(false);
 
-        // Auto-name deck as "Legend / Champion" when deck has no name yet
         if (!(deck.name?.trim())) {
           const legendObj = updated.legendCard ?? updated.legend;
           const legendName = legendObj?.name ?? (legendObj as { card?: { name?: string } })?.card?.name;
@@ -682,30 +745,45 @@ export default function DeckBuilderPage() {
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToSetChampion"));
       }
-    });
+    })();
   }
 
-  async function handleAddMain(card: Card) {
+  function handleAddMain(card: Card) {
     if (!deck) return;
+    const cid = getCardId(card);
+    const mCount = deck.mainItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
+    if (mCount >= 39) {
+      toast.warning(t("decks.mainDeckFull"));
+      return;
+    }
+    if (combinedMainAndSbQtyForCard(cid, deck) >= 3) {
+      toast.warning(t("decks.copyLimitReached"));
+      return;
+    }
     savePickerScroll();
-    flashCard(getCardId(card));
-    await runWithDeckMutation(async () => {
+    flashCard(cid);
+    void (async () => {
       try {
-        const updated = await addMainCard(deck.id, getCardId(card), 1);
+        const updated = await addMainCard(deck.id, cid, 1);
         setDeck(updated);
         setPicker(getNextPicker(updated, t));
         restorePickerScroll();
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToAddCard"));
       }
-    });
+    })();
   }
 
-  async function handleAddRune(card: Card) {
+  function handleAddRune(card: Card) {
     if (!deck) return;
+    const rc = deck.runeItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
+    if (rc >= 12) {
+      toast.warning(t("decks.runeDeckFull"));
+      return;
+    }
     savePickerScroll();
     flashCard(getCardId(card));
-    await runWithDeckMutation(async () => {
+    void (async () => {
       try {
         const updated = await addRuneCard(deck.id, getCardId(card), 1);
         setDeck(updated);
@@ -714,40 +792,48 @@ export default function DeckBuilderPage() {
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToAddRune"));
       }
-    });
+    })();
   }
 
-  async function handleAddSideboard(card: Card) {
+  function handleAddSideboard(card: Card) {
     if (!deck) return;
+    const cidSb = getCardId(card);
+    const sbTotal = deck.sideboardItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
+    if (sbTotal >= 8) {
+      toast.warning(t("decks.sideboardFull"));
+      return;
+    }
+    if (combinedMainAndSbQtyForCard(cidSb, deck) >= 3) {
+      toast.warning(t("decks.copyLimitReached"));
+      return;
+    }
     savePickerScroll();
-    flashCard(getCardId(card));
-    await runWithDeckMutation(async () => {
+    flashCard(cidSb);
+    void (async () => {
       try {
-        const updated = await addSideboardCard(deck.id, getCardId(card), 1);
+        const updated = await addSideboardCard(deck.id, cidSb, 1);
         setDeck(updated);
-        // Mantém no sideboard; nunca redirecionamos para sideboard, mas quem já está lá fica
         setPicker("sideboard");
         restorePickerScroll();
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToAddSideboard"));
       }
-    });
+    })();
   }
 
-  async function handleSetBattlefield(position: 1 | 2 | 3, card: Card) {
+  function handleSetBattlefield(position: 1 | 2 | 3, card: Card) {
     if (!deck) return;
-    await runWithDeckMutation(async () => {
+    void (async () => {
       try {
         const updated = await setBattlefield(deck.id, position, getCardId(card));
         setDeck(updated);
         const next = getNextPicker(updated, t);
         setPicker(next);
-        // Auto-close mobile picker when all 3 BFs filled → moving to next step
         if (next !== "battlefields") setMobilePickerOpen(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToSetBattlefield"));
       }
-    });
+    })();
   }
 
   function handlePickBattlefield(card: Card) {
@@ -800,7 +886,8 @@ export default function DeckBuilderPage() {
   const isDeckValid = !!(
     rawDeckValidationErrors(validation).length === 0 &&
     rawDeckValidationWarnings(validation).length === 0 &&
-    (validation?.valid === true || structurallyComplete)
+    (validation?.valid === true || structurallyComplete) &&
+    !hasMainSideboardCopyOverflow(deck)
   );
 
   const validationErrorStrings = rawDeckValidationErrors(validation).map((e) =>
@@ -819,8 +906,16 @@ export default function DeckBuilderPage() {
       cardErrorMap.set(key, [...(cardErrorMap.get(key) ?? []), err]);
     }
   }
+  for (const msg of clientCopyLimitErrors) {
+    const match = msg.match(/"([^"]+)"/);
+    if (match) {
+      const key = match[1].toLowerCase();
+      cardErrorMap.set(key, [...(cardErrorMap.get(key) ?? []), msg]);
+    }
+  }
   // Structural errors = those that don't reference a specific card name
   const structuralErrors = validationErrorStrings.filter((e) => !/"[^"]+"/.test(e));
+  const structuralErrorsCombined = [...structuralErrors, ...clientCopyLimitErrors];
   const structuralWarnings = validationWarningStrings;
 
   // Whether each section has at least one card with a validation error
@@ -836,19 +931,6 @@ export default function DeckBuilderPage() {
 
   return (
     <div className="min-h-screen bg-gray-900">
-      {/* Overlay de loading ao adicionar/remover cartas */}
-      {deckMutationLoading && (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-[2px]"
-          aria-busy="true"
-          aria-live="polite"
-        >
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-gray-600 bg-gray-800/95 px-6 py-5 shadow-xl">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" role="status" aria-hidden />
-            <span className="text-sm font-medium text-gray-200">{t("decks.updatingDeck")}</span>
-          </div>
-        </div>
-      )}
       {/* Modal deck válido */}
       {showValidModal && deck && (
         <div
@@ -1603,8 +1685,7 @@ export default function DeckBuilderPage() {
                                     const usedByChampion = getCardId(deckChampion) === cid ? 1 : 0;
                                     const mainQty = (deck.mainItems ?? []).reduce((s, it) => s + ((getCardId(it.card as Card) || it.cardId) === cid ? it.quantity : 0), 0);
                                     const sbQty = (deck.sideboardItems ?? []).reduce((s, it) => s + ((getCardId(it.card as Card) || it.cardId) === cid ? it.quantity : 0), 0);
-                                    const effectiveMax = Math.min(3, Math.max(0, owned - usedByLegend - usedByChampion));
-                                    const canIncreaseMain = (mainQty + sbQty) < effectiveMax && (mainQty + sbQty) < 3;
+                                    const canIncreaseMain = mainCount < 39 && (mainQty + sbQty) < 3;
                                     const need = item.quantity;
                                     const hasCollectionData = collectionQtyByCardId.size > 0;
                                     return (
@@ -1637,35 +1718,33 @@ export default function DeckBuilderPage() {
                                         <span className="flex gap-1 shrink-0">
                                           <button
                                             type="button"
-                                            onClick={async () => {
-                                              await runWithDeckMutation(async () => {
+                                            onClick={() => {
+                                              void (async () => {
                                                 if (item.quantity < 2) {
                                                   try { setDeck(await removeMainCard(deck.id, cid)); } catch {}
                                                 } else {
                                                   try { setDeck(await setMainCardQuantity(deck.id, cid, item.quantity - 1)); } catch {}
                                                 }
-                                              });
+                                              })();
                                             }}
-                                            disabled={deckMutationLoading}
                                             className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50 text-xs"
                                           >−</button>
                                           <button
                                             type="button"
-                                            onClick={async () => {
+                                            onClick={() => {
                                               if (!canIncreaseMain) return;
-                                              await runWithDeckMutation(async () => {
+                                              void (async () => {
                                                 try { setDeck(await setMainCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
-                                              });
+                                              })();
                                             }}
-                                            disabled={!canIncreaseMain || deckMutationLoading}
+                                            disabled={!canIncreaseMain}
                                             className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50 text-xs"
                                           >+</button>
                                           <button
                                             type="button"
-                                            onClick={async () => {
-                                              await runWithDeckMutation(async () => { try { setDeck(await removeMainCard(deck.id, cid)); } catch {} });
+                                            onClick={() => {
+                                              void (async () => { try { setDeck(await removeMainCard(deck.id, cid)); } catch {} })();
                                             }}
-                                            disabled={deckMutationLoading}
                                             className="rounded bg-red-900/50 px-1.5 text-red-200 hover:bg-red-900/70 text-xs"
                                           >×</button>
                                         </span>
@@ -1737,35 +1816,33 @@ export default function DeckBuilderPage() {
                             <span className="flex gap-1 shrink-0">
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  await runWithDeckMutation(async () => {
+                                onClick={() => {
+                                  void (async () => {
                                     if (item.quantity < 2) {
                                       try { setDeck(await removeRuneCard(deck.id, cid)); } catch {}
                                     } else {
                                       try { setDeck(await setRuneCardQuantity(deck.id, cid, item.quantity - 1)); } catch {}
                                     }
-                                  });
+                                  })();
                                 }}
-                                disabled={deckMutationLoading}
                                 className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50"
                               >−</button>
                               <button
                                 type="button"
-                                onClick={async () => {
+                                onClick={() => {
                                   if (runeCount > 11) return;
-                                  await runWithDeckMutation(async () => {
+                                  void (async () => {
                                     try { setDeck(await setRuneCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
-                                  });
+                                  })();
                                 }}
-                                disabled={runeCount > 11 || deckMutationLoading}
+                                disabled={runeCount > 11}
                                 className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50"
                               >+</button>
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  await runWithDeckMutation(async () => { try { setDeck(await removeRuneCard(deck.id, cid)); } catch {} });
+                                onClick={() => {
+                                  void (async () => { try { setDeck(await removeRuneCard(deck.id, cid)); } catch {} })();
                                 }}
-                                disabled={deckMutationLoading}
                                 className="rounded bg-red-900/50 px-1.5 text-red-200 hover:bg-red-900/70"
                               >×</button>
                             </span>
@@ -1807,8 +1884,7 @@ export default function DeckBuilderPage() {
                     const usedByChampion = getCardId(deckChampion) === cid ? 1 : 0;
                     const mainQty = (deck.mainItems ?? []).reduce((s, it) => s + ((getCardId(it.card as Card) || it.cardId) === cid ? it.quantity : 0), 0);
                     const sbQty = (deck.sideboardItems ?? []).reduce((s, it) => s + ((getCardId(it.card as Card) || it.cardId) === cid ? it.quantity : 0), 0);
-                    const effectiveMax = Math.min(3, Math.max(0, owned - usedByLegend - usedByChampion));
-                    const canIncreaseSb = sideboardCount <= 7 && (mainQty + sbQty) < effectiveMax && (mainQty + sbQty) < 3;
+                    const canIncreaseSb = sideboardCount <= 7 && (mainQty + sbQty) < 3;
                     const need = item.quantity;
                     const hasCollectionData = collectionQtyByCardId.size > 0;
                     return (
@@ -1841,35 +1917,33 @@ export default function DeckBuilderPage() {
                         <span className="flex gap-1 shrink-0">
                           <button
                             type="button"
-                            onClick={async () => {
-                              await runWithDeckMutation(async () => {
+                            onClick={() => {
+                              void (async () => {
                                 if (item.quantity < 2) {
                                   try { setDeck(await removeSideboardCard(deck.id, cid)); } catch {}
                                 } else {
                                   try { setDeck(await setSideboardCardQuantity(deck.id, cid, item.quantity - 1)); } catch {}
                                 }
-                              });
+                              })();
                             }}
-                            disabled={deckMutationLoading}
                             className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50 text-xs"
                           >−</button>
                           <button
                             type="button"
-                            onClick={async () => {
+                            onClick={() => {
                               if (!canIncreaseSb) return;
-                              await runWithDeckMutation(async () => {
+                              void (async () => {
                                 try { setDeck(await setSideboardCardQuantity(deck.id, cid, item.quantity + 1)); } catch {}
-                              });
+                              })();
                             }}
-                            disabled={!canIncreaseSb || deckMutationLoading}
+                            disabled={!canIncreaseSb}
                             className="rounded bg-gray-700 px-1.5 hover:bg-gray-600 disabled:opacity-50 text-xs"
                           >+</button>
                           <button
                             type="button"
-                            onClick={async () => {
-                              await runWithDeckMutation(async () => { try { setDeck(await removeSideboardCard(deck.id, cid)); } catch {} });
+                            onClick={() => {
+                              void (async () => { try { setDeck(await removeSideboardCard(deck.id, cid)); } catch {} })();
                             }}
-                            disabled={deckMutationLoading}
                             className="rounded bg-red-900/50 px-1.5 text-red-200 hover:bg-red-900/70 text-xs"
                           >×</button>
                         </span>
@@ -1887,15 +1961,16 @@ export default function DeckBuilderPage() {
                 </button>
               </section>
 
-              {/* Validation — only structural errors (per-card errors shown inline) */}
-              {validation && (isDeckValid || structuralErrors.length > 0 || structuralWarnings.length > 0) && (
+              {/* Validation — structural + cópias principal/sideboard (erros por carta também inline) */}
+              {(validation || clientCopyLimitErrors.length > 0) &&
+                (isDeckValid || structuralErrorsCombined.length > 0 || structuralWarnings.length > 0) && (
                 <section className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
                   <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">{t("decks.validation")}</h2>
                   {isDeckValid ? (
                     <p className="text-sm text-emerald-400">{t("decks.deckIsValid")}</p>
                   ) : (
                     <div className="space-y-1.5">
-                      {structuralErrors.map((msg, i) => (
+                      {structuralErrorsCombined.map((msg, i) => (
                         <p key={i} className="text-sm text-red-400">{msg}</p>
                       ))}
                       {structuralWarnings.map((msg, i) => (

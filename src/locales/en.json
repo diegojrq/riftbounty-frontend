@@ -512,6 +512,11 @@
     "failedToAddRune": "Failed to add rune",
     "failedToAddSideboard": "Failed to add to sideboard",
     "failedToSetBattlefield": "Failed to set battlefield",
+    "mainDeckFull": "Main deck already has 39 cards.",
+    "runeDeckFull": "Rune deck already has 12 runes.",
+    "sideboardFull": "Sideboard already has 8 cards.",
+    "copyLimitReached": "This card already has 3 copies between the main deck and sideboard.",
+    "clientCopyLimitDetail": "Main + sideboard: at most 3 copies per card (\"{name}\" has {count}).",
     "deleteDeckConfirm": "Delete this deck?",
     "youHaveInCollection": "You have {count} in your collection",
     "inLegendChampion": "in legend/champion"
