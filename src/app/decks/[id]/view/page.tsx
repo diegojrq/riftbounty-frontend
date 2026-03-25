@@ -38,27 +38,100 @@ function domainImageSrc(domain: string | null | undefined, card?: { type?: strin
   return isBattlefieldCard(card) ? BATTLEFIELD_ICON : UNIT_ICON;
 }
 
-const TYPE_ORDER = ["legend", "champion", "unit", "limit", "gear", "spell", "rune", "battlefield", "other"];
-const TYPE_IMAGE: Record<string, string> = {
-  legend: "/images/types/legend.webp",
-  champion: "/images/types/champion.webp",
-  unit: "/images/types/unit.webp",
-  limit: "/images/types/unit.webp",
-  gear: "/images/types/gear.webp",
-  spell: "/images/types/spell.webp",
-  rune: "/images/types/runes.webp",
-  battlefield: "/images/types/battlefields.webp",
-  other: "/images/types/unit.webp",
-};
+/** Ordenação tipo listagem: custo (energy) crescente, depois nome. */
+function sortKeyForDeckCard(card: Card | undefined): number {
+  if (!card) return 9999;
+  const e = card.energy;
+  if (typeof e === "number" && Number.isFinite(e)) return e;
+  const c = card.cmc;
+  if (typeof c === "number" && Number.isFinite(c)) return c;
+  const m = card.might;
+  if (typeof m === "number" && Number.isFinite(m)) return m + 200;
+  return 500;
+}
 
-function groupByType(items: DeckMainItem[]) {
-  const grouped: Record<string, DeckMainItem[]> = {};
-  for (const item of items) {
-    const t = item.card?.type?.toLowerCase() ?? "other";
-    const key = TYPE_ORDER.includes(t) ? t : "other";
-    (grouped[key] ??= []).push(item);
-  }
-  return grouped;
+function sortMainDeckItems(items: DeckMainItem[]): DeckMainItem[] {
+  return [...items].sort((a, b) => {
+    const ka = sortKeyForDeckCard(a.card as Card | undefined);
+    const kb = sortKeyForDeckCard(b.card as Card | undefined);
+    if (ka !== kb) return ka - kb;
+    const na = a.card ? getCardDisplayName(a.card) : a.cardId;
+    const nb = b.card ? getCardDisplayName(b.card) : b.cardId;
+    return na.localeCompare(nb, "en");
+  });
+}
+
+function sortRuneItems(items: NonNullable<Deck["runeItems"]>): typeof items {
+  return [...items].sort((a, b) => {
+    const na = a.card ? getCardDisplayName(a.card) : a.cardId;
+    const nb = b.card ? getCardDisplayName(b.card) : b.cardId;
+    return na.localeCompare(nb, "en");
+  });
+}
+
+function sortSideboardItems(items: NonNullable<Deck["sideboardItems"]>): typeof items {
+  return [...items].sort((a, b) => {
+    const ka = sortKeyForDeckCard(a.card as Card | undefined);
+    const kb = sortKeyForDeckCard(b.card as Card | undefined);
+    if (ka !== kb) return ka - kb;
+    const na = a.card ? getCardDisplayName(a.card) : a.cardId;
+    const nb = b.card ? getCardDisplayName(b.card) : b.cardId;
+    return na.localeCompare(nb, "en");
+  });
+}
+
+/**
+ * Miniatura: badge no mesmo molde da coleção (CardTile: size-9, canto inferior direito).
+ * Com mais de uma cópia, uma segunda face atrás (efeito pilha).
+ */
+function DeckCardThumb({
+  card,
+  quantity,
+}: {
+  card: Card;
+  quantity: number;
+}) {
+  const url = getCardImageUrl(card);
+  const label = getCardDisplayName(card);
+  const showQtyBadge = quantity > 1;
+  const showStack = quantity > 1;
+
+  return (
+    <CardHoverPreview card={card} battlefieldAsLandscape>
+      <div className="group relative aspect-[2.5/3.5] w-full">
+        {/* Carta “de trás” — mesma arte, levemente deslocada (pilha) */}
+        {showStack && url && (
+          <div
+            className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-lg border-2 border-gray-500/70 bg-gray-800 shadow-[5px_5px_0_0_rgba(15,23,42,0.85)]"
+            style={{ transform: "translate(7px, 7px)" }}
+            aria-hidden
+          >
+            <CardImg src={url} alt="" className="h-full w-full object-cover opacity-[0.72] brightness-95" />
+          </div>
+        )}
+        {showStack && !url && (
+          <div
+            className="pointer-events-none absolute inset-0 z-0 rounded-lg border-2 border-gray-500/60 bg-gray-700 shadow-[5px_5px_0_0_rgba(15,23,42,0.85)]"
+            style={{ transform: "translate(7px, 7px)" }}
+            aria-hidden
+          />
+        )}
+
+        <div className="relative z-10 flex h-full w-full overflow-hidden rounded-lg border border-gray-700/80 bg-gray-800 shadow-md transition hover:border-amber-700/40 hover:shadow-lg">
+          {url ? (
+            <CardImg src={url} alt={label} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full items-center justify-center p-2 text-center text-[10px] leading-tight text-gray-500">{label}</div>
+          )}
+          {showQtyBadge && (
+            <span className="absolute bottom-1.5 right-1.5 z-20 flex size-9 shrink-0 items-center justify-center rounded-md border border-white/30 bg-black/70 text-xs font-bold tabular-nums text-white shadow">
+              ×{quantity}
+            </span>
+          )}
+        </div>
+      </div>
+    </CardHoverPreview>
+  );
 }
 
 function CardSlot({ card, label }: { card: Card | null | undefined; label: string }) {
@@ -157,36 +230,32 @@ function DeckViewSkeleton() {
             </div>
           </div>
 
-          {/* Coluna direita */}
-          <div className="flex flex-col gap-4">
-            {/* Legend & Champion row */}
+          {/* Coluna direita — galeria (placeholder) */}
+          <div className="flex flex-col gap-6">
             <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
-              <div className="mb-3 h-3 w-28 animate-pulse rounded bg-gray-700" />
-              <div className="grid grid-cols-2 gap-3">
-                <div className="h-14 animate-pulse rounded-lg bg-gray-700/60" />
-                <div className="h-14 animate-pulse rounded-lg bg-gray-700/60" />
+              <div className="mb-3 h-3 w-40 animate-pulse rounded bg-gray-700" />
+              <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-5">
+                {Array.from({ length: 10 }).map((_, j) => (
+                  <div key={j} className="aspect-[2.5/3.5] animate-pulse rounded-lg bg-gray-700/50" />
+                ))}
               </div>
             </div>
-            {/* Main deck groups */}
-            {[40, 28, 20, 16].map((w, i) => (
-              <div key={i} className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="h-4 w-4 animate-pulse rounded bg-gray-700" />
-                  <div className={`h-3 animate-pulse rounded bg-gray-700`} style={{ width: `${w}%` }} />
-                </div>
-                <div className="space-y-1.5">
-                  {Array.from({ length: i === 0 ? 5 : i === 1 ? 4 : 3 }).map((_, j) => (
-                    <div key={j} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-6 animate-pulse rounded bg-gray-700/60" />
-                        <div className="h-3 w-32 animate-pulse rounded bg-gray-700/60" />
-                      </div>
-                      <div className="h-3 w-6 animate-pulse rounded bg-gray-700/40" />
-                    </div>
-                  ))}
-                </div>
+            <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
+              <div className="mb-3 h-3 w-32 animate-pulse rounded bg-gray-700" />
+              <div className="grid grid-cols-6 gap-2 sm:grid-cols-8">
+                {Array.from({ length: 6 }).map((_, j) => (
+                  <div key={j} className="aspect-[2.5/3.5] animate-pulse rounded-lg bg-gray-700/50" />
+                ))}
               </div>
-            ))}
+            </div>
+            <div className="rounded-xl border border-dashed border-gray-700 bg-gray-800/20 p-4">
+              <div className="mb-3 h-3 w-28 animate-pulse rounded bg-gray-700" />
+              <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-5">
+                {Array.from({ length: 5 }).map((_, j) => (
+                  <div key={j} className="aspect-[2.5/3.5] animate-pulse rounded-lg bg-gray-700/50" />
+                ))}
+              </div>
+            </div>
           </div>
 
         </div>
@@ -202,10 +271,6 @@ export default function DeckViewPage() {
   const { user, loading: authLoading } = useAuth();
   const { t } = useLocale();
 
-  const TYPE_LABEL: Record<string, string> = {
-    legend: t("decks.typeLegend"), champion: t("decks.typeChampion"), unit: t("decks.typeUnit"), limit: t("decks.typeLimit"),
-    gear: t("decks.typeGear"), spell: t("decks.typeSpell"), rune: t("decks.typeRune"), battlefield: t("decks.typeBattlefield"), other: t("decks.typeOther"),
-  };
   const [deck, setDeck] = useState<Deck | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -247,8 +312,9 @@ export default function DeckViewPage() {
   const mainCount = deck.mainItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const runeCount = deck.runeItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const sideboardCount = deck.sideboardItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
-  const grouped = groupByType(deck.mainItems ?? []);
-  const orderedKeys = TYPE_ORDER.filter((t) => grouped[t]?.length);
+  const mainDeckSorted = sortMainDeckItems(deck.mainItems ?? []);
+  const runeSorted = sortRuneItems(deck.runeItems ?? []);
+  const sideboardSorted = sortSideboardItems(deck.sideboardItems ?? []);
   const isValid =
     deck.validation?.valid &&
     rawDeckValidationErrors(deck.validation).length === 0 &&
@@ -355,225 +421,113 @@ export default function DeckViewPage() {
             </div>
           </div>
 
-          {/* Coluna direita: listas */}
-          <div className="flex flex-col gap-4">
+          {/* Coluna direita: galeria principal → runas → sideboard */}
+          <div className="flex min-w-0 flex-col gap-8">
 
-            {/* Legend & Champion — linha topo */}
-            <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">{t("decks.legendAndChampion")}</h2>
-              <div className="grid grid-cols-2 gap-3">
-                {/* Legend */}
-                {deckLegend ? (
-                  <div className="flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5">
-                    {getCardImageUrl(deckLegend) && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={getCardImageUrl(deckLegend)!} alt={getCardDisplayName(deckLegend)} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
-                    )}
-                    <div className="min-w-0">
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{t("decks.legend")}</p>
-                      <CardHoverPreview card={deckLegend} battlefieldAsLandscape>
-                        <p className="truncate text-sm font-medium text-blue-400 cursor-pointer">{getCardDisplayName(deckLegend)}</p>
-                      </CardHoverPreview>
-                      {domains.length > 0 && (
-                        <div className="mt-1 flex gap-1">
-                          {domains.map((cd) => (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img key={cd.domain.name} src={domainImageSrc(cd.domain.name)} alt={cd.domain.name} title={cd.domain.name} className="h-3.5 w-3.5 object-contain" />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex h-14 items-center justify-center rounded-lg border-2 border-dashed border-gray-700 bg-gray-800/30">
-                    <span className="text-xs text-gray-600">{t("decks.noLegend")}</span>
-                  </div>
-                )}
-                {/* Champion */}
-                {deckChampion ? (
-                  <div className="flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5">
-                    {getCardImageUrl(deckChampion) && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={getCardImageUrl(deckChampion)!} alt={getCardDisplayName(deckChampion)} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
-                    )}
-                    <div className="min-w-0">
-                      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{t("decks.champion")}</p>
-                      <CardHoverPreview card={deckChampion} battlefieldAsLandscape>
-                        <p className="truncate text-sm font-medium text-blue-400 cursor-pointer">{getCardDisplayName(deckChampion)}</p>
-                      </CardHoverPreview>
-                      {deckChampion.subtypes && deckChampion.subtypes.length > 0 && (
-                        <p className="mt-0.5 truncate text-xs text-gray-500">{deckChampion.subtypes.join(", ")}</p>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex h-14 items-center justify-center rounded-lg border-2 border-dashed border-gray-700 bg-gray-800/30">
-                    <span className="text-xs text-gray-600">{t("decks.noChampion")}</span>
-                  </div>
+            {/* Deck principal */}
+            <section className="rounded-xl border border-gray-700/80 bg-gray-800/40 p-4 sm:p-5">
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                {domains.map((cd) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={cd.domain.name} src={domainImageSrc(cd.domain.name)} alt="" className="h-4 w-4 object-contain" />
+                ))}
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
+                  {t("decks.mainDeckLabel")} <span className="text-gray-500">({mainCount}/39)</span>
+                </h2>
+                {mainCount === 39 && (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
                 )}
               </div>
-            </div>
-
-            {/* Main Deck (left) + Battlefields / Rune / Sideboard (right) */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[2fr_1fr]">
-
-              {/* Main Deck */}
-              <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  {domains.map((cd) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img key={cd.domain.name} src={domainImageSrc(cd.domain.name)} alt="" className="h-4 w-4 object-contain" />
-                  ))}
-                  <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
-                    {t("decks.mainDeckLabel")} <span className="text-gray-500">({mainCount}/39)</span>
-                  </h2>
-                  {mainCount === 39 && (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
-                  )}
-                </div>
-                <div className="space-y-3">
-                  {orderedKeys.map((typeKey) => {
-                    const items = grouped[typeKey]!;
-                    const total = items.reduce((s, i) => s + i.quantity, 0);
-                    return (
-                      <div key={typeKey}>
-                        <div className="mb-1 flex items-center gap-1.5">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={TYPE_IMAGE[typeKey]} alt="" className="h-3.5 w-3.5 object-contain" />
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                            {TYPE_LABEL[typeKey]} ({total})
-                          </span>
-                        </div>
-                        <ul className="space-y-0.5">
-                          {items.map((item, i) => {
-                            const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
-                            const domainImgSrc = domainImageSrc(domain, item.card);
-                            return (
-                              <li key={getCardId(item.card as Card) || item.cardId || i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={domainImgSrc} alt={domain ?? "unit"} className="h-3 w-3 shrink-0 object-contain opacity-90" />
-                                <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
-                                {item.card ? (
-                                  <CardHoverPreview card={item.card} battlefieldAsLandscape>
-                                    <span className="text-xs text-blue-400 cursor-pointer">{getCardDisplayName(item.card)}</span>
-                                  </CardHoverPreview>
-                                ) : (
-                                  <span className="text-xs text-gray-400">{item.cardId}</span>
-                                )}
-                              </li>
-                            );
-                          })}
-                        </ul>
+              {mainDeckSorted.length === 0 ? (
+                <p className="text-sm text-gray-500">{t("decks.empty")}</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-5">
+                  {mainDeckSorted.map((item, i) => {
+                    const id = getCardId(item.card as Card) || item.cardId || `m-${i}`;
+                    return item.card ? (
+                      <div key={id} className="min-w-0 overflow-visible pr-1.5 pb-1.5">
+                        <DeckCardThumb card={item.card} quantity={item.quantity} />
+                      </div>
+                    ) : (
+                      <div key={id} className="flex aspect-[2.5/3.5] items-center justify-center rounded-lg border border-dashed border-gray-600 bg-gray-800/50 p-2 text-center text-[10px] text-gray-500">
+                        {item.cardId}
                       </div>
                     );
                   })}
                 </div>
+              )}
+            </section>
+
+            {/* Deck de runas */}
+            <section className="rounded-xl border border-gray-700/80 bg-gray-800/40 p-4 sm:p-5">
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/images/types/runes.webp" alt="" className="h-4 w-4 object-contain" />
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
+                  {t("decks.runeDeckLabel")} <span className="text-gray-500">({runeCount}/12)</span>
+                </h2>
+                {runeCount === 12 && (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
+                )}
               </div>
-
-              {/* Right column: Battlefields + Rune Deck + Sideboard */}
-              <div className="flex flex-col gap-4">
-
-                {/* Battlefields */}
-                <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/images/types/battlefields.webp" alt="" className="h-4 w-4 object-contain" />
-                    <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
-                      {t("decks.stepsBattlefields")} <span className="text-gray-500">({deck.battlefields?.filter((b) => b.card).length ?? 0}/3)</span>
-                    </h2>
-                    {(deck.battlefields?.filter((b) => b.card).length ?? 0) === 3 && (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
-                    )}
-                  </div>
-                  <ul className="space-y-0.5">
-                    {([1, 2, 3] as const).map((pos) => {
-                      const bf = deck.battlefields?.find((b) => b.position === pos);
-                      return bf?.card ? (
-                        <li key={pos} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
-                          <CardHoverPreview card={bf.card} battlefieldAsLandscape>
-                            <span className="text-xs text-blue-400 cursor-pointer">{getCardDisplayName(bf.card)}</span>
-                          </CardHoverPreview>
-                        </li>
-                      ) : (
-                        <li key={pos} className="px-1.5 py-0.5 text-xs text-gray-600 italic">{t("decks.slotEmpty", { pos })}</li>
-                      );
-                    })}
-                  </ul>
+              {runeSorted.length === 0 ? (
+                <p className="text-sm text-gray-500">{t("decks.empty")}</p>
+              ) : (
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 sm:gap-3 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12">
+                  {runeSorted.map((item, i) => {
+                    const id = getCardId(item.card as Card) || item.cardId || `r-${i}`;
+                    return item.card ? (
+                      <div key={id} className="min-w-0 overflow-visible pr-1.5 pb-1.5">
+                        <DeckCardThumb card={item.card} quantity={item.quantity} />
+                      </div>
+                    ) : (
+                      <div key={id} className="flex aspect-[2.5/3.5] items-center justify-center rounded-lg border border-dashed border-gray-600 text-[10px] text-gray-500">
+                        {item.cardId}
+                      </div>
+                    );
+                  })}
                 </div>
+              )}
+            </section>
 
-                {/* Rune Deck */}
-                <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/images/types/runes.webp" alt="" className="h-4 w-4 object-contain" />
-                    <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
-                      {t("decks.runeDeckLabel")} <span className="text-gray-500">({runeCount}/12)</span>
-                    </h2>
-                    {runeCount === 12 && (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
-                    )}
-                  </div>
-                  <ul className="space-y-0.5">
-                    {(deck.runeItems ?? []).map((item, i) => {
-                      const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
-                      const domainImgSrc = domainImageSrc(domain, item.card);
-                      return (
-                        <li key={getCardId(item.card as Card) || item.cardId || i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={domainImgSrc} alt={domain ?? "unit"} className="h-3 w-3 shrink-0 object-contain opacity-90" />
-                          <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
-                          {item.card ? (
-                            <CardHoverPreview card={item.card} battlefieldAsLandscape>
-                              <span className="text-xs text-blue-400 cursor-pointer">{getCardDisplayName(item.card)}</span>
-                            </CardHoverPreview>
-                          ) : (
-                            <span className="text-xs text-gray-400">{item.cardId}</span>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-
-                {/* Sideboard */}
-                <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-                    <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-300">
-                      {t("decks.sideboardLabel")} <span className="text-gray-500">({sideboardCount}/8)</span>
-                    </h2>
-                    {sideboardCount > 0 && (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
-                    )}
-                  </div>
-                  {sideboardCount === 0 ? (
-                    <p className="text-xs text-gray-600 italic">{t("decks.noSideboardCards")}</p>
-                  ) : (
-                    <ul className="space-y-0.5">
-                      {(deck.sideboardItems ?? []).map((item, i) => {
-                        const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
-                        const domainImgSrcSb = domainImageSrc(domain, item.card);
-                        return (
-                          <li key={getCardId(item.card as Card) || item.cardId || i} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={domainImgSrcSb} alt={domain ?? "unit"} className="h-3 w-3 shrink-0 object-contain opacity-90" />
-                            <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
-                            {item.card ? (
-                              <CardHoverPreview card={item.card} battlefieldAsLandscape>
-                                <span className="text-xs text-blue-400 cursor-pointer">{getCardDisplayName(item.card)}</span>
-                              </CardHoverPreview>
-                            ) : (
-                              <span className="text-xs text-gray-400">{item.cardId}</span>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
+            {/* Separador + Sideboard */}
+            <section>
+              <div className="relative mb-6 flex items-center justify-center">
+                <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-amber-600/50 to-transparent" />
+                <span className="relative bg-gray-900 px-4 text-xs font-semibold uppercase tracking-[0.2em] text-amber-500/95">
+                  {t("decks.sideboardLabel")}
+                </span>
+              </div>
+              <div className="rounded-xl border border-gray-700/80 bg-gray-800/30 p-4 sm:p-5">
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                    {sideboardCount}/8
+                  </span>
+                  {sideboardCount > 0 && (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
                   )}
                 </div>
-
+                {sideboardCount === 0 ? (
+                  <p className="text-sm text-gray-600 italic">{t("decks.noSideboardCards")}</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-5">
+                    {sideboardSorted.map((item, i) => {
+                      const id = getCardId(item.card as Card) || item.cardId || `s-${i}`;
+                      return item.card ? (
+                        <div key={id} className="min-w-0 overflow-visible pr-1.5 pb-1.5">
+                          <DeckCardThumb card={item.card} quantity={item.quantity} />
+                        </div>
+                      ) : (
+                        <div key={id} className="flex aspect-[2.5/3.5] items-center justify-center rounded-lg border border-dashed border-gray-600 text-[10px] text-gray-500">
+                          {item.cardId}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
+            </section>
 
             {/* Validation errors/warnings */}
             {deck.validation && !isValid && (
