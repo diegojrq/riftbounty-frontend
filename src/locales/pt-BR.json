@@ -504,6 +504,8 @@
     "typeBattlefield": "Campo de Batalha",
     "typeOther": "Outro",
     "editDeck": "Editar deck",
+    "exportTts": "Exportar TTS",
+    "exportTtsTitle": "Baixar deck em texto para Tabletop Simulator (.txt)",
     "noSideboardCards": "Nenhuma carta no sideboard.",
     "slotEmpty": "Vaga {pos} vazia",
     "failedToSetLegend": "Falha ao definir lenda",

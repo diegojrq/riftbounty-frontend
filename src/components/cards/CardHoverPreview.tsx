@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { Card } from "@/types/card";
 import { getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
+import { getCardDisplayName } from "@/lib/card-display-name";
 
 interface CardHoverPreviewProps {
   /** Pode ser null em itens de troca (GET /trades) se o backend não embutir a carta */
@@ -110,11 +111,13 @@ export function CardHoverPreview({ card, children, battlefieldAsLandscape = fals
     return <>{children}</>;
   }
 
+  const displayName = getCardDisplayName(card);
+
   const previewImg = isLandscape ? (
     <div className="relative w-full h-full">
       <CardImg
         src={cardImageUrl}
-        alt={card.name}
+        alt={displayName}
         style={{
           position: "absolute",
           top: "50%",
@@ -127,7 +130,7 @@ export function CardHoverPreview({ card, children, battlefieldAsLandscape = fals
       />
     </div>
   ) : (
-    <CardImg src={cardImageUrl} alt={card.name} className="h-full w-full object-cover" />
+    <CardImg src={cardImageUrl} alt={displayName} className="h-full w-full object-cover" />
   );
 
   return (

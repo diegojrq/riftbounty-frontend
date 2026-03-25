@@ -17,6 +17,7 @@ import { formatAbilityFilterLabel, resolveAbilityFilterChipClass } from "@/lib/c
 import type { Card } from "@/types/card";
 import { cardHasFlag } from "@/lib/cards";
 import { getCardId } from "@/lib/card-id";
+import { getCardDisplayName } from "@/lib/card-display-name";
 
 const LIMIT = 24;
 const MIN_SEARCH_LENGTH = 3;
@@ -131,7 +132,9 @@ function CardsPageContent() {
     return allCards.filter((card) => {
       if (nameFilter) {
         const q = nameFilter.toLowerCase();
-        const nameMatch = card.name.toLowerCase().includes(q);
+        const nameMatch =
+          card.name.toLowerCase().includes(q) ||
+          getCardDisplayName(card).toLowerCase().includes(q);
         const subtypeMatch =
           card.subtypes?.some((s) => s.toLowerCase().includes(q)) ||
           (card.cardSubtypes as Array<{ subtype?: { name?: string }; name?: string }> | undefined)?.some(

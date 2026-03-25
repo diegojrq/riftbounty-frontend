@@ -5,6 +5,7 @@ import { apiGet } from "@/lib/api";
 import { useLocale } from "@/lib/locale-context";
 import type { Card } from "@/types/card";
 import { getCardId } from "@/lib/card-id";
+import { getCardDisplayName } from "@/lib/card-display-name";
 import type { CardsListResponse, CardsQueryParams } from "@/types/card";
 
 function toQueryRecord(p: CardsQueryParams): Record<string, string | number | undefined> {
@@ -89,7 +90,7 @@ export function CardPickerModal({ title, onSelect, onClose, typeFilter }: CardPi
                     {(card.collector_number ?? card.collectorNumber) && (
                       <span className="mr-2 text-gray-400">{card.collector_number ?? card.collectorNumber}</span>
                     )}
-                    {card.name}
+                    {getCardDisplayName(card)}
                     {card.type && <span className="ml-2 text-gray-500">({card.type})</span>}
                   </button>
                 </li>

@@ -18,6 +18,8 @@ import { useLocale } from "@/lib/locale-context";
 import type { Card } from "@/types/card";
 import type { Deck, DeckMainItem } from "@/types/deck";
 import { getCardId } from "@/lib/card-id";
+import { buildDeckTtsText, sanitizeDeckExportFilename } from "@/lib/deck-export-tts";
+import { getCardDisplayName } from "@/lib/card-display-name";
 
 const VALID_DOMAIN_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
 const UNIT_ICON = "/images/types/unit.webp";
@@ -61,6 +63,7 @@ function groupByType(items: DeckMainItem[]) {
 
 function CardSlot({ card, label }: { card: Card | null | undefined; label: string }) {
   const { t } = useLocale();
+  const displayName = card ? getCardDisplayName(card) : "";
   const isLandscape =
     card?.orientation?.toLowerCase() === "landscape" ||
     (card?.record_type?.toLowerCase().includes("battleground") ?? false) ||
@@ -75,7 +78,7 @@ function CardSlot({ card, label }: { card: Card | null | undefined; label: strin
             isLandscape ? (
               <CardImg
                 src={getCardImageUrl(card)!}
-                alt={card.name}
+                alt={displayName}
                 style={{
                   position: "absolute", top: "50%", left: "50%",
                   width: "calc(100% * 2.5 / 3.5)", height: "calc(100% * 3.5 / 2.5)",
@@ -83,15 +86,15 @@ function CardSlot({ card, label }: { card: Card | null | undefined; label: strin
                 }}
               />
             ) : (
-              <CardImg src={getCardImageUrl(card)!} alt={card.name} className="absolute inset-0 h-full w-full object-cover" />
+              <CardImg src={getCardImageUrl(card)!} alt={displayName} className="absolute inset-0 h-full w-full object-cover" />
             )
           ) : (
             <div className="absolute inset-0 flex items-center justify-center p-3 text-center">
-              <span className="text-sm text-gray-400">{card.name}</span>
+              <span className="text-sm text-gray-400">{displayName}</span>
             </div>
           )}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
-            <p className="truncate text-xs font-medium text-white">{card.name}</p>
+            <p className="truncate text-xs font-medium text-white">{displayName}</p>
           </div>
         </div>
       ) : (
@@ -251,6 +254,21 @@ export default function DeckViewPage() {
     rawDeckValidationErrors(deck.validation).length === 0 &&
     rawDeckValidationWarnings(deck.validation).length === 0;
 
+  function downloadTtsExport() {
+    if (!deck) return;
+    const text = buildDeckTtsText(deck);
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${sanitizeDeckExportFilename(deck.name)}-tts.txt`;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Header */}
@@ -270,12 +288,22 @@ export default function DeckViewPage() {
                 </span>
               )}
             </div>
-            <Link
-              href={`/decks/${deck.id}`}
-              className="shrink-0 rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-            >
-              ✎ {t("decks.editDeck")}
-            </Link>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={downloadTtsExport}
+                title={t("decks.exportTtsTitle")}
+                className="rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+              >
+                {t("decks.exportTts")}
+              </button>
+              <Link
+                href={`/decks/${deck.id}`}
+                className="rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+              >
+                ✎ {t("decks.editDeck")}
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -305,7 +333,7 @@ export default function DeckViewPage() {
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={getCardImageUrl(bf.card)!}
-                          alt={bf.card.name}
+                          alt={getCardDisplayName(bf.card)}
                           style={{
                             position: "absolute", top: "50%", left: "50%",
                             width: "calc(100% * 2.5 / 3.5)", height: "calc(100% * 3.5 / 2.5)",
@@ -314,7 +342,7 @@ export default function DeckViewPage() {
                         />
                       ) : null}
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
-                        <p className="truncate text-xs font-medium text-white">{bf.card.name}</p>
+                        <p className="truncate text-xs font-medium text-white">{getCardDisplayName(bf.card)}</p>
                       </div>
                     </div>
                   ) : (
@@ -339,12 +367,12 @@ export default function DeckViewPage() {
                   <div className="flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5">
                     {getCardImageUrl(deckLegend) && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={getCardImageUrl(deckLegend)!} alt={deckLegend.name} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
+                      <img src={getCardImageUrl(deckLegend)!} alt={getCardDisplayName(deckLegend)} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
                     )}
                     <div className="min-w-0">
                       <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{t("decks.legend")}</p>
                       <CardHoverPreview card={deckLegend} battlefieldAsLandscape>
-                        <p className="truncate text-sm font-medium text-blue-400 cursor-pointer">{deckLegend.name}</p>
+                        <p className="truncate text-sm font-medium text-blue-400 cursor-pointer">{getCardDisplayName(deckLegend)}</p>
                       </CardHoverPreview>
                       {domains.length > 0 && (
                         <div className="mt-1 flex gap-1">
@@ -366,12 +394,12 @@ export default function DeckViewPage() {
                   <div className="flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2.5">
                     {getCardImageUrl(deckChampion) && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={getCardImageUrl(deckChampion)!} alt={deckChampion.name} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
+                      <img src={getCardImageUrl(deckChampion)!} alt={getCardDisplayName(deckChampion)} className="h-10 w-7 shrink-0 rounded object-cover object-top" />
                     )}
                     <div className="min-w-0">
                       <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{t("decks.champion")}</p>
                       <CardHoverPreview card={deckChampion} battlefieldAsLandscape>
-                        <p className="truncate text-sm font-medium text-blue-400 cursor-pointer">{deckChampion.name}</p>
+                        <p className="truncate text-sm font-medium text-blue-400 cursor-pointer">{getCardDisplayName(deckChampion)}</p>
                       </CardHoverPreview>
                       {deckChampion.subtypes && deckChampion.subtypes.length > 0 && (
                         <p className="mt-0.5 truncate text-xs text-gray-500">{deckChampion.subtypes.join(", ")}</p>
@@ -427,7 +455,7 @@ export default function DeckViewPage() {
                                 <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
                                 {item.card ? (
                                   <CardHoverPreview card={item.card} battlefieldAsLandscape>
-                                    <span className="text-xs text-blue-400 cursor-pointer">{item.card.name}</span>
+                                    <span className="text-xs text-blue-400 cursor-pointer">{getCardDisplayName(item.card)}</span>
                                   </CardHoverPreview>
                                 ) : (
                                   <span className="text-xs text-gray-400">{item.cardId}</span>
@@ -463,7 +491,7 @@ export default function DeckViewPage() {
                       return bf?.card ? (
                         <li key={pos} className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gray-700/40">
                           <CardHoverPreview card={bf.card} battlefieldAsLandscape>
-                            <span className="text-xs text-blue-400 cursor-pointer">{bf.card.name}</span>
+                            <span className="text-xs text-blue-400 cursor-pointer">{getCardDisplayName(bf.card)}</span>
                           </CardHoverPreview>
                         </li>
                       ) : (
@@ -496,7 +524,7 @@ export default function DeckViewPage() {
                           <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
                           {item.card ? (
                             <CardHoverPreview card={item.card} battlefieldAsLandscape>
-                              <span className="text-xs text-blue-400 cursor-pointer">{item.card.name}</span>
+                              <span className="text-xs text-blue-400 cursor-pointer">{getCardDisplayName(item.card)}</span>
                             </CardHoverPreview>
                           ) : (
                             <span className="text-xs text-gray-400">{item.cardId}</span>
@@ -532,7 +560,7 @@ export default function DeckViewPage() {
                             <span className="text-gray-500 text-xs tabular-nums">×{item.quantity}</span>
                             {item.card ? (
                               <CardHoverPreview card={item.card} battlefieldAsLandscape>
-                                <span className="text-xs text-blue-400 cursor-pointer">{item.card.name}</span>
+                                <span className="text-xs text-blue-400 cursor-pointer">{getCardDisplayName(item.card)}</span>
                               </CardHoverPreview>
                             ) : (
                               <span className="text-xs text-gray-400">{item.cardId}</span>

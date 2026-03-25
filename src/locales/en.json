@@ -504,6 +504,8 @@
     "typeBattlefield": "Battlefield",
     "typeOther": "Other",
     "editDeck": "Edit deck",
+    "exportTts": "Export TTS",
+    "exportTtsTitle": "Download deck as Tabletop Simulator text (.txt)",
     "noSideboardCards": "No sideboard cards.",
     "slotEmpty": "Slot {pos} empty",
     "failedToSetLegend": "Failed to set legend",

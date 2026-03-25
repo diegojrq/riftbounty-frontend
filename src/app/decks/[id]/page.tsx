@@ -40,6 +40,7 @@ import {
 import type { Card } from "@/types/card";
 import type { Deck } from "@/types/deck";
 import { getCardId } from "@/lib/card-id";
+import { getCardDisplayName } from "@/lib/card-display-name";
 import { toast } from "sonner";
 
 const DOMAINS = ["fury", "calm", "mind", "body", "chaos", "order"] as const;
@@ -1465,14 +1466,14 @@ export default function DeckBuilderPage() {
                       <div className="group relative w-full overflow-hidden rounded-lg border border-gray-600 bg-gray-800 shadow-lg aspect-[2.5/3.5]">
                         {getCardImageUrl(deckLegend) ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={getCardImageUrl(deckLegend)!} alt={deckLegend.name} className="absolute inset-0 h-full w-full object-cover" />
+                          <img src={getCardImageUrl(deckLegend)!} alt={getCardDisplayName(deckLegend)} className="absolute inset-0 h-full w-full object-cover" />
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center bg-gray-800 p-2 text-center">
-                            <span className="text-xs text-gray-400">{deckLegend.name}</span>
+                            <span className="text-xs text-gray-400">{getCardDisplayName(deckLegend)}</span>
                           </div>
                         )}
                         <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 bg-gradient-to-t from-black/90 to-transparent px-2 pb-2 pt-8 opacity-0 transition-opacity group-hover:opacity-100">
-                          <span className="w-full truncate text-center text-xs font-medium text-white">{deckLegend.name}</span>
+                          <span className="w-full truncate text-center text-xs font-medium text-white">{getCardDisplayName(deckLegend)}</span>
                           <button
                             type="button"
                             onClick={() => { setPicker("legend"); setMobilePickerOpen(true); }}
@@ -1582,7 +1583,7 @@ export default function DeckBuilderPage() {
                         {bf?.card ? (
                           <span className="flex min-w-0 flex-1 items-center gap-2">
                             <CardHoverPreview card={bf.card} battlefieldAsLandscape>
-                              <span className="truncate text-sm text-blue-400 cursor-pointer">{bf.card.name}</span>
+                              <span className="truncate text-sm text-blue-400 cursor-pointer">{getCardDisplayName(bf.card)}</span>
                             </CardHoverPreview>
                             {hasCollectionData && (
                               <span
@@ -1697,7 +1698,7 @@ export default function DeckBuilderPage() {
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img src={domainImgSrc} alt={domain ?? "unit"} className="h-4 w-4 shrink-0 object-contain opacity-90" />
                                                 <span className="text-gray-500">×{item.quantity}</span>
-                                                {item.card.name}
+                                                {getCardDisplayName(item.card)}
                                               </span>
                                             </CardHoverPreview>
                                             {hasCollectionData && (
@@ -1796,7 +1797,7 @@ export default function DeckBuilderPage() {
                             {item.card ? (
                               <span className="flex min-w-0 items-center gap-1">
                                 <CardHoverPreview card={item.card} battlefieldAsLandscape>
-                                  <span className="text-blue-400 cursor-pointer">×{item.quantity} {item.card.name}</span>
+                                  <span className="text-blue-400 cursor-pointer">×{item.quantity} {getCardDisplayName(item.card)}</span>
                                 </CardHoverPreview>
                                 {hasCollectionData && (
                                   <span
@@ -1896,7 +1897,7 @@ export default function DeckBuilderPage() {
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={domainImgSrcSb} alt={domain ?? "unit"} className="h-3.5 w-3.5 shrink-0 object-contain opacity-90" />
                                 <span className="text-gray-500">×{item.quantity}</span>
-                                {item.card.name}
+                                {getCardDisplayName(item.card)}
                               </span>
                             </CardHoverPreview>
                             {hasCollectionData && (

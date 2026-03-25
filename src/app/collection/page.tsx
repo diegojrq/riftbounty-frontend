@@ -26,6 +26,7 @@ import { cardMatchesAnyAbility } from "@/lib/card-ability-filter";
 import { formatAbilityFilterLabel, resolveAbilityFilterChipClass } from "@/lib/card-description";
 import type { Card } from "@/types/card";
 import { getCardId } from "@/lib/card-id";
+import { getCardDisplayName } from "@/lib/card-display-name";
 
 const LIMIT = 24;
 const MIN_SEARCH_LENGTH = 3;
@@ -197,7 +198,9 @@ export default function CollectionPage() {
     return enrichedCards.filter((card) => {
       if (nameFilter) {
         const q = nameFilter.toLowerCase();
-        const nameMatch = card.name.toLowerCase().includes(q);
+        const nameMatch =
+          card.name.toLowerCase().includes(q) ||
+          getCardDisplayName(card).toLowerCase().includes(q);
         const subtypeMatch =
           card.subtypes?.some((s) => s.toLowerCase().includes(q)) ||
           (card.cardSubtypes as Array<{ subtype?: { name?: string }; name?: string }> | undefined)?.some(

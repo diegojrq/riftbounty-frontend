@@ -5,6 +5,7 @@ import { cardHasFlag, getCardImageUrl } from "@/lib/cards";
 import { CardNewFlagChip } from "@/components/cards/CardNewFlagChip";
 import { CardImg } from "@/components/cards/CardImg";
 import { useLocale } from "@/lib/locale-context";
+import { getCardDisplayName } from "@/lib/card-display-name";
 
 interface CardTileProps {
   card: Card;
@@ -108,6 +109,7 @@ export function CardTile({
   onDecrease,
 }: CardTileProps) {
   const { t } = useLocale();
+  const displayName = getCardDisplayName(card);
   const qty = Number(quantity ?? card.collectionQuantity ?? 0);
   const canDecrease = inCollection && qty >= 1;
   const useGrayscale = grayscaleWhenNotInCollection && !inCollection;
@@ -135,7 +137,7 @@ export function CardTile({
        */
       <CardImg
         src={cardImageUrl}
-        alt={card.name}
+        alt={displayName}
         style={{
           position: "absolute",
           top: "50%",
@@ -150,7 +152,7 @@ export function CardTile({
     ) : (
       <CardImg
         src={cardImageUrl}
-        alt={card.name}
+        alt={displayName}
         className={`absolute inset-0 h-full w-full object-cover transition-all duration-200 ease-out ${useGrayscale ? "grayscale" : ""}`}
       />
     )
@@ -201,7 +203,7 @@ export function CardTile({
               type="button"
               onClick={onOpenDetail}
               className="absolute inset-0 z-0 cursor-pointer"
-              aria-label={t("cards.viewDetails", { name: card.name })}
+              aria-label={t("cards.viewDetails", { name: displayName })}
             >
               {imageNode}
             </button>
@@ -278,7 +280,7 @@ export function CardTile({
               type="button"
               onClick={onOpenDetail}
               className="absolute inset-0 z-0 flex cursor-pointer flex-col items-center justify-center gap-1 bg-gray-800 p-4 text-center"
-              aria-label={t("cards.viewDetails", { name: card.name })}
+              aria-label={t("cards.viewDetails", { name: displayName })}
             >
               <span className={`text-3xl text-gray-500 ${grayscaleWhenNoImage || useGrayscale ? "grayscale" : ""}`} aria-hidden>🃏</span>
               <p className="text-xs font-medium text-gray-400">{t("cards.noImage")}</p>

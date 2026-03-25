@@ -11,6 +11,7 @@ import { getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
 import type { Deck } from "@/types/deck";
 import { rawDeckValidationErrors, rawDeckValidationWarnings } from "@/lib/deck-validation";
+import { getCardDisplayName } from "@/lib/card-display-name";
 
 function DecksSkeleton() {
   return (
@@ -166,12 +167,12 @@ export default function DecksPage() {
                       {legend && getCardImageUrl(legend) ? (
                         <CardImg
                           src={getCardImageUrl(legend)!}
-                          alt={legend.name}
+                          alt={getCardDisplayName(legend)}
                           className="h-full w-1/2 object-cover object-top"
                         />
                       ) : (
                         <div className="flex h-full w-1/2 items-center justify-center bg-gray-800">
-                          <span className="px-2 text-center text-xs text-gray-500">{legend?.name ?? t("decks.noLegend")}</span>
+                          <span className="px-2 text-center text-xs text-gray-500">{legend ? getCardDisplayName(legend) : t("decks.noLegend")}</span>
                         </div>
                       )}
                       {champion && getCardImageUrl(champion) ? (
@@ -213,7 +214,7 @@ export default function DecksPage() {
                       </div>
                       {(legend || champion) && (
                         <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-                          {legend && <span className="truncate">{legend.name}</span>}
+                          {legend && <span className="truncate">{getCardDisplayName(legend)}</span>}
                           {legend && champion && <span>·</span>}
                           {champion && <span className="truncate">{champion.name}</span>}
                         </div>

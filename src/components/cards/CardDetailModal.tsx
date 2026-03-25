@@ -13,6 +13,7 @@ import { useLocale } from "@/lib/locale-context";
 import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
 import type { Card } from "@/types/card";
 import { getCardId } from "@/lib/card-id";
+import { getCardDisplayName } from "@/lib/card-display-name";
 
 function fmt(s: string) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
@@ -159,6 +160,7 @@ export function CardDetailModal({ cardId, onClose, onCollectionChange, showTcgPr
   const tcgMarketPrice = getNumeric(card?.tcgMarketPrice ?? card?.tcg_market_price);
   const tcgPriceUpdatedAt = card?.tcgPriceUpdatedAt ?? card?.tcg_price_updated_at ?? null;
   const hasAnyTcgPrice = [tcgLowPrice, tcgMidPrice, tcgHighPrice, tcgMarketPrice].some((value) => value != null);
+  const cardDisplayName = card ? getCardDisplayName(card) : "";
 
   async function handleAdd() {
     if (!user || !card) return;
@@ -237,7 +239,7 @@ export function CardDetailModal({ cardId, onClose, onCollectionChange, showTcgPr
                     isLandscape ? (
                       <CardImg
                         src={imageUrl}
-                        alt={card.name}
+                        alt={cardDisplayName}
                         style={{
                           position: "absolute",
                           top: "50%",
@@ -250,7 +252,7 @@ export function CardDetailModal({ cardId, onClose, onCollectionChange, showTcgPr
                         className="h-full w-full"
                       />
                     ) : (
-                      <CardImg src={imageUrl} alt={card.name} className="h-full w-full object-cover" />
+                      <CardImg src={imageUrl} alt={cardDisplayName} className="h-full w-full object-cover" />
                     )
                   ) : (
                     <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-gray-500">
@@ -268,7 +270,7 @@ export function CardDetailModal({ cardId, onClose, onCollectionChange, showTcgPr
               <div className="min-w-0 flex-1 space-y-4">
                 {/* Header */}
                 <div>
-                  <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">{card.name}</h2>
+                  <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">{cardDisplayName}</h2>
                   <p className="mt-1 text-sm tabular-nums text-gray-400">
                     {setDisplay && `${setDisplay} · `}{collectorNumber}
                   </p>
