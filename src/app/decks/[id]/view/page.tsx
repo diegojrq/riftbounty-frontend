@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { getDeck } from "@/lib/decks";
 import {
   rawDeckValidationErrors,
@@ -275,6 +276,7 @@ export default function DeckViewPage() {
 
   const [deck, setDeck] = useState<Deck | null>(null);
   const [loading, setLoading] = useState(true);
+  const [ttsModalOpen, setTtsModalOpen] = useState(false);
 
   const fetchDeck = useCallback(async () => {
     if (!deckId) return;
@@ -322,10 +324,11 @@ export default function DeckViewPage() {
     rawDeckValidationErrors(deck.validation).length === 0 &&
     rawDeckValidationWarnings(deck.validation).length === 0;
 
-  function downloadTtsExport() {
+  const ttsExportText = buildDeckTtsText(deck);
+
+  function downloadTtsFile() {
     if (!deck) return;
-    const text = buildDeckTtsText(deck);
-    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob([ttsExportText], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -337,8 +340,82 @@ export default function DeckViewPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function copyTtsToClipboard() {
+    try {
+      await navigator.clipboard.writeText(ttsExportText);
+      toast.success(t("decks.exportTtsCopied"));
+    } catch {
+      toast.error(t("decks.exportTtsCopyFailed"));
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-900">
+      {/* Modal export TTS */}
+      {ttsModalOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tts-export-title"
+          onClick={() => setTtsModalOpen(false)}
+        >
+          <div
+            className="flex max-h-[min(90dvh,720px)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-gray-800 px-5 py-4">
+              <div className="min-w-0">
+                <h2 id="tts-export-title" className="text-lg font-semibold text-white">
+                  {t("decks.exportTtsModalTitle")}
+                </h2>
+                <p className="mt-1 text-sm text-gray-400">{t("decks.exportTtsModalSubtitle")}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTtsModalOpen(false)}
+                className="shrink-0 rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+                aria-label={t("decks.exportTtsClose")}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 border-b border-gray-800 bg-gray-900/80 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => void copyTtsToClipboard()}
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-700/60 bg-emerald-900/40 px-3 py-2 text-sm font-medium text-emerald-300 transition-colors hover:bg-emerald-900/60 hover:text-emerald-200"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                </svg>
+                {t("decks.exportTtsCopy")}
+              </button>
+              <button
+                type="button"
+                onClick={downloadTtsFile}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 transition-colors hover:bg-gray-700"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" x2="12" y1="15" y2="3"/>
+                </svg>
+                {t("decks.exportTtsDownloadTxt")}
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-5">
+              <pre className="whitespace-pre-wrap break-words rounded-xl border border-gray-700/80 bg-gray-950/80 p-4 font-mono text-[13px] leading-relaxed text-gray-200">
+                {ttsExportText}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="border-b border-gray-800 bg-gray-900/95 px-4 py-4 sm:px-8">
         <div className="mx-auto max-w-[1400px]">
@@ -359,7 +436,7 @@ export default function DeckViewPage() {
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={downloadTtsExport}
+                onClick={() => setTtsModalOpen(true)}
                 title={t("decks.exportTtsTitle")}
                 className="rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
               >

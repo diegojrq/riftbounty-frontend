@@ -40,7 +40,7 @@ function LoginForm() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-4 py-12">
+    <div className="mx-auto w-full max-w-xl px-4 py-12 sm:px-6">
       <h1 className="mb-6 text-2xl font-bold text-white">{t("auth.signIn")}</h1>
       {error && (
         <div className="mb-4 rounded border border-red-700/50 bg-red-900/40 p-3 text-sm text-red-300">
@@ -94,7 +94,7 @@ function LoginForm() {
 
 function LoginFallback() {
   return (
-    <div className="mx-auto max-w-md px-4 py-12">
+    <div className="mx-auto w-full max-w-xl px-4 py-12 sm:px-6">
       <div className="mb-6 h-8 w-32 animate-pulse rounded bg-gray-700" />
       <div className="space-y-4">
         <div className="h-10 animate-pulse rounded bg-gray-700" />
