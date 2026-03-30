@@ -49,6 +49,14 @@ export interface AdminCatalogVersionLoadResponse {
   stderr?: string;
 }
 
+/** POST /v1/cards/catalog-version/backfill-image-urls — CardImageUrlBackfillService */
+export interface AdminBackfillImageUrlsBody {
+  dryRun?: boolean;
+  all?: boolean;
+}
+
+export type AdminBackfillImageUrlsResponse = Record<string, unknown>;
+
 export type AdminCard = Card & {
   /** Contexto retornado pelo admin: arrays de nomes. */
   domains?: string[];
@@ -187,4 +195,15 @@ export async function bumpAdminCatalogVersion(): Promise<AdminCatalogVersionBump
 export async function loadAdminCatalogVersion(): Promise<AdminCatalogVersionLoadResponse> {
   const res = await apiPost<AdminCatalogVersionLoadResponse>("admin/catalog-version/load", {});
   return res.data;
+}
+
+/** POST /v1/cards/catalog-version/backfill-image-urls — preenche image_url (R2); dryRun default true no back */
+export async function postBackfillCardImageUrls(
+  body: AdminBackfillImageUrlsBody
+): Promise<AdminBackfillImageUrlsResponse> {
+  const res = await apiPost<AdminBackfillImageUrlsResponse>(
+    "cards/catalog-version/backfill-image-urls",
+    body
+  );
+  return (res.data ?? {}) as AdminBackfillImageUrlsResponse;
 }

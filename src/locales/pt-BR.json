@@ -209,7 +209,17 @@
     "catalogVersionLoadSkippedExisting": "Ignoradas (já existiam)",
     "catalogVersionLoadLoaded": "Carregadas",
     "catalogVersionLoadTotalInJson": "Total no JSON",
-    "catalogVersionLoadExistingBefore": "Existentes antes"
+    "catalogVersionLoadExistingBefore": "Existentes antes",
+    "backfillImageUrlsTitle": "Preencher URLs de imagem das cartas (R2)",
+    "backfillImageUrlsAllLabel": "Todas as linhas (senão só image_url vazio/nulo)",
+    "backfillImageUrlsDryRun": "Dry-run (só prévia)",
+    "backfillImageUrlsApply": "Aplicar (gravar)",
+    "backfillImageUrlsRunning": "Executando backfill…",
+    "backfillImageUrlsDryRunSuccess": "Dry-run concluído. Veja a resposta abaixo.",
+    "backfillImageUrlsApplySuccess": "URLs de imagem atualizadas. Cache do catálogo invalidado no servidor.",
+    "backfillImageUrlsError": "Falha no backfill.",
+    "backfillImageUrlsApplyConfirm": "Gravar image_url na base? (dryRun: false)",
+    "backfillImageUrlsResultTitle": "Última resposta do backfill"
   },
   "trades": {
     "myTrades": "Minhas trocas",

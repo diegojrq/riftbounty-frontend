@@ -15,12 +15,15 @@ import {
   runAdminTcgSync,
   bumpAdminCatalogVersion,
   loadAdminCatalogVersion,
+  postBackfillCardImageUrls,
   type AdminTcgSyncSummary,
   type AdminCatalogVersionLoadResponse,
+  type AdminBackfillImageUrlsResponse,
   type CreateCardDto,
   type UpdateCardDto,
 } from "@/lib/admin";
 import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
+import { useCards } from "@/lib/cards-context";
 import type { Card } from "@/types/card";
 import { getCardId } from "@/lib/card-id";
 
@@ -28,6 +31,7 @@ const LIMIT = 20;
 
 export default function AdminCardsPage() {
   const { t } = useLocale();
+  const { invalidate: invalidateCardsCache } = useCards();
   const { sets: catalogSets } = useRiotCatalogSets();
   const [cards, setCards] = useState<Card[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -36,6 +40,10 @@ export default function AdminCardsPage() {
   const [syncRunning, setSyncRunning] = useState(false);
   const [catalogBumpRunning, setCatalogBumpRunning] = useState(false);
   const [catalogLoadRunning, setCatalogLoadRunning] = useState(false);
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [backfillKind, setBackfillKind] = useState<null | "dry" | "apply">(null);
+  const [backfillAll, setBackfillAll] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<AdminBackfillImageUrlsResponse | null>(null);
   const [lastCatalogVersion, setLastCatalogVersion] = useState<string | number | null>(null);
   const [catalogLoadResult, setCatalogLoadResult] = useState<AdminCatalogVersionLoadResponse | null>(null);
   const [syncSummary, setSyncSummary] = useState<AdminTcgSyncSummary | null>(null);
@@ -277,6 +285,33 @@ export default function AdminCardsPage() {
     }
   };
 
+  const runBackfillImageUrls = async (dryRun: boolean) => {
+    if (backfillRunning) return;
+    if (!dryRun && !confirm(t("admin.backfillImageUrlsApplyConfirm"))) return;
+    setBackfillRunning(true);
+    setBackfillKind(dryRun ? "dry" : "apply");
+    try {
+      const result = await postBackfillCardImageUrls({ dryRun, all: backfillAll });
+      setBackfillResult(result);
+      if (dryRun) {
+        toast.success(t("admin.backfillImageUrlsDryRunSuccess"));
+      } else {
+        invalidateCardsCache();
+        toast.success(t("admin.backfillImageUrlsApplySuccess"));
+      }
+      void fetchList();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(t("admin.backfillImageUrlsError"));
+      if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
+        toast.error(t("admin.forbidden"));
+      }
+    } finally {
+      setBackfillRunning(false);
+      setBackfillKind(null);
+    }
+  };
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -340,6 +375,58 @@ export default function AdminCardsPage() {
           {t("admin.newCard")}
         </button>
       </div>
+
+      <div className="mb-4 flex flex-col gap-3 rounded-lg border border-teal-800/70 bg-teal-950/25 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <span className="text-sm font-semibold text-teal-200">{t("admin.backfillImageUrlsTitle")}</span>
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-teal-100/95">
+          <input
+            type="checkbox"
+            checked={backfillAll}
+            onChange={(e) => setBackfillAll(e.target.checked)}
+            className="rounded border-teal-600 bg-gray-900 text-teal-500 focus:ring-teal-500"
+          />
+          {t("admin.backfillImageUrlsAllLabel")}
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void runBackfillImageUrls(true)}
+            disabled={backfillRunning}
+            className="inline-flex items-center gap-2 rounded border border-teal-500/50 bg-teal-900/40 px-3 py-1.5 text-sm font-semibold text-teal-100 transition hover:bg-teal-800/50 disabled:opacity-60"
+          >
+            {backfillRunning && backfillKind === "dry" && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-teal-300 border-t-transparent" />
+            )}
+            {backfillRunning && backfillKind === "dry"
+              ? t("admin.backfillImageUrlsRunning")
+              : t("admin.backfillImageUrlsDryRun")}
+          </button>
+          <button
+            type="button"
+            onClick={() => void runBackfillImageUrls(false)}
+            disabled={backfillRunning}
+            className="inline-flex items-center gap-2 rounded border border-orange-500/40 bg-orange-950/40 px-3 py-1.5 text-sm font-semibold text-orange-200 transition hover:bg-orange-900/50 disabled:opacity-60"
+          >
+            {backfillRunning && backfillKind === "apply" && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-orange-300 border-t-transparent" />
+            )}
+            {backfillRunning && backfillKind === "apply"
+              ? t("admin.backfillImageUrlsRunning")
+              : t("admin.backfillImageUrlsApply")}
+          </button>
+        </div>
+      </div>
+
+      {backfillResult && (
+        <div className="mb-4 rounded-lg border border-teal-900/60 bg-teal-950/30 p-4 text-sm">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-teal-300">
+            {t("admin.backfillImageUrlsResultTitle")}
+          </p>
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-teal-100/90">
+            {JSON.stringify(backfillResult, null, 2)}
+          </pre>
+        </div>
+      )}
 
       {syncSummary && (
         <div className="mb-4 rounded-lg border border-blue-900/60 bg-blue-950/30 p-4 text-sm">

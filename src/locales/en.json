@@ -209,7 +209,17 @@
     "catalogVersionLoadSkippedExisting": "Skipped existing",
     "catalogVersionLoadLoaded": "Loaded",
     "catalogVersionLoadTotalInJson": "Total in JSON",
-    "catalogVersionLoadExistingBefore": "Existing before"
+    "catalogVersionLoadExistingBefore": "Existing before",
+    "backfillImageUrlsTitle": "Backfill card image URLs (R2)",
+    "backfillImageUrlsAllLabel": "All rows (otherwise only empty image_url)",
+    "backfillImageUrlsDryRun": "Dry-run (preview only)",
+    "backfillImageUrlsApply": "Apply (write)",
+    "backfillImageUrlsRunning": "Running backfill…",
+    "backfillImageUrlsDryRunSuccess": "Dry-run completed. See response below.",
+    "backfillImageUrlsApplySuccess": "Image URLs updated. Catalog cache invalidated on the server.",
+    "backfillImageUrlsError": "Backfill failed.",
+    "backfillImageUrlsApplyConfirm": "Write image URLs to the database? (dryRun: false)",
+    "backfillImageUrlsResultTitle": "Last backfill response"
   },
   "trades": {
     "myTrades": "My Trades",
