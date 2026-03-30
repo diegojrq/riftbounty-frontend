@@ -57,6 +57,20 @@ export interface AdminBackfillImageUrlsBody {
 
 export type AdminBackfillImageUrlsResponse = Record<string, unknown>;
 
+/** POST /v1/cards/catalog-version/sync-r2-card-images — SyncR2CardImagesDto */
+export interface SyncR2CardImagesDto {
+  setId?: string;
+  prefix?: string;
+  auditKeysOnly?: boolean;
+}
+
+/** POST /v1/cards/catalog-version/audit-r2-image-keys — AuditR2ImageKeysDto */
+export interface AuditR2ImageKeysDto {
+  prefix?: string;
+}
+
+export type AdminR2CliResponse = Record<string, unknown>;
+
 export type AdminCard = Card & {
   /** Contexto retornado pelo admin: arrays de nomes. */
   domains?: string[];
@@ -206,4 +220,23 @@ export async function postBackfillCardImageUrls(
     body
   );
   return (res.data ?? {}) as AdminBackfillImageUrlsResponse;
+}
+
+/** POST /v1/cards/catalog-version/sync-r2-card-images — galeria → R2 */
+export async function postSyncR2CardImages(
+  body: SyncR2CardImagesDto
+): Promise<AdminR2CliResponse> {
+  const res = await apiPost<AdminR2CliResponse>("cards/catalog-version/sync-r2-card-images", body);
+  return (res.data ?? {}) as AdminR2CliResponse;
+}
+
+/** POST /v1/cards/catalog-version/audit-r2-image-keys — leitura no bucket R2 */
+export async function postAuditR2ImageKeys(
+  body: AuditR2ImageKeysDto
+): Promise<AdminR2CliResponse> {
+  const res = await apiPost<AdminR2CliResponse>(
+    "cards/catalog-version/audit-r2-image-keys",
+    body
+  );
+  return (res.data ?? {}) as AdminR2CliResponse;
 }

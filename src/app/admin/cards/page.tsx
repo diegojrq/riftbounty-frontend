@@ -16,9 +16,13 @@ import {
   bumpAdminCatalogVersion,
   loadAdminCatalogVersion,
   postBackfillCardImageUrls,
+  postSyncR2CardImages,
+  postAuditR2ImageKeys,
   type AdminTcgSyncSummary,
   type AdminCatalogVersionLoadResponse,
   type AdminBackfillImageUrlsResponse,
+  type AdminR2CliResponse,
+  type SyncR2CardImagesDto,
   type CreateCardDto,
   type UpdateCardDto,
 } from "@/lib/admin";
@@ -44,6 +48,14 @@ export default function AdminCardsPage() {
   const [backfillKind, setBackfillKind] = useState<null | "dry" | "apply">(null);
   const [backfillAll, setBackfillAll] = useState(false);
   const [backfillResult, setBackfillResult] = useState<AdminBackfillImageUrlsResponse | null>(null);
+  const [r2SyncSetId, setR2SyncSetId] = useState("");
+  const [r2SyncPrefix, setR2SyncPrefix] = useState("cards");
+  const [r2SyncAuditKeysOnly, setR2SyncAuditKeysOnly] = useState(false);
+  const [r2SyncRunning, setR2SyncRunning] = useState(false);
+  const [r2SyncResult, setR2SyncResult] = useState<AdminR2CliResponse | null>(null);
+  const [r2AuditPrefix, setR2AuditPrefix] = useState("cards");
+  const [r2AuditRunning, setR2AuditRunning] = useState(false);
+  const [r2AuditResult, setR2AuditResult] = useState<AdminR2CliResponse | null>(null);
   const [lastCatalogVersion, setLastCatalogVersion] = useState<string | number | null>(null);
   const [catalogLoadResult, setCatalogLoadResult] = useState<AdminCatalogVersionLoadResponse | null>(null);
   const [syncSummary, setSyncSummary] = useState<AdminTcgSyncSummary | null>(null);
@@ -312,6 +324,54 @@ export default function AdminCardsPage() {
     }
   };
 
+  const r2Busy = r2SyncRunning || r2AuditRunning;
+
+  const runR2Sync = async () => {
+    if (r2Busy) return;
+    setR2SyncRunning(true);
+    try {
+      const body: SyncR2CardImagesDto = {
+        prefix: r2SyncPrefix.trim() || "cards",
+        ...(r2SyncSetId.trim() ? { setId: r2SyncSetId.trim() } : {}),
+        ...(r2SyncAuditKeysOnly ? { auditKeysOnly: true } : {}),
+      };
+      const result = await postSyncR2CardImages(body);
+      setR2SyncResult(result);
+      toast.success(t("admin.r2SyncSuccess"));
+      if (!r2SyncAuditKeysOnly) {
+        invalidateCardsCache();
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(t("admin.r2SyncError"));
+      if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
+        toast.error(t("admin.forbidden"));
+      }
+    } finally {
+      setR2SyncRunning(false);
+    }
+  };
+
+  const runR2Audit = async () => {
+    if (r2Busy) return;
+    setR2AuditRunning(true);
+    try {
+      const result = await postAuditR2ImageKeys({
+        prefix: r2AuditPrefix.trim() || "cards",
+      });
+      setR2AuditResult(result);
+      toast.success(t("admin.r2AuditSuccess"));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(t("admin.r2AuditError"));
+      if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
+        toast.error(t("admin.forbidden"));
+      }
+    } finally {
+      setR2AuditRunning(false);
+    }
+  };
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -424,6 +484,101 @@ export default function AdminCardsPage() {
           </p>
           <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-teal-100/90">
             {JSON.stringify(backfillResult, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      <div className="mb-4 flex flex-col gap-3 rounded-lg border border-sky-800/70 bg-sky-950/20 px-4 py-3">
+        <span className="text-sm font-semibold text-sky-200">{t("admin.r2SyncTitle")}</span>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+          <label className="flex min-w-[140px] flex-col gap-1 text-xs text-sky-100/90">
+            <span>{t("admin.r2SyncSetId")}</span>
+            <input
+              type="text"
+              value={r2SyncSetId}
+              onChange={(e) => setR2SyncSetId(e.target.value)}
+              placeholder="UNL"
+              disabled={r2Busy}
+              className="rounded border border-sky-700 bg-gray-900 px-2 py-1.5 text-sm text-white placeholder:text-gray-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-60"
+            />
+          </label>
+          <label className="flex min-w-[120px] flex-col gap-1 text-xs text-sky-100/90">
+            <span>{t("admin.r2SyncPrefix")}</span>
+            <input
+              type="text"
+              value={r2SyncPrefix}
+              onChange={(e) => setR2SyncPrefix(e.target.value)}
+              disabled={r2Busy}
+              className="rounded border border-sky-700 bg-gray-900 px-2 py-1.5 text-sm text-white focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-60"
+            />
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-sky-100/95">
+            <input
+              type="checkbox"
+              checked={r2SyncAuditKeysOnly}
+              onChange={(e) => setR2SyncAuditKeysOnly(e.target.checked)}
+              disabled={r2Busy}
+              className="rounded border-sky-600 bg-gray-900 text-sky-500 focus:ring-sky-500 disabled:opacity-60"
+            />
+            {t("admin.r2SyncAuditKeysOnly")}
+          </label>
+          <button
+            type="button"
+            onClick={() => void runR2Sync()}
+            disabled={r2Busy}
+            className="inline-flex items-center gap-2 rounded border border-sky-500/50 bg-sky-900/40 px-3 py-1.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-800/50 disabled:opacity-60"
+          >
+            {r2SyncRunning && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-300 border-t-transparent" />
+            )}
+            {r2SyncRunning ? t("admin.r2SyncRunning") : t("admin.r2SyncRun")}
+          </button>
+        </div>
+      </div>
+
+      {r2SyncResult && (
+        <div className="mb-4 rounded-lg border border-sky-900/60 bg-sky-950/30 p-4 text-sm">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-300">
+            {t("admin.r2SyncResultTitle")}
+          </p>
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-sky-100/90">
+            {JSON.stringify(r2SyncResult, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      <div className="mb-4 flex flex-col gap-3 rounded-lg border border-indigo-800/70 bg-indigo-950/20 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <span className="text-sm font-semibold text-indigo-200">{t("admin.r2AuditTitle")}</span>
+        <label className="flex min-w-[120px] flex-col gap-1 text-xs text-indigo-100/90">
+          <span>{t("admin.r2AuditPrefix")}</span>
+          <input
+            type="text"
+            value={r2AuditPrefix}
+            onChange={(e) => setR2AuditPrefix(e.target.value)}
+            disabled={r2Busy}
+            className="rounded border border-indigo-700 bg-gray-900 px-2 py-1.5 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-60"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => void runR2Audit()}
+          disabled={r2Busy}
+          className="inline-flex items-center gap-2 rounded border border-indigo-500/50 bg-indigo-900/40 px-3 py-1.5 text-sm font-semibold text-indigo-100 transition hover:bg-indigo-800/50 disabled:opacity-60"
+        >
+          {r2AuditRunning && (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-300 border-t-transparent" />
+          )}
+          {r2AuditRunning ? t("admin.r2AuditRunning") : t("admin.r2AuditRun")}
+        </button>
+      </div>
+
+      {r2AuditResult && (
+        <div className="mb-4 rounded-lg border border-indigo-900/60 bg-indigo-950/30 p-4 text-sm">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-indigo-300">
+            {t("admin.r2AuditResultTitle")}
+          </p>
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-indigo-100/90">
+            {JSON.stringify(r2AuditResult, null, 2)}
           </pre>
         </div>
       )}
