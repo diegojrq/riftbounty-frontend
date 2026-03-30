@@ -3,6 +3,7 @@
 import type { Card } from "@/types/card";
 import { cardHasFlag, getCardImageUrl } from "@/lib/cards";
 import { CardNewFlagChip } from "@/components/cards/CardNewFlagChip";
+import { CardBannedBadge } from "@/components/cards/CardBannedUi";
 import { CardImg } from "@/components/cards/CardImg";
 import { useLocale } from "@/lib/locale-context";
 import { getCardDisplayName } from "@/lib/card-display-name";
@@ -119,7 +120,9 @@ export function CardTile({
       (card.record_type?.toLowerCase().includes("battleground") ?? false) ||
       card.type?.toLowerCase() === "battlefield"
     );
-  const cardClassName = `${cardBaseClass} ${isLandscape ? landscapeClass : portraitClass}`;
+  const cardClassName = `${cardBaseClass} ${isLandscape ? landscapeClass : portraitClass}${
+    card.banned ? " ring-1 ring-red-800/45" : ""
+  }`;
 
   const Wrapper = wrapperElement;
 
@@ -167,6 +170,7 @@ export function CardTile({
       className={`${cardClassName}${showNewFlag ? " !overflow-visible pt-3" : ""}`}
     >
       {showNewFlag && <CardNewFlagChip />}
+      {card.banned && <CardBannedBadge />}
       {tcgChipPrice != null && !showCollectionActions && (
         <div className="pointer-events-none absolute bottom-2 left-2 z-30">
           <span className="inline-flex items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2.5 py-1 text-xs font-bold italic text-emerald-50 shadow-md">

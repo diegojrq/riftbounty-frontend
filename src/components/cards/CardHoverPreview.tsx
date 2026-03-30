@@ -142,7 +142,7 @@ export function CardHoverPreview({ card, children, battlefieldAsLandscape = fals
         onClick={handleClick}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
-        className="cursor-default"
+        className="block w-full min-w-0 cursor-default"
       >
         {children}
       </span>

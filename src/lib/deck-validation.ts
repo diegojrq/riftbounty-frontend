@@ -35,6 +35,21 @@ export function validationErrorMessage(err: unknown): string {
   }
 }
 
+/**
+ * Nome da carta afetada quando o backend envia `issues.errors[]` com `args.name` ou `args.cardName`.
+ * Usado para mapear erros por carta sem depender de aspas na mensagem traduzida.
+ */
+export function validationErrorAffectedCardName(err: unknown): string | null {
+  if (err == null || typeof err !== "object") return null;
+  const o = err as Record<string, unknown>;
+  const args = o.args;
+  if (args == null || typeof args !== "object" || Array.isArray(args)) return null;
+  const a = args as Record<string, unknown>;
+  const name = a.name ?? a.cardName;
+  if (typeof name === "string" && name.trim()) return name.trim().toLowerCase();
+  return null;
+}
+
 function normalizeArgs(args: unknown): Record<string, string | number> | undefined {
   if (args == null || typeof args !== "object" || Array.isArray(args)) return undefined;
   const out: Record<string, string | number> = {};

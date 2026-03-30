@@ -73,6 +73,12 @@ export interface Card {
   tcgPriceUpdatedAt?: string | null;
   /** Ex.: `[{ "id": "new", "label": "New" }]` — usado para chips na UI. */
   flags?: CardFlag[];
+  /** Banida para jogo (equivale a bannedAt != null no backend). */
+  banned?: boolean;
+  /** ISO 8601; null se não banida. */
+  bannedAt?: string | null;
+  /** URL do comunicado oficial (B&R); pode ser null mesmo com banned true. */
+  banAnnouncementUrl?: string | null;
 }
 
 /** GET /v1/cards response: items (cards with relations), totalCount. */

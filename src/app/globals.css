@@ -56,6 +56,27 @@
   animation: minus-one-fall 650ms ease-out forwards;
 }
 
+/* Mulligan: só o slot trocado anima */
+@keyframes mulligan-card-replace {
+  0% {
+    opacity: 0.35;
+    transform: scale(0.94);
+    filter: brightness(1.15);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+.animate-mulligan-replace {
+  animation: mulligan-card-replace 0.55s ease-out forwards;
+}
+
 /* Skeleton da arte da carta — contraste com bg-gray-800 + faixa luminosa em movimento */
 @keyframes card-img-skeleton-shimmer {
   0% {

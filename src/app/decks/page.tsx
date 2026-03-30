@@ -10,6 +10,7 @@ import { useLocale } from "@/lib/locale-context";
 import { getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
 import type { Deck } from "@/types/deck";
+import { bannedCardNamesInDeck } from "@/lib/deck-banned";
 import { rawDeckValidationErrors, rawDeckValidationWarnings } from "@/lib/deck-validation";
 import { getCardDisplayName } from "@/lib/card-display-name";
 
@@ -53,8 +54,7 @@ export default function DecksPage() {
     setError(null);
     try {
       const list = await getDecks();
-      setDecks(list);
-      // Fetch full validation for each deck in parallel (list endpoint may only do structural validation)
+      // Um único setState após validação — evita piscar a tag válido/construindo entre lista e GET com validate
       const validated = await Promise.all(
         list.map((d) => getDeck(d.id, true).catch(() => d))
       );
@@ -153,6 +153,7 @@ export default function DecksPage() {
                 !!legend &&
                 !!champion;
               const isValid =
+                bannedCardNamesInDeck(deck).length === 0 &&
                 noValidationIssues &&
                 (deck.validation?.valid === true || structurallyComplete);
 
@@ -162,16 +163,16 @@ export default function DecksPage() {
                     href={isValid ? `/decks/${deck.id}/view` : `/decks/${deck.id}`}
                     className="group flex flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-800 transition hover:border-gray-600 hover:bg-gray-750 hover:shadow-xl"
                   >
-                    {/* Card images strip */}
-                    <div className="relative flex h-28 bg-gray-900">
+                    {/* Card images strip — isolate + z-index para a tag ficar acima do gradiente e das imagens */}
+                    <div className="relative isolate z-0 flex h-28 bg-gray-900">
                       {legend && getCardImageUrl(legend) ? (
                         <CardImg
                           src={getCardImageUrl(legend)!}
                           alt={getCardDisplayName(legend)}
-                          className="h-full w-1/2 object-cover object-top"
+                          className="relative z-0 h-full w-1/2 object-cover object-top"
                         />
                       ) : (
-                        <div className="flex h-full w-1/2 items-center justify-center bg-gray-800">
+                        <div className="relative z-0 flex h-full w-1/2 items-center justify-center bg-gray-800">
                           <span className="px-2 text-center text-xs text-gray-500">{legend ? getCardDisplayName(legend) : t("decks.noLegend")}</span>
                         </div>
                       )}
@@ -179,17 +180,17 @@ export default function DecksPage() {
                         <CardImg
                           src={getCardImageUrl(champion)!}
                           alt={champion.name}
-                          className="h-full w-1/2 object-cover object-top"
+                          className="relative z-0 h-full w-1/2 object-cover object-top"
                         />
                       ) : (
-                        <div className="flex h-full w-1/2 items-center justify-center border-l border-gray-700 bg-gray-800">
+                        <div className="relative z-0 flex h-full w-1/2 items-center justify-center border-l border-gray-700 bg-gray-800">
                           <span className="px-2 text-center text-xs text-gray-500">{champion?.name ?? t("decks.noChampion")}</span>
                         </div>
                       )}
                       {/* Gradient overlay */}
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-gray-800 via-gray-800/10 to-transparent" />
+                      <div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-gray-800 via-gray-800/10 to-transparent" />
                       {/* Validation badge */}
-                      <div className="absolute right-2 top-2">
+                      <div className="absolute right-2 top-2 z-20">
                         {isValid ? (
                           <span className="flex items-center gap-1 rounded-full border border-emerald-700 bg-emerald-900/80 px-2 py-0.5 text-xs font-medium text-emerald-400 backdrop-blur-sm">
                             <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>

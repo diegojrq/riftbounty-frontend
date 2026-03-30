@@ -7,6 +7,7 @@ import { cardHasFlag, getCard, getCardImageUrl } from "@/lib/cards";
 import { addToCollection, removeFromCollection, updateQuantity } from "@/lib/collections";
 import { CardImg } from "@/components/cards/CardImg";
 import { CardNewFlagChip } from "@/components/cards/CardNewFlagChip";
+import { CardBannedBanner } from "@/components/cards/CardBannedUi";
 import { CardDescription } from "@/components/cards/CardDescription";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
@@ -275,6 +276,8 @@ export function CardDetailModal({ cardId, onClose, onCollectionChange, showTcgPr
                     {setDisplay && `${setDisplay} · `}{collectorNumber}
                   </p>
                 </div>
+
+                {card.banned && <CardBannedBanner card={card} />}
 
                 {/* Tags: Set, Rarity, Type, Domains */}
                 <div className="flex flex-wrap gap-2">

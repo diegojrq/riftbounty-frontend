@@ -92,6 +92,11 @@ export function CardPickerModal({ title, onSelect, onClose, typeFilter }: CardPi
                     )}
                     {getCardDisplayName(card)}
                     {card.type && <span className="ml-2 text-gray-500">({card.type})</span>}
+                    {card.banned && (
+                      <span className="ml-2 inline-flex rounded border border-red-500/70 bg-red-950/80 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-100">
+                        {t("cards.banned")}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}

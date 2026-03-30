@@ -2,18 +2,23 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { getDeck } from "@/lib/decks";
 import {
   rawDeckValidationErrors,
   rawDeckValidationWarnings,
   formatDeckValidationItem,
+  validationErrorAffectedCardName,
 } from "@/lib/deck-validation";
+import { bannedCardNamesInDeck } from "@/lib/deck-banned";
 import { useAuth } from "@/lib/auth-context";
 import { getCardImageUrl } from "@/lib/cards";
 import { CardImg } from "@/components/cards/CardImg";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
+import { DeckCardThumb } from "@/components/decks/DeckCardThumb";
+import { DeckViewMulligan } from "@/components/decks/DeckViewMulligan";
+import { DeckViewStats } from "@/components/decks/DeckViewStats";
 import { BackLink } from "@/components/layout/BackLink";
 import { useLocale } from "@/lib/locale-context";
 import type { Card } from "@/types/card";
@@ -81,59 +86,6 @@ function sortSideboardItems(items: NonNullable<Deck["sideboardItems"]>): typeof 
   });
 }
 
-/**
- * Miniatura: badge no mesmo molde da coleção (CardTile: size-9, canto inferior direito).
- * Com mais de uma cópia, uma segunda face atrás (efeito pilha).
- */
-function DeckCardThumb({
-  card,
-  quantity,
-}: {
-  card: Card;
-  quantity: number;
-}) {
-  const url = getCardImageUrl(card);
-  const label = getCardDisplayName(card);
-  const showQtyBadge = quantity > 1;
-  const showStack = quantity > 1;
-
-  return (
-    <CardHoverPreview card={card} battlefieldAsLandscape>
-      <div className="group relative aspect-[2.5/3.5] w-full">
-        {/* Carta “de trás” — mesma arte, levemente deslocada (pilha) */}
-        {showStack && url && (
-          <div
-            className="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-lg border-2 border-gray-500/70 bg-gray-800 shadow-[5px_5px_0_0_rgba(15,23,42,0.85)]"
-            style={{ transform: "translate(7px, 7px)" }}
-            aria-hidden
-          >
-            <CardImg src={url} alt="" className="h-full w-full object-cover opacity-[0.72] brightness-95" />
-          </div>
-        )}
-        {showStack && !url && (
-          <div
-            className="pointer-events-none absolute inset-0 z-0 rounded-lg border-2 border-gray-500/60 bg-gray-700 shadow-[5px_5px_0_0_rgba(15,23,42,0.85)]"
-            style={{ transform: "translate(7px, 7px)" }}
-            aria-hidden
-          />
-        )}
-
-        <div className="relative z-10 flex h-full w-full overflow-hidden rounded-lg border border-gray-700/80 bg-gray-800 shadow-md transition hover:border-amber-700/40 hover:shadow-lg">
-          {url ? (
-            <CardImg src={url} alt={label} className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full items-center justify-center p-2 text-center text-[10px] leading-tight text-gray-500">{label}</div>
-          )}
-          {showQtyBadge && (
-            <span className="absolute bottom-1.5 right-1.5 z-20 flex size-9 shrink-0 items-center justify-center rounded-md border border-zinc-400/70 bg-zinc-950 text-xs font-bold tabular-nums text-white shadow-md">
-              ×{quantity}
-            </span>
-          )}
-        </div>
-      </div>
-    </CardHoverPreview>
-  );
-}
 
 function CardSlot({ card, label }: { card: Card | null | undefined; label: string }) {
   const { t } = useLocale();
@@ -297,6 +249,25 @@ export default function DeckViewPage() {
     fetchDeck();
   }, [authLoading, user, router, fetchDeck]);
 
+  const bannedNames = useMemo(
+    () => (deck ? bannedCardNamesInDeck(deck) : []),
+    [deck]
+  );
+  const validationErrorsMerged = useMemo(() => {
+    if (!deck) return [] as unknown[];
+    const raw = rawDeckValidationErrors(deck.validation);
+    const extras: unknown[] = [];
+    for (const name of bannedNames) {
+      const covered = raw.some(
+        (e) => validationErrorAffectedCardName(e) === name.toLowerCase()
+      );
+      if (!covered) {
+        extras.push({ key: "common.decks.validation_banned_card", args: { name } });
+      }
+    }
+    return [...raw, ...extras];
+  }, [deck, bannedNames]);
+
   if (authLoading || loading) {
     return <DeckViewSkeleton />;
   }
@@ -319,7 +290,9 @@ export default function DeckViewPage() {
   const mainDeckSorted = sortMainDeckItems(deck.mainItems ?? []);
   const runeSorted = sortRuneItems(deck.runeItems ?? []);
   const sideboardSorted = sortSideboardItems(deck.sideboardItems ?? []);
+
   const isValid =
+    bannedNames.length === 0 &&
     deck.validation?.valid &&
     rawDeckValidationErrors(deck.validation).length === 0 &&
     rawDeckValidationWarnings(deck.validation).length === 0;
@@ -610,22 +583,25 @@ export default function DeckViewPage() {
               </div>
             </section>
 
-            {/* Validation errors/warnings */}
-            {deck.validation && !isValid && (
+            {/* Validation errors/warnings (inclui cartas banidas do catálogo se a API ainda não acusar) */}
+            {!isValid && (
               <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4">
                 <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">{t("decks.validation")}</h2>
                 <div className="space-y-1.5">
-                  {rawDeckValidationErrors(deck.validation).map((msg, i) => (
-                    <p key={i} className="text-sm text-red-400">{formatDeckValidationItem(msg, t)}</p>
+                  {validationErrorsMerged.map((msg, i) => (
+                    <p key={`e-${i}`} className="text-sm text-red-400">{formatDeckValidationItem(msg, t)}</p>
                   ))}
                   {rawDeckValidationWarnings(deck.validation).map((msg, i) => (
-                    <p key={i} className="text-sm text-amber-400">{formatDeckValidationItem(msg, t)}</p>
+                    <p key={`w-${i}`} className="text-sm text-amber-400">{formatDeckValidationItem(msg, t)}</p>
                   ))}
                 </div>
               </div>
             )}
           </div>
         </div>
+
+        <DeckViewStats deck={deck} />
+        <DeckViewMulligan deck={deck} />
       </div>
     </div>
   );

@@ -35,8 +35,10 @@ import {
   rawDeckValidationErrors,
   rawDeckValidationWarnings,
   formatDeckValidationItem,
+  validationErrorAffectedCardName,
   type DeckValidationTranslate,
 } from "@/lib/deck-validation";
+import { bannedCardNamesInDeck } from "@/lib/deck-banned";
 import type { Card } from "@/types/card";
 import type { Deck } from "@/types/deck";
 import { getCardId } from "@/lib/card-id";
@@ -104,6 +106,27 @@ function buildClientCopyLimitMessages(
     }
   }
   return out;
+}
+
+/** Mensagens de validação/banimento para uma carta (nome API ou nome de exibição). */
+function cardErrorMessagesForCard(
+  card: Card | null | undefined,
+  cardErrorMap: Map<string, string[]>
+): string[] {
+  if (!card) return [];
+  const keys = new Set<string>();
+  if (card.name?.trim()) keys.add(card.name.trim().toLowerCase());
+  const display = getCardDisplayName(card)?.trim();
+  if (display) keys.add(display.toLowerCase());
+  for (const k of keys) {
+    const msgs = cardErrorMap.get(k);
+    if (msgs?.length) return msgs;
+  }
+  return [];
+}
+
+function cardHasErrorsInMap(card: Card | null | undefined, cardErrorMap: Map<string, string[]>): boolean {
+  return cardErrorMessagesForCard(card, cardErrorMap).length > 0;
 }
 
 function CardWarning({ errors }: { errors: string[] }) {
@@ -348,9 +371,17 @@ function getNextPicker(deck: Deck, t: DeckValidationTranslate): PickerMode {
   // Build per-card error map from validation data
   const cardErrors = new Map<string, true>();
   for (const err of rawDeckValidationErrors(deck.validation)) {
+    const fromArgs = validationErrorAffectedCardName(err);
+    if (fromArgs) {
+      cardErrors.set(fromArgs, true);
+      continue;
+    }
     const s = formatDeckValidationItem(err, t);
     const match = s.match(/"([^"]+)"/);
     if (match) cardErrors.set(match[1].toLowerCase(), true);
+  }
+  for (const name of bannedCardNamesInDeck(deck)) {
+    cardErrors.set(name.toLowerCase(), true);
   }
 
   const clientCopyViolations = mainSideboardCopyViolationNames(deck);
@@ -677,8 +708,13 @@ export default function DeckBuilderPage() {
     const noWarnings = rawDeckValidationWarnings(deck.validation).length === 0;
     const validationValid = deck.validation?.valid === true;
     const noClientCopyOverflow = !hasMainSideboardCopyOverflow(deck);
+    const noBannedCards = bannedCardNamesInDeck(deck).length === 0;
     const isValid =
-      noErrors && noWarnings && (validationValid || structurallyComplete) && noClientCopyOverflow;
+      noBannedCards &&
+      noErrors &&
+      noWarnings &&
+      (validationValid || structurallyComplete) &&
+      noClientCopyOverflow;
     if (isValid && prevValidRef.current !== true) {
       setShowValidModal(true);
     }
@@ -874,6 +910,7 @@ export default function DeckBuilderPage() {
   const validation = deck?.validation;
   const deckLegend = deck?.legendCard ?? deck?.legend;
   const deckChampion = deck?.championCard ?? deck?.champion;
+  const bannedNames = deck ? bannedCardNamesInDeck(deck) : [];
 
   const deckDomains = deckLegend?.cardDomains ?? [];
   const hasName = ((editingName ? nameDraft : (deck?.name ?? nameDraft))?.trim() ?? "").length > 0;
@@ -885,18 +922,35 @@ export default function DeckBuilderPage() {
     !!deckLegend &&
     !!deckChampion;
   const isDeckValid = !!(
+    bannedNames.length === 0 &&
     rawDeckValidationErrors(validation).length === 0 &&
     rawDeckValidationWarnings(validation).length === 0 &&
     (validation?.valid === true || structurallyComplete) &&
     !hasMainSideboardCopyOverflow(deck)
   );
 
-  const validationErrorStrings = rawDeckValidationErrors(validation).map((e) =>
-    formatDeckValidationItem(e, t)
-  );
+  const rawErrItems = rawDeckValidationErrors(validation);
+  const extraBannedStrings = bannedNames
+    .filter(
+      (name) =>
+        !rawErrItems.some((e) => validationErrorAffectedCardName(e) === name.toLowerCase())
+    )
+    .map((name) =>
+      formatDeckValidationItem(
+        { key: "common.decks.validation_banned_card", args: { name } },
+        t
+      )
+    );
+  const validationErrorStrings = [
+    ...rawErrItems.map((e) => formatDeckValidationItem(e, t)),
+    ...extraBannedStrings,
+  ];
   const validationWarningStrings = rawDeckValidationWarnings(validation).map((e) =>
     formatDeckValidationItem(e, t)
   );
+  const headerValidationErrorLines = [
+    ...new Set([...validationErrorStrings, ...clientCopyLimitErrors]),
+  ];
 
   // Map cardName (lowercase) → error messages, for inline warning icons
   const cardErrorMap = new Map<string, string[]>();
@@ -916,19 +970,28 @@ export default function DeckBuilderPage() {
   }
   // Structural errors = those that don't reference a specific card name
   const structuralErrors = validationErrorStrings.filter((e) => !/"[^"]+"/.test(e));
-  const structuralErrorsCombined = [...structuralErrors, ...clientCopyLimitErrors];
+  const structuralErrorsCombined = [
+    ...structuralErrors,
+    ...clientCopyLimitErrors,
+    ...extraBannedStrings,
+  ];
   const structuralWarnings = validationWarningStrings;
 
   // Whether each section has at least one card with a validation error
   const mainHasErrors = (deck?.mainItems ?? []).some(
-    item => cardErrorMap.has(item.card?.name?.toLowerCase() ?? "")
+    (item) => item.card && cardHasErrorsInMap(item.card as Card, cardErrorMap)
   );
   const runeHasErrors = (deck?.runeItems ?? []).some(
-    item => cardErrorMap.has(item.card?.name?.toLowerCase() ?? "")
+    (item) => item.card && cardHasErrorsInMap(item.card as Card, cardErrorMap)
   );
   const sideboardHasErrors = (deck?.sideboardItems ?? []).some(
-    item => cardErrorMap.has(item.card?.name?.toLowerCase() ?? "")
+    (item) => item.card && cardHasErrorsInMap(item.card as Card, cardErrorMap)
   );
+  const bfHasErrors = (deck?.battlefields ?? []).some(
+    (b) => b.card && cardHasErrorsInMap(b.card as Card, cardErrorMap)
+  );
+  const legendHasErrors = deckLegend ? cardHasErrorsInMap(deckLegend as Card, cardErrorMap) : false;
+  const championHasErrors = deckChampion ? cardHasErrorsInMap(deckChampion as Card, cardErrorMap) : false;
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -1022,12 +1085,24 @@ export default function DeckBuilderPage() {
           <div className="space-y-4">
             {/* Deck name + steps */}
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
-              <div className="mb-2 h-3 w-20 animate-pulse rounded bg-gray-700" />
-              <div className="mb-4 h-10 w-full animate-pulse rounded bg-gray-700/60" />
-              <div className="flex gap-2">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="h-6 w-20 animate-pulse rounded-full bg-gray-700/60" />
-                ))}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 md:items-start">
+                <div className="min-w-0 space-y-3">
+                  <div className="mb-2 h-3 w-20 animate-pulse rounded bg-gray-700" />
+                  <div className="mb-4 h-10 w-full animate-pulse rounded bg-gray-700/60" />
+                  <div className="flex flex-wrap gap-2">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div key={i} className="h-6 w-20 animate-pulse rounded-full bg-gray-700/60" />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex min-w-0 flex-col gap-2 border-t border-gray-700 pt-4 md:border-t-0 md:border-l md:border-gray-700 md:pt-0 md:pl-6">
+                  <div className="h-7 w-24 animate-pulse rounded-md bg-gray-700/60" />
+                  <div className="space-y-1.5">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-3 w-full animate-pulse rounded bg-gray-700/40" />
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[340px_1fr]">
@@ -1067,117 +1142,168 @@ export default function DeckBuilderPage() {
           </div>
         ) : !deck ? null : (
           <>
-          {/* ── Deck name + Steps — sempre visíveis, fora do picker ── */}
+          {/* ── Deck name + Steps (esq.) · Validação + tag (dir.) — sempre visíveis, fora do picker ── */}
           <div className="mb-4 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
-            <div className="mb-3 flex flex-col gap-1">
-              <label htmlFor="deck-name" className="text-xs font-medium uppercase tracking-wider text-gray-500">
-                {t("decks.deckName")}
-              </label>
-              <div className="flex items-center gap-2">
-                {editingName ? (
-                  <>
-                    <input
-                      id="deck-name"
-                      type="text"
-                      value={nameDraft}
-                      onChange={(e) => setNameDraft(e.target.value)}
-                      disabled={savingName}
-                      placeholder={t("decks.giveDeckAName")}
-                      className={`min-w-0 flex-1 rounded border px-3 py-2 text-base font-medium text-white placeholder:text-gray-500 ${
-                        !(nameDraft?.trim()) && (deck?.mainItems?.length ?? 0) > 0
-                          ? "border-amber-500 bg-amber-950/20 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/50"
-                          : "border-gray-600 bg-gray-800 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
-                      }`}
-                      onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveName}
-                      disabled={savingName || nameDraft === deck?.name}
-                      className="shrink-0 rounded border border-emerald-700 bg-emerald-900/40 px-3 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-900/60 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {savingName ? "…" : t("decks.save")}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span
-                      id="deck-name"
-                      className={`min-w-0 flex-1 rounded border border-transparent px-3 py-2 text-base font-medium ${
-                        (deck?.name?.trim() ?? "") ? "text-white" : "text-gray-500"
-                      }`}
-                    >
-                      {(deck?.name?.trim() ?? "") || t("decks.noName")}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingName(true);
-                        setNameDraft(deck?.name ?? "");
-                      }}
-                      className="shrink-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-700 hover:text-white"
-                    >
-                      {t("decks.editName")}
-                    </button>
-                  </>
-                )}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 md:items-start">
+              <div className="min-w-0">
+                <div className="mb-3 flex flex-col gap-1">
+                  <label htmlFor="deck-name" className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                    {t("decks.deckName")}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {editingName ? (
+                      <>
+                        <input
+                          id="deck-name"
+                          type="text"
+                          value={nameDraft}
+                          onChange={(e) => setNameDraft(e.target.value)}
+                          disabled={savingName}
+                          placeholder={t("decks.giveDeckAName")}
+                          className={`min-w-0 flex-1 rounded border px-3 py-2 text-base font-medium text-white placeholder:text-gray-500 ${
+                            !(nameDraft?.trim()) && (deck?.mainItems?.length ?? 0) > 0
+                              ? "border-amber-500 bg-amber-950/20 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400/50"
+                              : "border-gray-600 bg-gray-800 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                          }`}
+                          onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveName}
+                          disabled={savingName || nameDraft === deck?.name}
+                          className="shrink-0 rounded border border-emerald-700 bg-emerald-900/40 px-3 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-900/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {savingName ? "…" : t("decks.save")}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingName(true);
+                            setNameDraft(deck?.name ?? "");
+                          }}
+                          aria-label={t("decks.editName")}
+                          className="group shrink-0 rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-700/80 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                          >
+                            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                            <path d="m15 5 4 4" />
+                          </svg>
+                        </button>
+                        <span
+                          id="deck-name"
+                          className={`min-w-0 flex-1 rounded border border-transparent px-1 py-2 text-base font-medium ${
+                            (deck?.name?.trim() ?? "") ? "text-white" : "text-gray-500"
+                          }`}
+                        >
+                          {(deck?.name?.trim() ?? "") || t("decks.noName")}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {!(nameDraft?.trim()) && editingName && (deck?.mainItems?.length ?? 0) > 0 && (
+                    <p className="text-xs text-amber-400">{t("decks.deckNameRequired")}</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium uppercase tracking-wider text-gray-500 shrink-0">{t("decks.steps")}</span>
+                  <div className="flex flex-wrap gap-1">
+                    {(["legend", "champion", "battlefields", "main", "rune", "sideboard"] as PickerMode[]).map((mode) => {
+                      const labelMap: Record<PickerMode, string> = {
+                        legend: t("decks.stepsLegend"), champion: t("decks.stepsChampion"),
+                        battlefields: t("decks.stepsBattlefields"),
+                        main: t("decks.stepsMain"), rune: t("decks.stepsRune"), sideboard: t("decks.stepsSB"),
+                      };
+                      const bfCount = deck?.battlefields?.filter((b) => b.card).length ?? 0;
+                      const errs = validationErrorStrings;
+                      const doneMap: Record<PickerMode, boolean> = {
+                        legend: !!deckLegend,
+                        champion: !!deckChampion,
+                        battlefields: bfCount === 3,
+                        main: mainCount === 39,
+                        rune: runeCount === 12,
+                        sideboard: sideboardCount > 0,
+                      };
+                      const bfHasWarn = errs.some((e) => /^battlefield/i.test(e));
+                      const warnMap: Record<PickerMode, boolean> = {
+                        legend: doneMap.legend && (errs.some((e) => /^legend/i.test(e)) || legendHasErrors),
+                        champion: doneMap.champion && (errs.some((e) => /^champion/i.test(e)) || championHasErrors),
+                        battlefields: doneMap.battlefields && (bfHasWarn || bfHasErrors),
+                        main: doneMap.main && (errs.some(e => /^main/i.test(e)) || mainHasErrors),
+                        rune: doneMap.rune && (errs.some(e => /^rune/i.test(e)) || runeHasErrors),
+                        sideboard: doneMap.sideboard && (errs.some(e => /^sideboard/i.test(e)) || sideboardHasErrors),
+                      };
+                      const active = picker === mode;
+                      const done = doneMap[mode];
+                      const warn = warnMap[mode];
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => { setPicker(mode); setCardSearchQuery(""); if (mode === "battlefields") setBattlefieldSlotBeingEdited(null); setMobilePickerOpen(true); }}
+                          className={`rounded border px-2 py-0.5 text-xs font-medium transition-all ${
+                            active
+                              ? warn
+                                ? "border-amber-500 bg-amber-900/30 text-amber-300"
+                                : "border-blue-500 bg-blue-500/20 text-blue-300"
+                              : warn
+                              ? "border-amber-600 bg-amber-900/20 text-amber-400 hover:border-amber-500"
+                              : done
+                              ? "border-emerald-700 bg-emerald-900/20 text-emerald-400 hover:border-emerald-500"
+                              : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
+                          }`}
+                        >
+                          {warn && "⚠ "}{!warn && done && !active && "✓ "}{labelMap[mode]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              {!(nameDraft?.trim()) && editingName && (deck?.mainItems?.length ?? 0) > 0 && (
-                <p className="text-xs text-amber-400">{t("decks.deckNameRequired")}</p>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium uppercase tracking-wider text-gray-500 shrink-0">{t("decks.steps")}</span>
-              <div className="flex flex-wrap gap-1">
-                {(["legend", "champion", "battlefields", "main", "rune", "sideboard"] as PickerMode[]).map((mode) => {
-                  const labelMap: Record<PickerMode, string> = {
-                    legend: t("decks.stepsLegend"), champion: t("decks.stepsChampion"),
-                    battlefields: t("decks.stepsBattlefields"),
-                    main: t("decks.stepsMain"), rune: t("decks.stepsRune"), sideboard: t("decks.stepsSB"),
-                  };
-                  const bfCount = deck?.battlefields?.filter((b) => b.card).length ?? 0;
-                  const errs = validationErrorStrings;
-                  const doneMap: Record<PickerMode, boolean> = {
-                    legend: !!deckLegend,
-                    champion: !!deckChampion,
-                    battlefields: bfCount === 3,
-                    main: mainCount === 39,
-                    rune: runeCount === 12,
-                    sideboard: sideboardCount > 0,
-                  };
-                  const bfHasWarn = errs.some((e) => /^battlefield/i.test(e));
-                  const warnMap: Record<PickerMode, boolean> = {
-                    legend: doneMap.legend && errs.some(e => /^legend/i.test(e)),
-                    champion: doneMap.champion && errs.some(e => /^champion/i.test(e)),
-                    battlefields: doneMap.battlefields && bfHasWarn,
-                    main: doneMap.main && (errs.some(e => /^main/i.test(e)) || mainHasErrors),
-                    rune: doneMap.rune && (errs.some(e => /^rune/i.test(e)) || runeHasErrors),
-                    sideboard: doneMap.sideboard && (errs.some(e => /^sideboard/i.test(e)) || sideboardHasErrors),
-                  };
-                  const active = picker === mode;
-                  const done = doneMap[mode];
-                  const warn = warnMap[mode];
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => { setPicker(mode); setCardSearchQuery(""); if (mode === "battlefields") setBattlefieldSlotBeingEdited(null); setMobilePickerOpen(true); }}
-                      className={`rounded border px-2 py-0.5 text-xs font-medium transition-all ${
-                        active
-                          ? warn
-                            ? "border-amber-500 bg-amber-900/30 text-amber-300"
-                            : "border-blue-500 bg-blue-500/20 text-blue-300"
-                          : warn
-                          ? "border-amber-600 bg-amber-900/20 text-amber-400 hover:border-amber-500"
-                          : done
-                          ? "border-emerald-700 bg-emerald-900/20 text-emerald-400 hover:border-emerald-500"
-                          : "border-gray-600 bg-gray-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
-                      }`}
-                    >
-                      {warn && "⚠ "}{!warn && done && !active && "✓ "}{labelMap[mode]}
-                    </button>
-                  );
-                })}
+
+              <div className="flex min-w-0 flex-col gap-2 border-t border-gray-700 pt-4 md:border-t-0 md:border-l md:border-gray-700 md:pt-0 md:pl-6">
+                <div
+                  className={`inline-flex w-fit max-w-full items-center rounded-md border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${
+                    isDeckValid
+                      ? "border-emerald-600/70 bg-emerald-950/40 text-emerald-300"
+                      : "border-red-600/70 bg-red-950/40 text-red-300"
+                  }`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {isDeckValid ? t("decks.valid") : t("decks.invalid")}
+                </div>
+                <div className="max-h-44 min-h-[2rem] space-y-1 overflow-y-auto">
+                  {isDeckValid ? (
+                    <p className="text-sm text-emerald-400/95">{t("decks.deckIsValid")}</p>
+                  ) : (
+                    <>
+                      {headerValidationErrorLines.map((msg, i) => (
+                        <p key={`e-${i}`} className="text-sm leading-snug text-red-400">
+                          {msg}
+                        </p>
+                      ))}
+                      {validationWarningStrings.map((msg, i) => (
+                        <p key={`w-${i}`} className="text-sm leading-snug text-amber-400">
+                          {msg}
+                        </p>
+                      ))}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1447,9 +1573,13 @@ export default function DeckBuilderPage() {
                     <span className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                       {t("decks.legend")}
                       {deckLegend ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><path d="M20 6 9 17l-5-5"/></svg>
+                        legendHasErrors ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-amber-400"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
+                        )
                       ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-red-400 shrink-0"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-red-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                       )}
                       {deckLegend && collectionQtyByCardId.size > 0 && (
                         <span
@@ -1460,6 +1590,9 @@ export default function DeckBuilderPage() {
                         >
                           {(collectionQtyByCardId.get(getCardId(deckLegend)) ?? 0)}/1
                         </span>
+                      )}
+                      {deckLegend && (
+                        <CardWarning errors={cardErrorMessagesForCard(deckLegend as Card, cardErrorMap)} />
                       )}
                     </span>
                     {deckLegend ? (
@@ -1499,9 +1632,13 @@ export default function DeckBuilderPage() {
                     <span className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                       {t("decks.champion")}
                       {deckChampion ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0"><path d="M20 6 9 17l-5-5"/></svg>
+                        championHasErrors ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-amber-400"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
+                        )
                       ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-red-400 shrink-0"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-red-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                       )}
                       {deckChampion && collectionQtyByCardId.size > 0 && (
                         <span
@@ -1512,6 +1649,9 @@ export default function DeckBuilderPage() {
                         >
                           {(collectionQtyByCardId.get(getCardId(deckChampion)) ?? 0)}/1
                         </span>
+                      )}
+                      {deckChampion && (
+                        <CardWarning errors={cardErrorMessagesForCard(deckChampion as Card, cardErrorMap)} />
                       )}
                     </span>
                     {deckChampion ? (
@@ -1564,7 +1704,9 @@ export default function DeckBuilderPage() {
                   return (
                     <h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400">
                       {t("decks.stepsBattlefields")} ({bfCount}/3)
-                      {bfCount === 3 ? (
+                      {bfCount === 3 && bfHasErrors ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                      ) : bfCount === 3 ? (
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400"><path d="M20 6 9 17l-5-5"/></svg>
                       ) : (
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-red-400"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -1595,6 +1737,7 @@ export default function DeckBuilderPage() {
                                 {owned}/1
                               </span>
                             )}
+                            <CardWarning errors={cardErrorMessagesForCard(bf.card as Card, cardErrorMap)} />
                           </span>
                         ) : (
                           <span className="flex-1 text-sm text-gray-600 italic">{t("decks.empty")}</span>
@@ -1680,7 +1823,7 @@ export default function DeckBuilderPage() {
                                     const cid = getCardId(item.card as Card) || item.cardId;
                                     const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
                                     const domainImgSrc = domainImageSrc(domain, item.card);
-                                    const cardErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
+                                    const cardErrs = cardErrorMessagesForCard(item.card as Card, cardErrorMap);
                                     const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
                                     const usedByLegend = getCardId(deckLegend) === cid ? 1 : 0;
                                     const usedByChampion = getCardId(deckChampion) === cid ? 1 : 0;
@@ -1788,7 +1931,7 @@ export default function DeckBuilderPage() {
                     <li key={(getCardId(item.card as Card) || item.cardId) ?? i} className="flex items-center justify-between gap-2">
                       {(() => {
                         const cid = getCardId(item.card as Card) || item.cardId;
-                        const runeErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
+                        const runeErrs = cardErrorMessagesForCard(item.card as Card, cardErrorMap);
                         const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
                         const need = item.quantity;
                         const hasCollectionData = collectionQtyByCardId.size > 0;
@@ -1879,7 +2022,7 @@ export default function DeckBuilderPage() {
                     const cid = getCardId(item.card as Card) || item.cardId;
                     const domain = (item.card?.cardDomains?.[0]?.domain?.name ?? item.card?.domain)?.toLowerCase();
                     const domainImgSrcSb = domainImageSrc(domain, item.card);
-                    const sbErrs = cardErrorMap.get(item.card?.name?.toLowerCase() ?? "") ?? [];
+                    const sbErrs = cardErrorMessagesForCard(item.card as Card, cardErrorMap);
                     const owned = cid ? (collectionQtyByCardId.get(cid) ?? 0) : 0;
                     const usedByLegend = getCardId(deckLegend) === cid ? 1 : 0;
                     const usedByChampion = getCardId(deckChampion) === cid ? 1 : 0;
