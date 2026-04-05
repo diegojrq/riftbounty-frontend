@@ -6,6 +6,11 @@ import { useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
 
+const navLink = (active: boolean) =>
+  `rounded px-2.5 py-1.5 text-xs font-medium uppercase transition-colors sm:text-sm ${
+    active ? "bg-amber-500/20 text-amber-400" : "text-gray-400 hover:bg-gray-800 hover:text-white"
+  }`;
+
 export default function AdminLayout({
   children,
 }: {
@@ -32,10 +37,20 @@ export default function AdminLayout({
     );
   }
 
+  const links: { href: string; labelKey: string; match: (p: string) => boolean }[] = [
+    { href: "/admin", labelKey: "admin.navHome", match: (p) => p === "/admin" },
+    { href: "/admin/cards", labelKey: "admin.navCards", match: (p) => p.startsWith("/admin/cards") },
+    { href: "/admin/tcg-sync", labelKey: "admin.navTcg", match: (p) => p.startsWith("/admin/tcg-sync") },
+    { href: "/admin/catalog-bump", labelKey: "admin.navBump", match: (p) => p.startsWith("/admin/catalog-bump") },
+    { href: "/admin/catalog-load", labelKey: "admin.navLoad", match: (p) => p.startsWith("/admin/catalog-load") },
+    { href: "/admin/reconcile-images", labelKey: "admin.navReconcile", match: (p) => p.startsWith("/admin/reconcile-images") },
+    { href: "/admin/communities", labelKey: "admin.navCommunities", match: (p) => p.startsWith("/admin/communities") },
+  ];
+
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-10">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
+      <div className="mb-6 flex flex-col gap-4 border-b border-gray-800 pb-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           <Link
             href="/"
             className="text-sm font-medium uppercase text-gray-400 transition-colors hover:text-white"
@@ -46,17 +61,12 @@ export default function AdminLayout({
             {t("nav.admin")}
           </h1>
         </div>
-        <nav className="flex gap-2">
-          <Link
-            href="/admin/cards"
-            className={`rounded px-3 py-2 text-sm font-medium uppercase transition-colors ${
-              pathname.startsWith("/admin/cards")
-                ? "bg-amber-500/20 text-amber-400"
-                : "text-gray-400 hover:bg-gray-800 hover:text-white"
-            }`}
-          >
-            {t("admin.cards")}
-          </Link>
+        <nav className="flex flex-wrap gap-1">
+          {links.map((l) => (
+            <Link key={l.href} href={l.href} className={navLink(l.match(pathname))}>
+              {t(l.labelKey)}
+            </Link>
+          ))}
         </nav>
       </div>
       {children}

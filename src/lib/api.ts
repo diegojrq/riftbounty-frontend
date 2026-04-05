@@ -10,6 +10,35 @@ import type { ApiSuccess } from "@/types/api";
 
 const DEFAULT_TIMEOUT_MS = 10000;
 
+export interface ApiFieldError {
+  path: string;
+  code?: string;
+  message: string;
+}
+
+export class ApiClientError extends Error {
+  status: number;
+  code?: string;
+  fieldErrors?: ApiFieldError[];
+  /** Payload `data` do erro da API (ex.: `missingCardNames`). */
+  errorData?: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    status: number,
+    code?: string,
+    fieldErrors?: ApiFieldError[],
+    errorData?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = "ApiClientError";
+    this.status = status;
+    this.code = code;
+    this.fieldErrors = fieldErrors;
+    this.errorData = errorData;
+  }
+}
+
 function isAuthRoute(path: string): boolean {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return normalized.startsWith("/auth/login") || normalized.startsWith("/auth/register");
@@ -87,13 +116,24 @@ export async function apiClient<T>(
     });
 
     if (!res.ok) {
-      if ((res.status === 401 || res.status === 403) && typeof window !== "undefined" && !isAuthRoute(path)) {
-        // Token expired/invalid: clear local session and force re-auth globally.
+      // Só 401 = credencial inválida ou expirada. 403 = proibido mas ainda autenticado (ex.: wishlist só membros).
+      if (res.status === 401 && typeof window !== "undefined" && !isAuthRoute(path)) {
         removeToken();
         redirectToLoginFromClient();
       }
       const message = body?.message ?? body?.detail ?? `Error ${res.status}`;
-      throw new Error(Array.isArray(message) ? message.join(", ") : message);
+      const rawData = body?.data;
+      const errorData =
+        rawData != null && typeof rawData === "object" && !Array.isArray(rawData)
+          ? (rawData as Record<string, unknown>)
+          : undefined;
+      throw new ApiClientError(
+        Array.isArray(message) ? message.join(", ") : message,
+        res.status,
+        body?.code,
+        Array.isArray(body?.data?.fieldErrors) ? body.data.fieldErrors : undefined,
+        errorData
+      );
     }
 
     return body as ApiSuccess<T>;
@@ -117,6 +157,84 @@ export async function apiPost<T>(path: string, data: unknown): Promise<ApiSucces
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+const MULTIPART_TIMEOUT_MS = 120_000;
+
+/** POST multipart/form-data (ex.: upload de ficheiro). Não define Content-Type — o boundary vem do FormData. */
+export async function apiPostMultipart<T>(path: string, formData: FormData): Promise<ApiSuccess<T>> {
+  const url = buildUrl(path);
+
+  const token = typeof window !== "undefined" ? getToken() : null;
+  const headers: HeadersInit = {
+    "Accept-Language": getLocale(),
+  };
+  if (token) {
+    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  }
+  if (typeof window === "undefined" && process.env.API_KEY) {
+    (headers as Record<string, string>)["X-API-Key"] = process.env.API_KEY;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), MULTIPART_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (res.status === 204 || res.headers.get("content-length") === "0") {
+      return { status: "success", data: null as unknown as T };
+    }
+
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      return { status: "success", data: null as unknown as T };
+    }
+
+    const body = await res.json().catch(() => {
+      throw new Error("Invalid response from API (not JSON). Check NEXT_PUBLIC_API_URL.");
+    });
+
+    if (!res.ok) {
+      if (res.status === 401 && typeof window !== "undefined" && !isAuthRoute(path)) {
+        removeToken();
+        redirectToLoginFromClient();
+      }
+      const message = body?.message ?? body?.detail ?? `Error ${res.status}`;
+      const rawData = body?.data;
+      const errorData =
+        rawData != null && typeof rawData === "object" && !Array.isArray(rawData)
+          ? (rawData as Record<string, unknown>)
+          : undefined;
+      throw new ApiClientError(
+        Array.isArray(message) ? message.join(", ") : message,
+        res.status,
+        body?.code,
+        Array.isArray(body?.data?.fieldErrors) ? body.data.fieldErrors : undefined,
+        errorData
+      );
+    }
+
+    return body as ApiSuccess<T>;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error) {
+      if (err.name === "AbortError") {
+        throw new Error("Request timed out. The API is taking too long to respond.");
+      }
+      if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+        throw new Error("Could not reach the API. Check if it is running and CORS is allowed.");
+      }
+    }
+    throw err;
+  }
 }
 
 /** GET; params with undefined/empty values are omitted */

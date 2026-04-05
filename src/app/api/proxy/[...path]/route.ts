@@ -43,6 +43,7 @@ export async function DELETE(
 
 const ALLOWED_PATH_PREFIXES = [
   "auth",
+  "communities",
   "cards",
   "abilities",
   "trades",
@@ -87,16 +88,23 @@ async function proxy(
   const search = request.nextUrl.search;
   const backendUrl = `${backendBase}/${pathSegment}${search}`;
 
-  let body: unknown = null;
+  let body: BodyInit | undefined;
+  let payloadStr = "";
   if (method !== "GET" && method !== "DELETE") {
-    try {
-      body = await request.json();
-    } catch {
-      // no body
+    const contentType = request.headers.get("content-type") ?? "";
+    if (contentType.includes("multipart/form-data")) {
+      body = await request.arrayBuffer();
+      payloadStr = " | multipart";
+    } else {
+      try {
+        const json = await request.json();
+        body = JSON.stringify(json);
+        payloadStr = ` | payload: ${JSON.stringify(json)}`;
+      } catch {
+        // no body
+      }
     }
   }
-
-  const payloadStr = body !== null ? ` | payload: ${JSON.stringify(body)}` : "";
 
   const headers: HeadersInit = {};
   const forwardHeaders = [
@@ -118,13 +126,14 @@ async function proxy(
     (headers as Record<string, string>)["X-API-Key"] = apiKey;
   }
 
+  const uploadMs = payloadStr.includes("multipart") ? 120_000 : 25_000;
   let res: Response;
   try {
     res = await fetch(backendUrl, {
       method,
       headers,
-      body: body !== null ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(25000),
+      body,
+      signal: AbortSignal.timeout(uploadMs),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

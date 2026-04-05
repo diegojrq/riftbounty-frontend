@@ -400,8 +400,9 @@ function CardsPageContent() {
 
       {/* Header */}
       <div className="mx-auto w-full max-w-[1600px] px-4 pt-6 pb-3 sm:px-6 lg:px-10 xl:px-12">
-        <header className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-gray-700 pb-3">
+        <header className="mb-3 border-b border-gray-700 pb-3">
           <h1 className="text-2xl font-bold text-white">{t("cards.cardsTitle")}</h1>
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-400">{t("cards.subtitle")}</p>
         </header>
       </div>
 

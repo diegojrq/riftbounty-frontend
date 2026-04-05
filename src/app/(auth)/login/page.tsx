@@ -11,7 +11,12 @@ const inputClass = "w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 
 
 function safeReturnTo(value: string | null): string | null {
   if (!value || typeof value !== "string") return null;
-  const decoded = decodeURIComponent(value.trim());
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(value.trim());
+  } catch {
+    return null;
+  }
   if (!decoded.startsWith("/") || decoded.startsWith("//") || decoded.includes("\0")) return null;
   return decoded;
 }

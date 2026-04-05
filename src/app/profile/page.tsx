@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -66,6 +65,7 @@ function toFormAddress(a: User["address"]): UserAddress {
     state: a.state ?? null,
   };
 }
+
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -380,7 +380,10 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-gray-900">
       <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
 
-        <h1 className="mb-6 text-2xl font-bold text-white">{t("profile.profile")}</h1>
+        <header className="mb-6 border-b border-gray-700 pb-4">
+          <h1 className="text-2xl font-bold text-white">{t("profile.profile")}</h1>
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-400">{t("profile.subtitle")}</p>
+        </header>
         {error && (
           <div
             ref={errorRef}

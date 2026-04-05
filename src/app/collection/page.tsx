@@ -566,35 +566,42 @@ export default function CollectionPage() {
       )}
 
       <div className="mx-auto w-full max-w-[1600px] px-4 pt-6 pb-3 sm:px-6 lg:px-10 xl:px-12">
-        <header className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-gray-700 pb-3">
-          <h1 className="text-2xl font-bold text-white">{t("collection.title")}</h1>
-          <button
-            type="button"
-            onClick={async () => {
-              if (exportingMissing) return;
-              setExportingMissing(true);
-              try {
-                await exportMissingCards();
-              } catch (e) {
-                toast.error(e instanceof Error ? e.message : t("collection.exportMissingCardsError"));
-              } finally {
-                setExportingMissing(false);
-              }
-            }}
-            disabled={exportingMissing}
-            className="ml-auto shrink-0 flex items-center gap-1.5 rounded border border-gray-600 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-200 hover:bg-gray-700 disabled:opacity-50"
-            aria-label={t("collection.exportMissingCards")}
-          >
-            {exportingMissing ? (
-              <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-gray-400 border-t-white" aria-hidden />
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-            )}
-            {t("collection.exportMissingCards")}
-          </button>
-          {error && (
-            <div className="rounded bg-red-900/50 px-3 py-1.5 text-sm text-red-200">{error}</div>
-          )}
+        <header className="mb-3 border-b border-gray-700 pb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold text-white">{t("collection.title")}</h1>
+              <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-400">{t("collection.subtitle")}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (exportingMissing) return;
+                  setExportingMissing(true);
+                  try {
+                    await exportMissingCards();
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : t("collection.exportMissingCardsError"));
+                  } finally {
+                    setExportingMissing(false);
+                  }
+                }}
+                disabled={exportingMissing}
+                className="shrink-0 flex items-center gap-1.5 rounded border border-gray-600 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-200 hover:bg-gray-700 disabled:opacity-50"
+                aria-label={t("collection.exportMissingCards")}
+              >
+                {exportingMissing ? (
+                  <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-gray-400 border-t-white" aria-hidden />
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                )}
+                {t("collection.exportMissingCards")}
+              </button>
+              {error && (
+                <div className="rounded bg-red-900/50 px-3 py-1.5 text-sm text-red-200">{error}</div>
+              )}
+            </div>
+          </div>
         </header>
         <CollectionStats breakdown={false} refreshTrigger={statsRefreshTrigger} />
       </div>

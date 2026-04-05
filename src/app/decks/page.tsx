@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { createDeck, getDeck, getDecks } from "@/lib/decks";
+import { ApiClientError } from "@/lib/api";
+import { createDeck, getDeck, getDecks, importDeck } from "@/lib/decks";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
 import { getCardImageUrl } from "@/lib/cards";
@@ -48,10 +49,16 @@ export default function DecksPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [importList, setImportList] = useState("");
+  const [importName, setImportName] = useState("");
+  const [importing, setImporting] = useState(false);
+  /** Detalhes do último erro de import (cartas em falta, etc.) */
+  const [importErrorDetail, setImportErrorDetail] = useState<string | null>(null);
 
   const fetchDecks = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setImportErrorDetail(null);
     try {
       const list = await getDecks();
       // Um único setState após validação — evita piscar a tag válido/construindo entre lista e GET com validate
@@ -67,7 +74,7 @@ export default function DecksPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -82,6 +89,7 @@ export default function DecksPage() {
     if (!user) return;
     setCreating(true);
     setError(null);
+    setImportErrorDetail(null);
     try {
       const deck = await createDeck();
       toast.success(t("decks.deckCreated"));
@@ -92,6 +100,49 @@ export default function DecksPage() {
       toast.error(msg);
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleImportDeck() {
+    if (!user) return;
+    const list = importList;
+    if (!list.trim()) {
+      toast.error(t("decks.importListEmpty"));
+      return;
+    }
+    setImporting(true);
+    setError(null);
+    setImportErrorDetail(null);
+    try {
+      const trimmedName = importName.trim();
+      const deck = await importDeck({
+        list,
+        ...(trimmedName ? { name: trimmedName.slice(0, 120) } : {}),
+      });
+      toast.success(t("decks.importSuccess"));
+      setImportList("");
+      setImportName("");
+      router.push(`/decks/${deck.id}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t("decks.errorImportingDeck");
+      setError(msg);
+      toast.error(msg);
+      if (err instanceof ApiClientError) {
+        const detailParts: string[] = [];
+        const missing = err.errorData?.missingCardNames;
+        if (Array.isArray(missing) && missing.length > 0) {
+          const names = missing.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+          if (names.length > 0) {
+            detailParts.push(`${t("decks.missingCardNamesLabel")} ${names.join(", ")}`);
+          }
+        }
+        if (err.fieldErrors?.length) {
+          detailParts.push(...err.fieldErrors.map((fe) => fe.message).filter(Boolean));
+        }
+        if (detailParts.length > 0) setImportErrorDetail(detailParts.join("\n"));
+      }
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -110,21 +161,72 @@ export default function DecksPage() {
   return (
     <div className="min-h-screen bg-gray-900">
       <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-10 xl:px-12">
-        <h1 className="mb-6 text-2xl font-bold text-white">{t("decks.myDecks")}</h1>
+        <header className="mb-6 border-b border-gray-700 pb-4">
+          <h1 className="text-2xl font-bold text-white">{t("decks.myDecks")}</h1>
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-400">{t("decks.subtitle")}</p>
+        </header>
 
         {error && (
-          <div className="mb-4 rounded bg-red-900/50 p-3 text-sm text-red-200">{error}</div>
+          <div className="mb-4 rounded bg-red-900/50 p-3 text-sm text-red-200">
+            <p>{error}</p>
+            {importErrorDetail && (
+              <p className="mt-2 whitespace-pre-wrap border-t border-red-800/60 pt-2 text-red-100/90">{importErrorDetail}</p>
+            )}
+          </div>
         )}
 
-        <div className="mb-6">
-          <button
-            type="button"
-            onClick={handleCreateDeck}
-            disabled={creating}
-            className="rounded bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {creating ? t("decks.creating") : t("decks.newDeck")}
-          </button>
+        <div className="mb-6 space-y-4">
+          <div>
+            <button
+              type="button"
+              onClick={handleCreateDeck}
+              disabled={creating}
+              className="rounded bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {creating ? t("decks.creating") : t("decks.newDeck")}
+            </button>
+          </div>
+
+          <details className="max-w-3xl rounded-lg border border-gray-700 bg-gray-800/40 p-4">
+            <summary className="cursor-pointer select-none text-sm font-medium text-white hover:text-gray-200">
+              {t("decks.importFromList")}
+            </summary>
+            <p className="mt-2 text-sm text-gray-400">{t("decks.importFromListDesc")}</p>
+            <label htmlFor="deck-import-list" className="mt-3 block text-xs font-medium uppercase tracking-wide text-gray-500">
+              {t("decks.importListLabel")}
+            </label>
+            <textarea
+              id="deck-import-list"
+              rows={12}
+              value={importList}
+              onChange={(e) => setImportList(e.target.value)}
+              placeholder={t("decks.importListPlaceholder")}
+              disabled={importing}
+              className="mt-1 w-full resize-y rounded border border-gray-600 bg-gray-900 px-3 py-2 font-mono text-sm text-white placeholder:text-gray-600 disabled:opacity-50"
+            />
+            <label htmlFor="deck-import-name" className="mt-3 block text-xs font-medium uppercase tracking-wide text-gray-500">
+              {t("decks.importNameOptional")}
+            </label>
+            <input
+              id="deck-import-name"
+              type="text"
+              maxLength={120}
+              value={importName}
+              onChange={(e) => setImportName(e.target.value)}
+              disabled={importing}
+              className="mt-1 w-full max-w-md rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+            />
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleImportDeck}
+                disabled={importing}
+                className="rounded bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+              >
+                {importing ? t("decks.importing") : t("decks.importSubmit")}
+              </button>
+            </div>
+          </details>
         </div>
 
         {loading ? (

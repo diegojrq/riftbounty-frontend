@@ -49,27 +49,18 @@ export interface AdminCatalogVersionLoadResponse {
   stderr?: string;
 }
 
-/** POST /v1/cards/catalog-version/backfill-image-urls — CardImageUrlBackfillService */
-export interface AdminBackfillImageUrlsBody {
+/** POST /v1/cards/catalog-version/reconcile-r2-card-images — galeria Riot, R2, image_url */
+export interface ReconcileR2CardImagesDto {
   dryRun?: boolean;
-  all?: boolean;
-}
-
-export type AdminBackfillImageUrlsResponse = Record<string, unknown>;
-
-/** POST /v1/cards/catalog-version/sync-r2-card-images — SyncR2CardImagesDto */
-export interface SyncR2CardImagesDto {
   setId?: string;
   prefix?: string;
-  auditKeysOnly?: boolean;
+  noSkipExisting?: boolean;
+  galleryUrl?: string;
+  maxCards?: number;
+  concurrency?: number;
 }
 
-/** POST /v1/cards/catalog-version/audit-r2-image-keys — AuditR2ImageKeysDto */
-export interface AuditR2ImageKeysDto {
-  prefix?: string;
-}
-
-export type AdminR2CliResponse = Record<string, unknown>;
+export type ReconcileR2CardImagesData = Record<string, unknown>;
 
 export type AdminCard = Card & {
   /** Contexto retornado pelo admin: arrays de nomes. */
@@ -211,32 +202,17 @@ export async function loadAdminCatalogVersion(): Promise<AdminCatalogVersionLoad
   return res.data;
 }
 
-/** POST /v1/cards/catalog-version/backfill-image-urls — preenche image_url (R2); dryRun default true no back */
-export async function postBackfillCardImageUrls(
-  body: AdminBackfillImageUrlsBody
-): Promise<AdminBackfillImageUrlsResponse> {
-  const res = await apiPost<AdminBackfillImageUrlsResponse>(
-    "cards/catalog-version/backfill-image-urls",
+/** POST /v1/cards/catalog-version/reconcile-r2-card-images */
+export async function postReconcileR2CardImages(body: ReconcileR2CardImagesDto): Promise<{
+  data: ReconcileR2CardImagesData;
+  message?: string;
+}> {
+  const res = await apiPost<ReconcileR2CardImagesData>(
+    "cards/catalog-version/reconcile-r2-card-images",
     body
   );
-  return (res.data ?? {}) as AdminBackfillImageUrlsResponse;
-}
-
-/** POST /v1/cards/catalog-version/sync-r2-card-images — galeria → R2 */
-export async function postSyncR2CardImages(
-  body: SyncR2CardImagesDto
-): Promise<AdminR2CliResponse> {
-  const res = await apiPost<AdminR2CliResponse>("cards/catalog-version/sync-r2-card-images", body);
-  return (res.data ?? {}) as AdminR2CliResponse;
-}
-
-/** POST /v1/cards/catalog-version/audit-r2-image-keys — leitura no bucket R2 */
-export async function postAuditR2ImageKeys(
-  body: AuditR2ImageKeysDto
-): Promise<AdminR2CliResponse> {
-  const res = await apiPost<AdminR2CliResponse>(
-    "cards/catalog-version/audit-r2-image-keys",
-    body
-  );
-  return (res.data ?? {}) as AdminR2CliResponse;
+  return {
+    data: (res.data ?? {}) as ReconcileR2CardImagesData,
+    message: res.message,
+  };
 }

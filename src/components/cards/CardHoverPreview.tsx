@@ -61,13 +61,17 @@ export function CardHoverPreview({ card, children, battlefieldAsLandscape = fals
     const spaceRight = window.innerWidth - rect.right;
     const side: "left" | "right" = spaceRight >= PREVIEW_W + GAP ? "right" : "left";
 
-    let top = rect.top + window.scrollY + rect.height / 2 - PREVIEW_H / 2;
-    top = Math.max(window.scrollY + 8, Math.min(top, window.scrollY + window.innerHeight - PREVIEW_H - 8));
+    let top =
+      rect.top + rect.height / 2 - PREVIEW_H / 2;
+    top = Math.max(8, Math.min(top, window.innerHeight - PREVIEW_H - 8));
 
-    const left =
+    let left =
       side === "right"
-        ? rect.right + window.scrollX + GAP
-        : rect.left + window.scrollX - PREVIEW_W - GAP;
+        ? rect.right + GAP
+        : rect.left - PREVIEW_W - GAP;
+
+    // Clamp horizontal position so preview never leaves viewport.
+    left = Math.max(8, Math.min(left, window.innerWidth - PREVIEW_W - 8));
 
     setPos({ top, left, side });
     setHoverVisible(true);
@@ -152,8 +156,8 @@ export function CardHoverPreview({ card, children, battlefieldAsLandscape = fals
         <div
           style={{
             position: "fixed",
-            top: pos.top - window.scrollY,
-            left: pos.left - window.scrollX,
+            top: pos.top,
+            left: pos.left,
             width: PREVIEW_W,
             height: PREVIEW_H,
             zIndex: 2147483647,

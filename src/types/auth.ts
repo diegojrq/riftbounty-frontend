@@ -20,6 +20,8 @@ export interface User {
   displayName: string | null;
   role?: UserRole;
   address?: UserAddress | null;
+  wishlist?: ProfileCardListItem[];
+  forSale?: ProfileCardListItem[];
 }
 
 export interface LoginCredentials {
@@ -66,12 +68,22 @@ export interface PublicCollectionItem {
   card: PublicProfileCard;
 }
 
+/** Shared item used by wishlist and forSale in profile payloads */
+export interface ProfileCardListItem {
+  cardId: string;
+  quantity: number;
+  pricePerCard: number | null;
+  card: PublicProfileCard | null;
+}
+
 /** Public profile with optional public collection. GET /auth/profile/:slug */
 export interface PublicUser {
   id: string;
   slug: string;
   displayName: string | null;
   publicCollection?: PublicCollectionItem[];
+  wishlist?: ProfileCardListItem[];
+  forSale?: ProfileCardListItem[];
 }
 
 /** Item in match result (GET /auth/profile/:slug/match) — cards they have more of that I want */

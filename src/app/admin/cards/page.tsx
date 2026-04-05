@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useLocale } from "@/lib/locale-context";
@@ -12,22 +13,10 @@ import {
   getAdminCard,
   createAdminCard,
   updateAdminCard,
-  runAdminTcgSync,
-  bumpAdminCatalogVersion,
-  loadAdminCatalogVersion,
-  postBackfillCardImageUrls,
-  postSyncR2CardImages,
-  postAuditR2ImageKeys,
-  type AdminTcgSyncSummary,
-  type AdminCatalogVersionLoadResponse,
-  type AdminBackfillImageUrlsResponse,
-  type AdminR2CliResponse,
-  type SyncR2CardImagesDto,
   type CreateCardDto,
   type UpdateCardDto,
 } from "@/lib/admin";
 import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
-import { useCards } from "@/lib/cards-context";
 import type { Card } from "@/types/card";
 import { getCardId } from "@/lib/card-id";
 
@@ -35,30 +24,11 @@ const LIMIT = 20;
 
 export default function AdminCardsPage() {
   const { t } = useLocale();
-  const { invalidate: invalidateCardsCache } = useCards();
   const { sets: catalogSets } = useRiotCatalogSets();
   const [cards, setCards] = useState<Card[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [syncRunning, setSyncRunning] = useState(false);
-  const [catalogBumpRunning, setCatalogBumpRunning] = useState(false);
-  const [catalogLoadRunning, setCatalogLoadRunning] = useState(false);
-  const [backfillRunning, setBackfillRunning] = useState(false);
-  const [backfillKind, setBackfillKind] = useState<null | "dry" | "apply">(null);
-  const [backfillAll, setBackfillAll] = useState(false);
-  const [backfillResult, setBackfillResult] = useState<AdminBackfillImageUrlsResponse | null>(null);
-  const [r2SyncSetId, setR2SyncSetId] = useState("");
-  const [r2SyncPrefix, setR2SyncPrefix] = useState("cards");
-  const [r2SyncAuditKeysOnly, setR2SyncAuditKeysOnly] = useState(false);
-  const [r2SyncRunning, setR2SyncRunning] = useState(false);
-  const [r2SyncResult, setR2SyncResult] = useState<AdminR2CliResponse | null>(null);
-  const [r2AuditPrefix, setR2AuditPrefix] = useState("cards");
-  const [r2AuditRunning, setR2AuditRunning] = useState(false);
-  const [r2AuditResult, setR2AuditResult] = useState<AdminR2CliResponse | null>(null);
-  const [lastCatalogVersion, setLastCatalogVersion] = useState<string | number | null>(null);
-  const [catalogLoadResult, setCatalogLoadResult] = useState<AdminCatalogVersionLoadResponse | null>(null);
-  const [syncSummary, setSyncSummary] = useState<AdminTcgSyncSummary | null>(null);
   const [nameFilter, setNameFilter] = useState("");
   const [setFilter, setSetFilter] = useState<string>("");
   const [offset, setOffset] = useState(0);
@@ -85,19 +55,6 @@ export default function AdminCardsPage() {
     `${actionBase} border-blue-500/40 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20 hover:text-blue-100 focus:ring-blue-500/40`;
   const editBtn =
     `${actionBase} border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20 hover:text-amber-100 focus:ring-amber-500/40`;
-
-  const formatGroupErrors = (errors: unknown[]): string => {
-    return errors
-      .map((entry) => {
-        if (typeof entry === "string") return entry;
-        try {
-          return JSON.stringify(entry);
-        } catch {
-          return String(entry);
-        }
-      })
-      .join(", ");
-  };
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -222,158 +179,19 @@ export default function AdminCardsPage() {
     }
   };
 
-  const handleTcgSync = async () => {
-    if (syncRunning) return;
-    setSyncRunning(true);
-    try {
-      const result = await runAdminTcgSync();
-      setSyncSummary(result);
-      toast.success(t("admin.tcgSyncSuccess"));
-      fetchList();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.toLowerCase().includes("already running")) {
-        toast.error(t("admin.tcgSyncAlreadyRunning"));
-      } else if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
-        toast.error(t("admin.forbidden"));
-      } else {
-        toast.error(t("admin.tcgSyncError"));
-      }
-    } finally {
-      setSyncRunning(false);
-    }
-  };
-
-  const handleCatalogVersionBump = async () => {
-    if (catalogBumpRunning) return;
-    setCatalogBumpRunning(true);
-    try {
-      const result = await bumpAdminCatalogVersion();
-      setLastCatalogVersion(result.version);
-      toast.success(t("admin.catalogVersionBumpSuccess", { version: String(result.version) }));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
-        toast.error(t("admin.forbidden"));
-      } else {
-        toast.error(t("admin.catalogVersionBumpError"));
-      }
-    } finally {
-      setCatalogBumpRunning(false);
-    }
-  };
-
-  const handleCatalogVersionLoad = async () => {
-    if (catalogLoadRunning) return;
-    setCatalogLoadRunning(true);
-    try {
-      const result = await loadAdminCatalogVersion();
-      setCatalogLoadResult(result);
-
-      const added = result.metrics?.added;
-      const skippedExisting = result.metrics?.skippedExisting;
-      const loaded = result.metrics?.loaded;
-
-      if (added != null || skippedExisting != null) {
-        toast.success(
-          t("admin.catalogVersionLoadSuccessWithMetrics", {
-            added: String(added ?? 0),
-            skippedExisting: String(skippedExisting ?? 0),
-            loaded: String(loaded ?? 0),
-          })
-        );
-      } else {
-        toast.success(t("admin.catalogVersionLoadSuccess"));
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
-        toast.error(t("admin.forbidden"));
-      } else {
-        toast.error(t("admin.catalogVersionLoadError"));
-      }
-    } finally {
-      setCatalogLoadRunning(false);
-    }
-  };
-
-  const runBackfillImageUrls = async (dryRun: boolean) => {
-    if (backfillRunning) return;
-    if (!dryRun && !confirm(t("admin.backfillImageUrlsApplyConfirm"))) return;
-    setBackfillRunning(true);
-    setBackfillKind(dryRun ? "dry" : "apply");
-    try {
-      const result = await postBackfillCardImageUrls({ dryRun, all: backfillAll });
-      setBackfillResult(result);
-      if (dryRun) {
-        toast.success(t("admin.backfillImageUrlsDryRunSuccess"));
-      } else {
-        invalidateCardsCache();
-        toast.success(t("admin.backfillImageUrlsApplySuccess"));
-      }
-      void fetchList();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(t("admin.backfillImageUrlsError"));
-      if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
-        toast.error(t("admin.forbidden"));
-      }
-    } finally {
-      setBackfillRunning(false);
-      setBackfillKind(null);
-    }
-  };
-
-  const r2Busy = r2SyncRunning || r2AuditRunning;
-
-  const runR2Sync = async () => {
-    if (r2Busy) return;
-    setR2SyncRunning(true);
-    try {
-      const body: SyncR2CardImagesDto = {
-        prefix: r2SyncPrefix.trim() || "cards",
-        ...(r2SyncSetId.trim() ? { setId: r2SyncSetId.trim() } : {}),
-        ...(r2SyncAuditKeysOnly ? { auditKeysOnly: true } : {}),
-      };
-      const result = await postSyncR2CardImages(body);
-      setR2SyncResult(result);
-      toast.success(t("admin.r2SyncSuccess"));
-      if (!r2SyncAuditKeysOnly) {
-        invalidateCardsCache();
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(t("admin.r2SyncError"));
-      if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
-        toast.error(t("admin.forbidden"));
-      }
-    } finally {
-      setR2SyncRunning(false);
-    }
-  };
-
-  const runR2Audit = async () => {
-    if (r2Busy) return;
-    setR2AuditRunning(true);
-    try {
-      const result = await postAuditR2ImageKeys({
-        prefix: r2AuditPrefix.trim() || "cards",
-      });
-      setR2AuditResult(result);
-      toast.success(t("admin.r2AuditSuccess"));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(t("admin.r2AuditError"));
-      if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
-        toast.error(t("admin.forbidden"));
-      }
-    } finally {
-      setR2AuditRunning(false);
-    }
-  };
-
   return (
     <div>
+      <div className="mb-6 space-y-2">
+        <Link
+          href="/admin"
+          className="inline-block text-sm text-amber-500/90 hover:text-amber-400"
+        >
+          ← {t("admin.backToAdminHome")}
+        </Link>
+        <h2 className="text-lg font-semibold text-white">{t("admin.cardsPageHeading")}</h2>
+        <p className="max-w-2xl text-sm text-gray-400">{t("admin.cardsPageLead")}</p>
+      </div>
+
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           type="text"
@@ -396,238 +214,12 @@ export default function AdminCardsPage() {
         </select>
         <button
           type="button"
-          onClick={handleTcgSync}
-          disabled={syncRunning}
-          className="inline-flex items-center gap-2 rounded border border-blue-500/40 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-200 transition hover:bg-blue-500/20 hover:text-blue-100 disabled:opacity-60"
-        >
-          {syncRunning && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300 border-t-transparent" />
-          )}
-          {syncRunning ? t("admin.tcgSyncRunning") : t("admin.tcgSyncButton")}
-        </button>
-        <button
-          type="button"
-          onClick={handleCatalogVersionBump}
-          disabled={catalogBumpRunning}
-          className="inline-flex items-center gap-2 rounded border border-violet-500/40 bg-violet-500/10 px-4 py-2 text-sm font-semibold text-violet-200 transition hover:bg-violet-500/20 hover:text-violet-100 disabled:opacity-60"
-        >
-          {catalogBumpRunning && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-transparent" />
-          )}
-          {catalogBumpRunning ? t("admin.catalogVersionBumpRunning") : t("admin.catalogVersionBumpButton")}
-        </button>
-        <button
-          type="button"
-          onClick={handleCatalogVersionLoad}
-          disabled={catalogLoadRunning}
-          className="inline-flex items-center gap-2 rounded border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-2 text-sm font-semibold text-fuchsia-200 transition hover:bg-fuchsia-500/20 hover:text-fuchsia-100 disabled:opacity-60"
-        >
-          {catalogLoadRunning && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-fuchsia-300 border-t-transparent" />
-          )}
-          {catalogLoadRunning ? t("admin.catalogVersionLoadRunning") : t("admin.catalogVersionLoadButton")}
-        </button>
-        <button
-          type="button"
           onClick={openCreate}
           className="rounded bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-500"
         >
           {t("admin.newCard")}
         </button>
       </div>
-
-      <div className="mb-4 flex flex-col gap-3 rounded-lg border border-teal-800/70 bg-teal-950/25 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center">
-        <span className="text-sm font-semibold text-teal-200">{t("admin.backfillImageUrlsTitle")}</span>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-teal-100/95">
-          <input
-            type="checkbox"
-            checked={backfillAll}
-            onChange={(e) => setBackfillAll(e.target.checked)}
-            className="rounded border-teal-600 bg-gray-900 text-teal-500 focus:ring-teal-500"
-          />
-          {t("admin.backfillImageUrlsAllLabel")}
-        </label>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void runBackfillImageUrls(true)}
-            disabled={backfillRunning}
-            className="inline-flex items-center gap-2 rounded border border-teal-500/50 bg-teal-900/40 px-3 py-1.5 text-sm font-semibold text-teal-100 transition hover:bg-teal-800/50 disabled:opacity-60"
-          >
-            {backfillRunning && backfillKind === "dry" && (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-teal-300 border-t-transparent" />
-            )}
-            {backfillRunning && backfillKind === "dry"
-              ? t("admin.backfillImageUrlsRunning")
-              : t("admin.backfillImageUrlsDryRun")}
-          </button>
-          <button
-            type="button"
-            onClick={() => void runBackfillImageUrls(false)}
-            disabled={backfillRunning}
-            className="inline-flex items-center gap-2 rounded border border-orange-500/40 bg-orange-950/40 px-3 py-1.5 text-sm font-semibold text-orange-200 transition hover:bg-orange-900/50 disabled:opacity-60"
-          >
-            {backfillRunning && backfillKind === "apply" && (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-orange-300 border-t-transparent" />
-            )}
-            {backfillRunning && backfillKind === "apply"
-              ? t("admin.backfillImageUrlsRunning")
-              : t("admin.backfillImageUrlsApply")}
-          </button>
-        </div>
-      </div>
-
-      {backfillResult && (
-        <div className="mb-4 rounded-lg border border-teal-900/60 bg-teal-950/30 p-4 text-sm">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-teal-300">
-            {t("admin.backfillImageUrlsResultTitle")}
-          </p>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-teal-100/90">
-            {JSON.stringify(backfillResult, null, 2)}
-          </pre>
-        </div>
-      )}
-
-      <div className="mb-4 flex flex-col gap-3 rounded-lg border border-sky-800/70 bg-sky-950/20 px-4 py-3">
-        <span className="text-sm font-semibold text-sky-200">{t("admin.r2SyncTitle")}</span>
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-          <label className="flex min-w-[140px] flex-col gap-1 text-xs text-sky-100/90">
-            <span>{t("admin.r2SyncSetId")}</span>
-            <input
-              type="text"
-              value={r2SyncSetId}
-              onChange={(e) => setR2SyncSetId(e.target.value)}
-              placeholder="UNL"
-              disabled={r2Busy}
-              className="rounded border border-sky-700 bg-gray-900 px-2 py-1.5 text-sm text-white placeholder:text-gray-600 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-60"
-            />
-          </label>
-          <label className="flex min-w-[120px] flex-col gap-1 text-xs text-sky-100/90">
-            <span>{t("admin.r2SyncPrefix")}</span>
-            <input
-              type="text"
-              value={r2SyncPrefix}
-              onChange={(e) => setR2SyncPrefix(e.target.value)}
-              disabled={r2Busy}
-              className="rounded border border-sky-700 bg-gray-900 px-2 py-1.5 text-sm text-white focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:opacity-60"
-            />
-          </label>
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-sky-100/95">
-            <input
-              type="checkbox"
-              checked={r2SyncAuditKeysOnly}
-              onChange={(e) => setR2SyncAuditKeysOnly(e.target.checked)}
-              disabled={r2Busy}
-              className="rounded border-sky-600 bg-gray-900 text-sky-500 focus:ring-sky-500 disabled:opacity-60"
-            />
-            {t("admin.r2SyncAuditKeysOnly")}
-          </label>
-          <button
-            type="button"
-            onClick={() => void runR2Sync()}
-            disabled={r2Busy}
-            className="inline-flex items-center gap-2 rounded border border-sky-500/50 bg-sky-900/40 px-3 py-1.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-800/50 disabled:opacity-60"
-          >
-            {r2SyncRunning && (
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-300 border-t-transparent" />
-            )}
-            {r2SyncRunning ? t("admin.r2SyncRunning") : t("admin.r2SyncRun")}
-          </button>
-        </div>
-      </div>
-
-      {r2SyncResult && (
-        <div className="mb-4 rounded-lg border border-sky-900/60 bg-sky-950/30 p-4 text-sm">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-300">
-            {t("admin.r2SyncResultTitle")}
-          </p>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-sky-100/90">
-            {JSON.stringify(r2SyncResult, null, 2)}
-          </pre>
-        </div>
-      )}
-
-      <div className="mb-4 flex flex-col gap-3 rounded-lg border border-indigo-800/70 bg-indigo-950/20 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-end">
-        <span className="text-sm font-semibold text-indigo-200">{t("admin.r2AuditTitle")}</span>
-        <label className="flex min-w-[120px] flex-col gap-1 text-xs text-indigo-100/90">
-          <span>{t("admin.r2AuditPrefix")}</span>
-          <input
-            type="text"
-            value={r2AuditPrefix}
-            onChange={(e) => setR2AuditPrefix(e.target.value)}
-            disabled={r2Busy}
-            className="rounded border border-indigo-700 bg-gray-900 px-2 py-1.5 text-sm text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-60"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={() => void runR2Audit()}
-          disabled={r2Busy}
-          className="inline-flex items-center gap-2 rounded border border-indigo-500/50 bg-indigo-900/40 px-3 py-1.5 text-sm font-semibold text-indigo-100 transition hover:bg-indigo-800/50 disabled:opacity-60"
-        >
-          {r2AuditRunning && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-300 border-t-transparent" />
-          )}
-          {r2AuditRunning ? t("admin.r2AuditRunning") : t("admin.r2AuditRun")}
-        </button>
-      </div>
-
-      {r2AuditResult && (
-        <div className="mb-4 rounded-lg border border-indigo-900/60 bg-indigo-950/30 p-4 text-sm">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-indigo-300">
-            {t("admin.r2AuditResultTitle")}
-          </p>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-indigo-100/90">
-            {JSON.stringify(r2AuditResult, null, 2)}
-          </pre>
-        </div>
-      )}
-
-      {syncSummary && (
-        <div className="mb-4 rounded-lg border border-blue-900/60 bg-blue-950/30 p-4 text-sm">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-300">
-            {t("admin.tcgSyncSummaryTitle")}
-          </p>
-          <div className="grid grid-cols-1 gap-2 text-blue-100 md:grid-cols-2">
-            <p>{t("admin.tcgSyncStartedAt")}: {new Date(syncSummary.startedAt).toLocaleString()}</p>
-            <p>{t("admin.tcgSyncFinishedAt")}: {new Date(syncSummary.finishedAt).toLocaleString()}</p>
-            <p>{t("admin.tcgSyncMatched")}: {syncSummary.matched}</p>
-            <p>{t("admin.tcgSyncNoMatch")}: {syncSummary.noMatch}</p>
-            <p>{t("admin.tcgSyncPricesUpdated")}: {syncSummary.pricesUpdated}</p>
-            <p>{t("admin.tcgSyncPricesSkipped")}: {syncSummary.pricesSkipped}</p>
-            <p>{t("admin.tcgSyncRemainingWithoutProductId")}: {syncSummary.remainingWithoutProductId}</p>
-            <p>
-              {t("admin.tcgSyncGroupErrors")}:{" "}
-              {syncSummary.groupErrors.length > 0
-                ? formatGroupErrors(syncSummary.groupErrors as unknown[])
-                : t("admin.tcgSyncNoGroupErrors")}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {lastCatalogVersion !== null && (
-        <div className="mb-4 rounded-lg border border-violet-900/60 bg-violet-950/30 px-4 py-3 text-sm text-violet-100">
-          {t("admin.catalogVersionCurrent", { version: String(lastCatalogVersion) })}
-        </div>
-      )}
-
-      {catalogLoadResult?.metrics && (
-        <div className="mb-4 rounded-lg border border-fuchsia-900/60 bg-fuchsia-950/30 p-4 text-sm">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-fuchsia-300">
-            {t("admin.catalogVersionLoadSummaryTitle")}
-          </p>
-          <div className="grid grid-cols-1 gap-2 text-fuchsia-100 md:grid-cols-2">
-            <p>{t("admin.catalogVersionLoadMode")}: {catalogLoadResult.metrics.mode}</p>
-            <p>{t("admin.catalogVersionLoadVersion")}: {String(catalogLoadResult.version ?? "—")}</p>
-            <p>{t("admin.catalogVersionLoadAdded")}: {catalogLoadResult.metrics.added ?? 0}</p>
-            <p>{t("admin.catalogVersionLoadSkippedExisting")}: {catalogLoadResult.metrics.skippedExisting ?? 0}</p>
-            <p>{t("admin.catalogVersionLoadLoaded")}: {catalogLoadResult.metrics.loaded}</p>
-            <p>{t("admin.catalogVersionLoadTotalInJson")}: {catalogLoadResult.metrics.totalInJson}</p>
-            <p>{t("admin.catalogVersionLoadExistingBefore")}: {catalogLoadResult.metrics.existingBefore}</p>
-          </div>
-        </div>
-      )}
 
       {error && (
         <div className="mb-4 rounded border border-red-800 bg-red-950/50 px-4 py-3 text-sm text-red-300">

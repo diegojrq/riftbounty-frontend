@@ -29,6 +29,9 @@ const RESERVED_SLUGS = new Set([
   "profile",
   "decks",
   "collection",
+  "wishlist",
+  "for-sale",
+  "communities",
   "cards",
   "trades",
   "api",
@@ -113,6 +116,15 @@ function getCardTcgUnitPriceUsd(card: Card): number | null {
 }
 
 function formatUsd(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatProfileListPrice(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -798,6 +810,7 @@ export default function PublicProfilePage() {
 
   const [search, setSearch] = useState("");
   const [selectedRarities, setSelectedRarities] = useState<string[]>([]);
+  const [publicTab, setPublicTab] = useState<"collection" | "wishlist" | "selling">("selling");
   /** "collection" = coleção pública deles; "tradeDirect" = listas completas; "trade" = preditivo */
   const [collectionTab, setCollectionTab] = useState<"collection" | "tradeDirect" | "trade">("collection");
   const autoOpenedTradeTabRef = useRef<string | null>(null);
@@ -1051,6 +1064,21 @@ export default function PublicProfilePage() {
   }, [me?.slug, user?.slug]);
 
   const publicCollection = useMemo(() => user?.publicCollection ?? [], [user]);
+  const publicWishlist = useMemo(() => user?.wishlist ?? [], [user]);
+  const publicForSale = useMemo(() => user?.forSale ?? [], [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (publicForSale.length > 0) {
+      setPublicTab("selling");
+      return;
+    }
+    if (publicWishlist.length > 0) {
+      setPublicTab("wishlist");
+      return;
+    }
+    setPublicTab("collection");
+  }, [user?.id, publicForSale.length, publicWishlist.length]);
 
   // When viewing another user's profile and logged in, show match data. Otherwise show full public collection.
   const filteredCollection = useMemo(() => {
@@ -1268,7 +1296,7 @@ export default function PublicProfilePage() {
     <div className="min-h-screen bg-gray-900">
 
       {/* Mobile basket drawer */}
-      {basketDrawerOpen && showTradePanel && (
+      {basketDrawerOpen && showTradePanel && publicTab === "collection" && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setBasketDrawerOpen(false)} />
           <div className="absolute bottom-0 left-0 right-0 max-h-[80dvh] overflow-y-auto rounded-t-2xl border-t border-gray-700 bg-gray-900 px-4 pb-6 pt-3">
@@ -1316,8 +1344,73 @@ export default function PublicProfilePage() {
             </div>
           </div>
         </div>
+        <div className="mb-4 inline-flex rounded-lg border border-gray-700 bg-gray-900/70 p-1">
+          <button
+            type="button"
+            onClick={() => setPublicTab("wishlist")}
+            className={`rounded px-3 py-1.5 text-sm ${publicTab === "wishlist" ? "bg-emerald-600 text-white" : "text-gray-300 hover:bg-gray-700"}`}
+          >
+            {t("profile.wishlistTab")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPublicTab("selling")}
+            className={`rounded px-3 py-1.5 text-sm ${publicTab === "selling" ? "bg-emerald-600 text-white" : "text-gray-300 hover:bg-gray-700"}`}
+          >
+            {t("profile.tabSelling")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPublicTab("collection")}
+            className={`rounded px-3 py-1.5 text-sm ${publicTab === "collection" ? "bg-emerald-600 text-white" : "text-gray-300 hover:bg-gray-700"}`}
+          >
+            {t("profile.tabCollection")}
+          </button>
+        </div>
 
-        {/* ── Main split: left content (70%) + right basket (30%) ── */}
+        {publicTab !== "collection" ? (
+          <div className="overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
+            <div className="border-b border-gray-700 px-5 py-4">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+                {publicTab === "wishlist" ? t("profile.wishlistTab") : t("profile.tabSelling")}
+              </h2>
+            </div>
+            <div className="px-4 py-3">
+              {(publicTab === "wishlist" ? publicWishlist : publicForSale).length === 0 ? (
+                <p className="py-6 text-center text-sm text-gray-500">
+                  {publicTab === "wishlist" ? t("profile.noPublicWishlist") : t("profile.noPublicForSale")}
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {(publicTab === "wishlist" ? publicWishlist : publicForSale).map((item) => {
+                    const cached = lookupCached(item.cardId, item.card?.scraperId);
+                    const previewCard = mergePublicProfileCardWithCatalog(item.card, cached, item.cardId);
+                    const domains = getCardDomains(cached ?? item.card ?? undefined);
+                    return (
+                      <li key={`${publicTab}-${item.cardId}`} className="flex items-center justify-between gap-3 rounded px-1 py-1 hover:bg-gray-700/40">
+                        <CardHoverPreview card={previewCard}>
+                          <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
+                            <TradeOfferDomainIconsAndQty
+                              domains={domains}
+                              quantity={item.quantity}
+                              fallbackCard={cached ?? item.card ?? undefined}
+                            />
+                            <span className="truncate text-blue-400">{item.card?.name ?? item.cardId}</span>
+                          </span>
+                        </CardHoverPreview>
+                        <span className="shrink-0 text-xs font-medium text-emerald-400">
+                          {item.pricePerCard == null
+                            ? t("profile.priceOnRequest")
+                            : t("profile.pricePerCardLabel", { price: formatProfileListPrice(item.pricePerCard) })}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : (
         <div className="flex items-start gap-5">
 
           {/* Left: collection */}
@@ -1953,6 +2046,7 @@ export default function PublicProfilePage() {
             </div>
           )}
         </div>
+        )}
 
         <div className="mt-6">
           <BackLink href="/" label={t("back.home")} className="" />
@@ -1960,7 +2054,7 @@ export default function PublicProfilePage() {
       </div>
 
       {/* Mobile: floating basket or register-to-trade button */}
-      {showTradePanel && (
+      {showTradePanel && publicTab === "collection" && (
         <button
           type="button"
           onClick={() => setBasketDrawerOpen(true)}
@@ -1978,7 +2072,7 @@ export default function PublicProfilePage() {
           )}
         </button>
       )}
-      {showTradeCTA && (
+      {showTradeCTA && publicTab === "collection" && (
         <Link
           href={registerReturnTo}
           className="fixed bottom-6 right-4 z-40 flex items-center gap-2 rounded-full border border-emerald-700 bg-emerald-600 py-3 pl-4 pr-5 text-sm font-semibold text-white shadow-xl transition hover:bg-emerald-500 md:hidden"

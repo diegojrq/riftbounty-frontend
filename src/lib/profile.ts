@@ -1,5 +1,12 @@
-import { apiGet, apiPatch } from "./api";
-import type { MatchItem, OfferableItem, PublicProfileCard, PublicUser, User } from "@/types/auth";
+import { apiGet, apiPatch, apiPost } from "./api";
+import type {
+  MatchItem,
+  OfferableItem,
+  ProfileCardListItem,
+  PublicProfileCard,
+  PublicUser,
+  User,
+} from "@/types/auth";
 
 /** API legada pode enviar `cardUuid`; normaliza para `cardId` + `PublicProfileCard.id`. */
 function normalizePublicProfileCard(card: PublicProfileCard | null): PublicProfileCard | null {
@@ -34,6 +41,39 @@ function normalizePublicCollectionItem(
   };
 }
 
+type ProfileCardListItemLike = Partial<ProfileCardListItem> & {
+  cardUuid?: string;
+  card_id?: string;
+  card_uuid?: string;
+  price_per_card?: number | null;
+};
+
+function normalizeProfileCardListItem(item: ProfileCardListItemLike): ProfileCardListItem {
+  const price =
+    typeof item.pricePerCard === "number" && Number.isFinite(item.pricePerCard)
+      ? item.pricePerCard
+      : typeof item.price_per_card === "number" && Number.isFinite(item.price_per_card)
+        ? item.price_per_card
+        : null;
+  return {
+    cardId: item.cardId ?? item.cardUuid ?? item.card_id ?? item.card_uuid ?? "",
+    quantity: typeof item.quantity === "number" && Number.isFinite(item.quantity) ? item.quantity : 1,
+    pricePerCard: price,
+    card: normalizePublicProfileCard((item.card as PublicProfileCard | null) ?? null),
+  };
+}
+
+function normalizeProfileCardList(items: unknown): ProfileCardListItem[] {
+  if (!Array.isArray(items)) return [];
+  return items.map((item) => normalizeProfileCardListItem((item ?? {}) as ProfileCardListItemLike));
+}
+
+export interface UpdateProfileCardListItemInput {
+  cardId: string;
+  quantity: number;
+  pricePerCard?: number | null;
+}
+
 /** Payload for PATCH /auth/me — all fields optional */
 export interface UpdateProfilePayload {
   displayName?: string;
@@ -46,17 +86,40 @@ export interface UpdateProfilePayload {
   neighborhood?: string | null;
   city?: string | null;
   state?: string | null;
+  wishlist?: UpdateProfileCardListItemInput[];
+  forSale?: UpdateProfileCardListItemInput[];
 }
 
 /** GET /auth/me — returns current user with address */
 export async function getProfile(): Promise<User> {
   const res = await apiGet<User>("/auth/me");
-  return res.data;
+  const data = res.data;
+  return {
+    ...data,
+    wishlist: normalizeProfileCardList((data as User & { wishlist?: unknown }).wishlist),
+    forSale: normalizeProfileCardList((data as User & { forSale?: unknown }).forSale),
+  };
 }
 
 /** PATCH /auth/me — update profile and/or address; returns updated user */
 export async function updateProfile(payload: UpdateProfilePayload): Promise<User> {
   const res = await apiPatch<User>("/auth/me", payload);
+  return res.data;
+}
+
+export interface AddMissingWishlistPayload {
+  limit?: number;
+}
+
+export interface AddMissingWishlistResponse {
+  limit: number;
+  added: number;
+  totalWishlist: number;
+}
+
+/** POST /auth/me/wishlist/add-missing — merge missing collection cards into wishlist */
+export async function addMissingWishlistCards(payload: AddMissingWishlistPayload = {}): Promise<AddMissingWishlistResponse> {
+  const res = await apiPost<AddMissingWishlistResponse>("/auth/me/wishlist/add-missing", payload);
   return res.data;
 }
 
@@ -66,13 +129,24 @@ export async function checkSlugAvailable(slug: string): Promise<{ available: boo
   return res.data;
 }
 
-/** GET /auth/profile/:slug — public profile by username (no auth). Returns 404 if not found. Includes publicCollection when isPublic. */
+/**
+ * GET /auth/profile/:slug — public profile by username (no auth). Returns 404 if not found.
+ * Includes publicCollection when isPublic.
+ *
+ * Para a aba Wishlist em /{slug}, o backend precisa enviar a lista no payload (ex.: `wishlist`,
+ * no mesmo formato de GET /auth/me). Sem esse campo, o front não tem como exibir itens.
+ * Aceitamos também aliases comuns (`publicWishlist`, `wishList`) caso o back use outro nome.
+ */
 export async function getPublicProfile(slug: string): Promise<PublicUser> {
   const res = await apiGet<PublicUser>(`/auth/profile/${encodeURIComponent(slug)}`);
   const data = res.data;
+  const raw = data as PublicUser & { publicWishlist?: unknown; wishList?: unknown };
+  const wishlistRaw = raw.wishlist ?? raw.publicWishlist ?? raw.wishList;
   return {
     ...data,
     publicCollection: data.publicCollection?.map(normalizePublicCollectionItem),
+    wishlist: normalizeProfileCardList(wishlistRaw),
+    forSale: normalizeProfileCardList((data as PublicUser & { forSale?: unknown }).forSale),
   };
 }
 

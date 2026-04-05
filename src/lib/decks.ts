@@ -28,6 +28,12 @@ export async function createDeck(name?: string): Promise<Deck> {
   return res.data;
 }
 
+/** POST /v1/decks/import – create deck from pasted game list text */
+export async function importDeck(body: { list: string; name?: string }): Promise<Deck> {
+  const res = await apiPost<Deck>(`${BASE}/import`, body);
+  return res.data;
+}
+
 /** PATCH /v1/decks/:id – update name */
 export async function updateDeckName(deckId: string, name: string): Promise<Deck> {
   const res = await apiPatch<Deck>(`${BASE}/${encodeURIComponent(deckId)}`, { name });

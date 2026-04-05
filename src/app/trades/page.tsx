@@ -129,10 +129,10 @@ export default function TradesPage() {
     <div className="min-h-screen bg-gray-900">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         {/* Header */}
-        <div className="mb-6">
+        <header className="mb-6 border-b border-gray-700 pb-4">
           <h1 className="text-2xl font-bold text-white">{t("trades.myTradesTitle")}</h1>
-          <p className="mt-1 text-sm text-gray-500">{t("trades.myTradesSubtitle")}</p>
-        </div>
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-400">{t("trades.myTradesSubtitle")}</p>
+        </header>
 
         {/* Filters */}
         <div className="mb-5 space-y-3">

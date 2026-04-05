@@ -41,6 +41,17 @@ function IconCards() {
   );
 }
 
+function IconCommunities() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
 function IconCollection() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -48,6 +59,15 @@ function IconCollection() {
       <rect width="7" height="5" x="14" y="3" rx="1" />
       <rect width="7" height="9" x="14" y="12" rx="1" />
       <rect width="7" height="5" x="3" y="16" rx="1" />
+    </svg>
+  );
+}
+
+function IconForSale() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 2v20" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
     </svg>
   );
 }
@@ -214,6 +234,17 @@ export function Header() {
                 {t("nav.cards")}
               </Link>
               <Link
+                href="/communities"
+                className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                  pathname.startsWith("/communities")
+                    ? "border-gray-600 bg-gray-800 text-white"
+                    : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
+                }`}
+              >
+                <IconCommunities />
+                {t("nav.communities")}
+              </Link>
+              <Link
                 href="/collection"
                 onClick={(e) => guardedNav(e, "/collection")}
                 className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
@@ -224,6 +255,30 @@ export function Header() {
               >
                 <IconCollection />
                 {t("nav.myCollection")}
+              </Link>
+              <Link
+                href="/wishlist"
+                onClick={(e) => guardedNav(e, "/wishlist")}
+                className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                  pathname.startsWith("/wishlist")
+                    ? "border-gray-600 bg-gray-800 text-white"
+                    : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
+                }`}
+              >
+                <IconCollection />
+                {t("nav.myWishlist")}
+              </Link>
+              <Link
+                href="/for-sale"
+                onClick={(e) => guardedNav(e, "/for-sale")}
+                className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                  pathname.startsWith("/for-sale")
+                    ? "border-gray-600 bg-gray-800 text-white"
+                    : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
+                }`}
+              >
+                <IconForSale />
+                {t("nav.myForSale")}
               </Link>
               <Link
                 href="/decks"
@@ -375,6 +430,15 @@ export function Header() {
                 {t("nav.cards")}
               </Link>
               <Link
+                href="/communities"
+                className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
+                  pathname.startsWith("/communities") ? "bg-gray-800 text-white" : "text-gray-400"
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                {t("nav.communities")}
+              </Link>
+              <Link
                 href="/collection"
                 onClick={(e) => guardedNav(e, "/collection")}
                 className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
@@ -383,6 +447,26 @@ export function Header() {
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
                 {t("nav.myCollection")}
+              </Link>
+              <Link
+                href="/wishlist"
+                onClick={(e) => guardedNav(e, "/wishlist")}
+                className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
+                  pathname.startsWith("/wishlist") ? "bg-gray-800 text-white" : "text-gray-400"
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m12 21-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09A6 6 0 0 1 16.5 3C19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.18z"/></svg>
+                {t("nav.myWishlist")}
+              </Link>
+              <Link
+                href="/for-sale"
+                onClick={(e) => guardedNav(e, "/for-sale")}
+                className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
+                  pathname.startsWith("/for-sale") ? "bg-gray-800 text-white" : "text-gray-400"
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                {t("nav.myForSale")}
               </Link>
               <Link
                 href="/decks"
