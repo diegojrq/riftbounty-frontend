@@ -8,7 +8,7 @@ import { getPublicProfile, getProfileMatch } from "@/lib/profile";
 import { createTrade, listTrades, addTradeItem, updateTradeItem, removeTradeItem, submitTrade, sendTradeMessage, getTrade } from "@/lib/trades";
 import { getCollection } from "@/lib/collections";
 import { toast } from "sonner";
-import type { TradeSummary, Trade, TradeItem } from "@/types/trade";
+import type { TradeSummary, Trade, TradeItem, UpdateTradeItemPayload } from "@/types/trade";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
 import { TradeOfferDomainIconsAndQty, TradeQuantityBadge } from "@/components/trades/TradeQuantityBadge";
 import { useAuth } from "@/lib/auth-context";
@@ -19,9 +19,15 @@ import type { PublicUser, MatchItem, OfferableItem, PublicProfileCard } from "@/
 import type { Card } from "@/types/card";
 import { mergePublicProfileCardWithCatalog } from "@/lib/cards";
 import { getCardId } from "@/lib/card-id";
+import { ApiClientError } from "@/lib/api";
+import { TradeDeclaredValueInput } from "@/components/trades/TradeDeclaredValueInput";
 import {
-} from "@/lib/trade-offer-grouping";
-
+  declaredValueApiStringToNumber,
+  declaredValuesDifferFromBasket,
+  formatDeclaredValueBrl,
+  mergeAggregatedDeclaredValue,
+  TRADE_DECLARED_VALUE_INVALID_I18N_KEY,
+} from "@/lib/trade-declared-value";
 
 const RESERVED_SLUGS = new Set([
   "login",
@@ -45,6 +51,10 @@ interface BasketItem {
   maxQty: number;
   /** ID of the existing TradeItem if this was pre-populated from an active trade */
   tradeItemId?: string;
+  /** Valor declarado informativo (referência, ex. BRL na UI); null = sem valor. */
+  declaredValue?: number | null;
+  /** Preço por carta na vitrine «à venda» do perfil (não é TCG). */
+  listingPricePerCard?: number | null;
 }
 
 /** Trade detail pode trazer `card: null`; resolve com o catálogo em memória. */
@@ -253,6 +263,10 @@ function aggregateTradeItemsByCardId(items: TradeItem[]): TradeItem[] {
     }
     existing.quantity += item.quantity;
     if (!existing.card && item.card) existing.card = item.card;
+    existing.declaredValue = mergeAggregatedDeclaredValue(
+      existing.declaredValue ?? null,
+      item.declaredValue ?? null
+    );
   }
   return [...byCardId.values()];
 }
@@ -268,6 +282,8 @@ interface BasketPanelProps {
   requestedBasket?: Map<string, BasketItem>;
   onUpdateRequestedQty?: (cardId: string, qty: number) => void;
   onRemoveRequested?: (cardId: string) => void;
+  onUpdateDeclaredValue?: (cardId: string, value: number | null) => void;
+  onUpdateRequestedDeclaredValue?: (cardId: string, value: number | null) => void;
   activeTrade?: TradeSummary | null;
   activeTradeDetail?: Trade | null;
   isMyTurn?: boolean;
@@ -286,6 +302,7 @@ function ActiveTradeSideReadOnlyList({
   cardCacheMap: Map<string, Card>;
   scraperIdMap: Map<string, Card>;
 }) {
+  const { locale } = useLocale();
   return (
     <ul className="space-y-0.5 pl-2">
       {items.map((item) => {
@@ -316,6 +333,11 @@ function ActiveTradeSideReadOnlyList({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={`/images/rarities/${rarityNorm}.svg`} alt={rarityNorm} className="h-3 w-3 shrink-0 opacity-60" />
                 )}
+                {item.declaredValue != null && item.declaredValue !== "" && (
+                  <span className="shrink-0 text-[10px] tabular-nums text-amber-200/90">
+                    {formatDeclaredValueBrl(item.declaredValue, locale)}
+                  </span>
+                )}
               </span>
             </CardHoverPreview>
           </li>
@@ -325,7 +347,25 @@ function ActiveTradeSideReadOnlyList({
   );
 }
 
-function BasketPanel({ basket, recipientSlug, recipientDisplayName, mySlug, onUpdateQty, onRemove, requestedBasket, onUpdateRequestedQty, onRemoveRequested, cardCacheMap, scraperIdMap, activeTrade, activeTradeDetail, isMyTurn, onCounterSubmitError }: BasketPanelProps & { cardCacheMap: Map<string, Card>; scraperIdMap: Map<string, Card> }) {
+function BasketPanel({
+  basket,
+  recipientSlug,
+  recipientDisplayName,
+  mySlug,
+  onUpdateQty,
+  onRemove,
+  requestedBasket,
+  onUpdateRequestedQty,
+  onRemoveRequested,
+  onUpdateDeclaredValue,
+  onUpdateRequestedDeclaredValue,
+  cardCacheMap,
+  scraperIdMap,
+  activeTrade,
+  activeTradeDetail,
+  isMyTurn,
+  onCounterSubmitError,
+}: BasketPanelProps & { cardCacheMap: Map<string, Card>; scraperIdMap: Map<string, Card> }) {
   const router = useRouter();
   const { t } = useLocale();
   const { setCodesOrdered, getSetLabel } = useRiotCatalogSets();
@@ -341,48 +381,27 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, mySlug, onUp
   const totalQty = items.reduce((s, i) => s + i.quantity, 0);
   const requestedTotalQty = requestedItemsList.reduce((s, i) => s + i.quantity, 0);
 
-  /** Soma TCG (USD) por lado; * = alguma carta sem preço no catálogo. */
-  const requestedBasketTcg = useMemo(() => {
+  /** Subtotal da vitrine (só cartas com preço definido). */
+  const requestedListingSubtotal = useMemo(() => {
     let sum = 0;
-    let missingAny = false;
-    let hadAnyPrice = false;
+    let anyPriced = false;
     for (const item of requestedItemsList) {
-      const cached =
-        cardCacheMap.get(getCardId(item.card)) ?? (item.card.scraperId ? scraperIdMap.get(item.card.scraperId) : undefined);
-      const merged = mergePublicProfileCardWithCatalog(item.card, cached, getCardId(item.card));
-      const p = getCardTcgUnitPriceUsd(merged);
-      if (p == null) missingAny = true;
-      else {
-        hadAnyPrice = true;
+      const p = item.listingPricePerCard;
+      if (typeof p === "number" && Number.isFinite(p) && p >= 0) {
         sum += p * item.quantity;
+        anyPriced = true;
       }
     }
-    return { sum, missingAny, hadAnyPrice };
-  }, [requestedItemsList, cardCacheMap, scraperIdMap]);
-
-  const offerBasketTcg = useMemo(() => {
-    let sum = 0;
-    let missingAny = false;
-    let hadAnyPrice = false;
-    for (const item of items) {
-      const cached =
-        cardCacheMap.get(getCardId(item.card)) ?? (item.card.scraperId ? scraperIdMap.get(item.card.scraperId) : undefined);
-      const merged = mergePublicProfileCardWithCatalog(item.card, cached, getCardId(item.card));
-      const p = getCardTcgUnitPriceUsd(merged);
-      if (p == null) missingAny = true;
-      else {
-        hadAnyPrice = true;
-        sum += p * item.quantity;
-      }
-    }
-    return { sum, missingAny, hadAnyPrice };
-  }, [items, cardCacheMap, scraperIdMap]);
+    return { sum, anyPriced };
+  }, [requestedItemsList]);
 
   const hasActiveTrade = !!activeTrade;
   const isWaitingOnOtherParty = hasActiveTrade && isMyTurn !== true;
   const isCounterMode = hasActiveTrade && isMyTurn === true;
   const canEditRequestedBasket = !!requestedBasket && !!onUpdateRequestedQty && !!onRemoveRequested;
   const showRequestedSection = canEditRequestedBasket && (!hasActiveTrade || isCounterMode);
+  const canEditOfferDeclared = !!onUpdateDeclaredValue && !isWaitingOnOtherParty;
+  const canEditRequestedDeclared = !!onUpdateRequestedDeclaredValue && !isWaitingOnOtherParty;
 
   /** Cartas do usuário logado na troca (initiator ou recipient, conforme o caso). */
   const myTradeItems = useMemo<TradeItem[]>(() => {
@@ -430,12 +449,16 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, mySlug, onUp
             }
             for (const [cardId, current] of currentSideItems) {
               const original = originalByCardId.get(cardId);
+              const curVal = current.declaredValue ?? null;
               if (original) {
-                if (original.quantity !== current.quantity) {
-                  await updateTradeItem(activeTrade.id, original.id, current.quantity);
-                }
+                const qtyChanged = original.quantity !== current.quantity;
+                const valChanged = declaredValuesDifferFromBasket(original.declaredValue, curVal);
+                if (!qtyChanged && !valChanged) continue;
+                const payload: UpdateTradeItemPayload = { quantity: current.quantity };
+                if (valChanged) payload.declaredValue = curVal;
+                await updateTradeItem(activeTrade.id, original.id, payload);
               } else {
-                await addTradeItem(activeTrade.id, cardId, current.quantity);
+                await addTradeItem(activeTrade.id, cardId, current.quantity, curVal);
               }
             }
           };
@@ -457,20 +480,34 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, mySlug, onUp
         }
         router.push(`/trades/${activeTrade.id}`);
       } else {
+        const linePayload = (i: (typeof items)[number]) => {
+          const cardId = getCardId(i.card);
+          const line: { cardId: string; quantity: number; declaredValue?: number } = {
+            cardId,
+            quantity: i.quantity,
+          };
+          if (typeof i.declaredValue === "number" && Number.isFinite(i.declaredValue)) {
+            line.declaredValue = Math.round(i.declaredValue * 100) / 100;
+          }
+          return line;
+        };
         const requestedItems =
           requestedBasket && requestedBasket.size > 0
-            ? [...requestedBasket.values()].map((i) => ({ cardId: getCardId(i.card), quantity: i.quantity }))
+            ? [...requestedBasket.values()].map(linePayload)
             : undefined;
         const trade = await createTrade({
           recipientSlug,
-          items: items.map((i) => ({ cardId: getCardId(i.card), quantity: i.quantity })),
+          items: items.map(linePayload),
           ...(requestedItems && requestedItems.length > 0 ? { requestedItems } : {}),
           ...(message.trim() ? { message: message.trim() } : {}),
         });
         router.push(`/trades/${trade.id}`);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to submit. Please try again.";
+      let message = err instanceof Error ? err.message : "Failed to submit. Please try again.";
+      if (err instanceof ApiClientError && err.code === TRADE_DECLARED_VALUE_INVALID_I18N_KEY) {
+        message = t(TRADE_DECLARED_VALUE_INVALID_I18N_KEY);
+      }
       setError(message);
       setSubmitting(false);
       if (isCounterMode && activeTrade && onCounterSubmitError) {
@@ -535,16 +572,14 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, mySlug, onUp
             </p>
             {requestedItemsList.length > 0 && (
               <span
-                className="max-w-[58%] text-right text-[10px] font-medium tabular-nums text-emerald-400/90"
-                title={
-                  requestedBasketTcg.missingAny && requestedBasketTcg.hadAnyPrice
-                    ? t("trades.tradeEstimatedPartialHint")
-                    : undefined
-                }
+                className="max-w-[55%] text-right text-[10px] font-medium tabular-nums text-emerald-400/90"
+                title={t("profile.basketSubtotalListingHint")}
               >
-                {!requestedBasketTcg.hadAnyPrice
-                  ? "—"
-                  : `${t("trades.tradeEstimatedTotal", { value: formatUsd(requestedBasketTcg.sum) })}${requestedBasketTcg.missingAny ? "*" : ""}`}
+                {requestedListingSubtotal.anyPriced
+                  ? t("profile.basketSubtotalWithValue", {
+                      value: formatProfileListPrice(requestedListingSubtotal.sum),
+                    })
+                  : "—"}
               </span>
             )}
           </div>
@@ -561,30 +596,54 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, mySlug, onUp
               const previewCard = mergePublicProfileCardWithCatalog(item.card, cachedReq, cardId);
               const domains = getCardDomains(cachedReq ?? item.card);
               const rarityIcon = getRarityIcon(item.card.rarity);
-              const unitPriceUsd = getCardTcgUnitPriceUsd(previewCard);
+              const listP = item.listingPricePerCard;
+              const hasListPrice = typeof listP === "number" && Number.isFinite(listP) && listP >= 0;
+              const lineListTotal = hasListPrice ? listP * item.quantity : null;
               return (
                 <li
                   key={cardId}
                   className="flex items-center justify-between gap-1 rounded px-1 py-0.5 hover:bg-gray-700/40"
                 >
                   <CardHoverPreview card={previewCard}>
-                    <span className="flex min-w-0 cursor-default items-center gap-1 text-xs">
-                      <TradeOfferDomainIconsAndQty
-                        domains={domains}
-                        quantity={item.quantity}
-                        fallbackCard={cachedReq ?? item.card}
-                      />
-                      <span className="truncate text-blue-400">{item.card.name}</span>
-                      {rarityIcon && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={rarityIcon} alt={item.card.rarity ?? ""} className="hidden h-3.5 w-3.5 shrink-0 object-contain opacity-70 sm:block" />
-                      )}
-                      <span className="ml-0.5 shrink-0 text-[10px] font-medium tabular-nums text-emerald-400/90">
-                        {unitPriceUsd != null ? formatUsd(unitPriceUsd) : "—"}
+                    <span className="flex min-w-0 flex-1 cursor-default flex-col gap-0.5 text-xs sm:flex-row sm:items-center sm:gap-1">
+                      <span className="flex min-w-0 items-center gap-1">
+                        <TradeOfferDomainIconsAndQty
+                          domains={domains}
+                          quantity={item.quantity}
+                          fallbackCard={cachedReq ?? item.card}
+                        />
+                        <span className="truncate text-blue-400">{item.card.name}</span>
+                        {rarityIcon && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={rarityIcon} alt={item.card.rarity ?? ""} className="hidden h-3.5 w-3.5 shrink-0 object-contain opacity-70 sm:block" />
+                        )}
                       </span>
+                      {hasListPrice && lineListTotal != null ? (
+                        <span className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-emerald-400/85">
+                          {t("profile.pricePerCardLabel", { price: formatProfileListPrice(listP) })}{" "}
+                          <span className="text-gray-500">×{item.quantity}</span>{" "}
+                          <span className="text-gray-400">=</span>{" "}
+                          {formatProfileListPrice(lineListTotal)}
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-[10px] text-gray-500">{t("profile.priceOnRequest")}</span>
+                      )}
                     </span>
                   </CardHoverPreview>
-                  <span className="flex shrink-0 items-center gap-0 sm:gap-0.5">
+                  <span className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+                    {canEditRequestedDeclared && (
+                      <span className="flex flex-col items-center gap-0">
+                        <span className="text-[8px] font-medium uppercase tracking-wide text-gray-500">
+                          {t("trades.declaredValueCurrency")}
+                        </span>
+                        <TradeDeclaredValueInput
+                          value={item.declaredValue ?? null}
+                          onCommit={(n) => onUpdateRequestedDeclaredValue!(cardId, n)}
+                          disabled={submitting}
+                          ariaLabel={t("trades.declaredValueAriaRequested")}
+                        />
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => onUpdateRequestedQty!(cardId, item.quantity - 1)}
@@ -648,26 +707,12 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, mySlug, onUp
 
       {/* My basket items — only shown when I can act (or no active trade) */}
       <div className={`flex-1 overflow-y-auto px-3 py-2 ${isWaitingOnOtherParty ? "hidden" : ""}`}>
-        <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="mb-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
             {isCounterMode
               ? t("trades.tradeSideCards", { slug: mySlug, count: totalQty })
               : t("trades.whatYouOffer")}
           </p>
-          {items.length > 0 && (
-            <span
-              className="max-w-[58%] text-right text-[10px] font-medium tabular-nums text-emerald-400/90"
-              title={
-                offerBasketTcg.missingAny && offerBasketTcg.hadAnyPrice
-                  ? t("trades.tradeEstimatedPartialHint")
-                  : undefined
-              }
-            >
-              {!offerBasketTcg.hadAnyPrice
-                ? "—"
-                : `${t("trades.tradeEstimatedTotal", { value: formatUsd(offerBasketTcg.sum) })}${offerBasketTcg.missingAny ? "*" : ""}`}
-            </span>
-          )}
         </div>
         {items.length === 0 ? (
           <div className="py-6 text-center">
@@ -680,30 +725,39 @@ function BasketPanel({ basket, recipientSlug, recipientDisplayName, mySlug, onUp
           </div>
         ) : (
           <ul className="space-y-0.5 pl-2">
-            {items.map(({ card, quantity, maxQty }) => {
+            {items.map(({ card, quantity, maxQty, declaredValue }) => {
               const cardId = getCardId(card);
               const atMax = quantity >= maxQty;
               const cached = cardCacheMap.get(cardId) ?? (card.scraperId ? scraperIdMap.get(card.scraperId) : undefined);
               const previewCard = mergePublicProfileCardWithCatalog(card, cached, cardId);
               const domains = getCardDomains(cached ?? card);
               const rarityIcon = getRarityIcon(card.rarity);
-              const unitPriceUsd = getCardTcgUnitPriceUsd(previewCard);
               return (
                 <li key={cardId} className="flex items-center justify-between gap-1 rounded px-1 py-0.5 hover:bg-gray-700/40">
                   <CardHoverPreview card={previewCard}>
-                    <span className="flex min-w-0 cursor-default items-center gap-1 text-xs">
+                    <span className="flex min-w-0 flex-1 cursor-default items-center gap-1 text-xs">
                       <TradeOfferDomainIconsAndQty domains={domains} quantity={quantity} fallbackCard={cached ?? card} />
                       <span className="truncate text-blue-400">{card.name}</span>
                       {rarityIcon && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={rarityIcon} alt={card.rarity ?? ""} className="hidden h-3.5 w-3.5 shrink-0 object-contain opacity-70 sm:block" />
                       )}
-                      <span className="ml-0.5 shrink-0 text-[10px] font-medium tabular-nums text-emerald-400/90">
-                        {unitPriceUsd != null ? formatUsd(unitPriceUsd) : "—"}
-                      </span>
                     </span>
                   </CardHoverPreview>
-                  <span className="flex shrink-0 items-center gap-0 sm:gap-0.5">
+                  <span className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+                    {canEditOfferDeclared && (
+                      <span className="flex flex-col items-center gap-0">
+                        <span className="text-[8px] font-medium uppercase tracking-wide text-gray-500">
+                          {t("trades.declaredValueCurrency")}
+                        </span>
+                        <TradeDeclaredValueInput
+                          value={declaredValue ?? null}
+                          onCommit={(n) => onUpdateDeclaredValue!(cardId, n)}
+                          disabled={submitting}
+                          ariaLabel={t("trades.declaredValueAriaOffer")}
+                        />
+                      </span>
+                    )}
                     <button type="button" onClick={() => onUpdateQty(cardId, quantity - 1)} className="flex h-4 w-4 items-center justify-center rounded bg-gray-700 text-[10px] text-gray-300 hover:bg-gray-600 sm:h-5 sm:w-5 sm:text-xs" aria-label={t("common.decrease")}>−</button>
                     <span className={`w-7 text-center text-[10px] font-bold tabular-nums sm:w-8 ${atMax ? "text-amber-400" : "text-gray-400"}`}>{quantity}/{maxQty}</span>
                     <button type="button" onClick={() => onUpdateQty(cardId, quantity + 1)} disabled={atMax} className="flex h-4 w-4 items-center justify-center rounded bg-gray-700 text-[10px] text-gray-300 hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-30 sm:h-5 sm:w-5 sm:text-xs" aria-label={t("common.increase")}>+</button>
@@ -882,6 +936,7 @@ export default function PublicProfilePage() {
             quantity: item.quantity,
             maxQty,
             tradeItemId: item.id,
+            declaredValue: declaredValueApiStringToNumber(item.declaredValue),
           },
         ] as const;
       })
@@ -904,6 +959,7 @@ export default function PublicProfilePage() {
             quantity: item.quantity,
             maxQty,
             tradeItemId: item.id,
+            declaredValue: declaredValueApiStringToNumber(item.declaredValue),
           },
         ] as const;
       })
@@ -946,6 +1002,7 @@ export default function PublicProfilePage() {
         card: cardWithKey,
         quantity: Math.min((existing?.quantity ?? 0) + 1, maxQty),
         maxQty,
+        declaredValue: existing?.declaredValue ?? null,
       });
       return next;
     });
@@ -974,7 +1031,13 @@ export default function PublicProfilePage() {
    * `basketKey` deve ser o mesmo identificador usado na lista (`item.cardId`), pois o `id`
    * vindo do perfil pode divergir e quebrar o lookup → botão "Solicitar" nunca desabilitava.
    */
-  function addToRequestedBasket(card: PublicProfileCard, maxQty: number, basketKey?: string) {
+  function addToRequestedBasket(
+    card: PublicProfileCard,
+    maxQty: number,
+    basketKey?: string,
+    /** `undefined` = manter preço já no item; número/`null` = vitrine (à venda). */
+    listingPricePerCard?: number | null
+  ) {
     const key = basketKey ?? getCardId(card);
     if (!key) return;
     const current = requestedBasket.get(key)?.quantity ?? 0;
@@ -983,10 +1046,17 @@ export default function PublicProfilePage() {
       const next = new Map(prev);
       const existing = next.get(key);
       const cardWithKey = { ...card, id: key };
+      const nextListing =
+        listingPricePerCard !== undefined ? listingPricePerCard : existing?.listingPricePerCard;
       next.set(key, {
         card: cardWithKey,
         quantity: Math.min((existing?.quantity ?? 0) + 1, maxQty),
         maxQty,
+        declaredValue: existing?.declaredValue ?? null,
+        ...(nextListing !== undefined ? { listingPricePerCard: nextListing } : {}),
+        ...(existing?.tradeItemId != null && existing.tradeItemId !== ""
+          ? { tradeItemId: existing.tradeItemId }
+          : {}),
       });
       return next;
     });
@@ -1007,6 +1077,26 @@ export default function PublicProfilePage() {
 
   function removeFromRequestedBasket(uuid: string) {
     setRequestedBasket((prev) => { const next = new Map(prev); next.delete(uuid); return next; });
+  }
+
+  function updateBasketDeclaredValue(cardId: string, value: number | null) {
+    setBasket((prev) => {
+      const next = new Map(prev);
+      const item = next.get(cardId);
+      if (!item) return next;
+      next.set(cardId, { ...item, declaredValue: value });
+      return next;
+    });
+  }
+
+  function updateRequestedDeclaredValue(cardId: string, value: number | null) {
+    setRequestedBasket((prev) => {
+      const next = new Map(prev);
+      const item = next.get(cardId);
+      if (!item) return next;
+      next.set(cardId, { ...item, declaredValue: value });
+      return next;
+    });
   }
 
   /* ── Data loading ─────────────────────────── */
@@ -1217,6 +1307,7 @@ export default function PublicProfilePage() {
                   quantity: item.quantity,
                   maxQty,
                   tradeItemId: item.id,
+                  declaredValue: declaredValueApiStringToNumber(item.declaredValue),
                 },
               ] as const;
             })
@@ -1286,17 +1377,23 @@ export default function PublicProfilePage() {
   const isOwnProfile = me?.slug === slug;
   const hasPublicCollection = publicCollection.length > 0;
   const showTradePanel = !!me && !isOwnProfile && hasPublicCollection;
+  /** Wishlist + à venda: mesmo cesto ao lado (wishlist → oferta; à venda → pedido). */
+  const showPublicListTradeBasket =
+    !!me && !isOwnProfile && (publicTab === "wishlist" || publicTab === "selling");
   const showTradeCTA = !me && !isOwnProfile && hasPublicCollection;
   const registerReturnTo = pathname ? `/register?returnTo=${encodeURIComponent(pathname)}` : "/register";
   /** Troca aberta e aguardando a outra parte — não alterar pedido/oferta pela coleção. */
   const tradeActionsLocked = !!activeTrade && tradeIsMyTurn !== true;
   const basketCount = [...basket.values()].reduce((s, i) => s + i.quantity, 0);
+  const requestedBasketCount = [...requestedBasket.values()].reduce((s, i) => s + i.quantity, 0);
+  const totalTradeBasketCount = basketCount + requestedBasketCount;
 
   return (
     <div className="min-h-screen bg-gray-900">
 
       {/* Mobile basket drawer */}
-      {basketDrawerOpen && showTradePanel && publicTab === "collection" && (
+      {basketDrawerOpen &&
+        ((showTradePanel && publicTab === "collection") || showPublicListTradeBasket) && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setBasketDrawerOpen(false)} />
           <div className="absolute bottom-0 left-0 right-0 max-h-[80dvh] overflow-y-auto rounded-t-2xl border-t border-gray-700 bg-gray-900 px-4 pb-6 pt-3">
@@ -1317,6 +1414,8 @@ export default function PublicProfilePage() {
               requestedBasket={!activeTrade || tradeIsMyTurn ? requestedBasket : undefined}
               onUpdateRequestedQty={!activeTrade || tradeIsMyTurn ? updateRequestedBasketQty : undefined}
               onRemoveRequested={!activeTrade || tradeIsMyTurn ? removeFromRequestedBasket : undefined}
+              onUpdateDeclaredValue={updateBasketDeclaredValue}
+              onUpdateRequestedDeclaredValue={updateRequestedDeclaredValue}
               cardCacheMap={cardCacheMap}
               scraperIdMap={scraperIdMap}
               activeTrade={activeTrade}
@@ -1369,46 +1468,180 @@ export default function PublicProfilePage() {
         </div>
 
         {publicTab !== "collection" ? (
-          <div className="overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
-            <div className="border-b border-gray-700 px-5 py-4">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
-                {publicTab === "wishlist" ? t("profile.wishlistTab") : t("profile.tabSelling")}
-              </h2>
+          <div
+            className={
+              showPublicListTradeBasket
+                ? "flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-5"
+                : ""
+            }
+          >
+            <div className={showPublicListTradeBasket ? "min-w-0 lg:flex-[7]" : ""}>
+              <div className="overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
+                <div className="border-b border-gray-700 px-5 py-4">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+                    {publicTab === "wishlist" ? t("profile.wishlistTab") : t("profile.tabSelling")}
+                  </h2>
+                </div>
+                <div className="px-4 py-3">
+                  {(publicTab === "wishlist" ? publicWishlist : publicForSale).length === 0 ? (
+                    <p className="py-6 text-center text-sm text-gray-500">
+                      {publicTab === "wishlist" ? t("profile.noPublicWishlist") : t("profile.noPublicForSale")}
+                    </p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {(publicTab === "wishlist" ? publicWishlist : publicForSale).map((item) => {
+                        const cached = lookupCached(item.cardId, item.card?.scraperId);
+                        const previewCard = mergePublicProfileCardWithCatalog(item.card, cached, item.cardId);
+                        const domains = getCardDomains(cached ?? item.card ?? undefined);
+                        const isSellingRow = publicTab === "selling" && showPublicListTradeBasket;
+                        const maxRequested = item.quantity;
+                        const requestedItem = isSellingRow ? requestedBasket.get(item.cardId) : undefined;
+                        const inRequested = !!requestedItem;
+                        const atMaxRequested =
+                          isSellingRow &&
+                          (maxRequested <= 0 || (requestedItem?.quantity ?? 0) >= maxRequested);
+                        const cardForRequested =
+                          isSellingRow
+                            ? ({
+                                ...(item.card ?? cached),
+                                id: item.cardId,
+                              } as PublicProfileCard)
+                            : null;
+                        const isWishlistOfferRow = publicTab === "wishlist" && showPublicListTradeBasket;
+                        const myQtyForWishlist = myCollectionQtyMap.get(item.cardId) ?? 0;
+                        const basketItemWishlist = isWishlistOfferRow ? basket.get(item.cardId) : undefined;
+                        const inOfferBasket = !!basketItemWishlist;
+                        const atMaxOfferWishlist =
+                          isWishlistOfferRow &&
+                          (myQtyForWishlist <= 0 ||
+                            (basketItemWishlist?.quantity ?? 0) >= myQtyForWishlist);
+                        const cardForOfferFromWishlist =
+                          isWishlistOfferRow
+                            ? ({
+                                ...(item.card ?? cached),
+                                id: item.cardId,
+                              } as PublicProfileCard)
+                            : null;
+                        return (
+                          <li
+                            key={`${publicTab}-${item.cardId}`}
+                            className="flex items-center justify-between gap-2 rounded px-1 py-1 hover:bg-gray-700/40"
+                          >
+                            <CardHoverPreview card={previewCard}>
+                              <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
+                                <TradeOfferDomainIconsAndQty
+                                  domains={domains}
+                                  quantity={item.quantity}
+                                  fallbackCard={cached ?? item.card ?? undefined}
+                                />
+                                <span className="truncate text-blue-400">{item.card?.name ?? item.cardId}</span>
+                              </span>
+                            </CardHoverPreview>
+                            <div className="flex shrink-0 items-center gap-2">
+                              <span className="text-xs font-medium text-emerald-400">
+                                {item.pricePerCard == null
+                                  ? t("profile.priceOnRequest")
+                                  : t("profile.pricePerCardLabel", {
+                                      price: formatProfileListPrice(item.pricePerCard),
+                                    })}
+                              </span>
+                              {isSellingRow && cardForRequested && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    addToRequestedBasket(
+                                      cardForRequested,
+                                      maxRequested,
+                                      item.cardId,
+                                      item.pricePerCard ?? null
+                                    )
+                                  }
+                                  disabled={!!atMaxRequested || tradeActionsLocked}
+                                  className={`flex shrink-0 items-center justify-center rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                                    atMaxRequested || tradeActionsLocked
+                                      ? "border-amber-600/60 bg-amber-900/30 text-amber-400"
+                                      : inRequested
+                                        ? "border-blue-500 bg-blue-700/60 text-blue-300 hover:bg-blue-700"
+                                        : "border-gray-700 bg-blue-800/40 text-blue-400 hover:bg-blue-700/60"
+                                  }`}
+                                  title={
+                                    tradeActionsLocked
+                                      ? t("trades.waitingBeforeTradeActions", { slug: user.slug })
+                                      : atMaxRequested
+                                        ? t("trades.maxQuantity", { count: maxRequested })
+                                        : inRequested && requestedItem
+                                          ? `${requestedItem.quantity}/${maxRequested}`
+                                          : t("profile.addFromForSaleToBasket")
+                                  }
+                                  aria-label={t("profile.addFromForSaleToBasket")}
+                                >
+                                  +
+                                </button>
+                              )}
+                              {isWishlistOfferRow && cardForOfferFromWishlist && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    addToBasket(cardForOfferFromWishlist, myQtyForWishlist, item.cardId)
+                                  }
+                                  disabled={!!atMaxOfferWishlist || tradeActionsLocked}
+                                  className={`flex shrink-0 items-center justify-center rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                                    atMaxOfferWishlist || tradeActionsLocked
+                                      ? "border-amber-600/60 bg-amber-900/30 text-amber-400"
+                                      : inOfferBasket
+                                        ? "border-green-500 bg-green-700/60 text-green-300 hover:bg-green-700"
+                                        : "border-gray-700 bg-green-800/40 text-green-400 hover:bg-green-700/60"
+                                  }`}
+                                  title={
+                                    tradeActionsLocked
+                                      ? t("trades.waitingBeforeTradeActions", { slug: user.slug })
+                                      : atMaxOfferWishlist
+                                        ? myQtyForWishlist <= 0
+                                          ? t("profile.offerWishlistNotInCollection")
+                                          : t("trades.maxQuantity", { count: myQtyForWishlist })
+                                        : inOfferBasket && basketItemWishlist
+                                          ? `${basketItemWishlist.quantity}/${myQtyForWishlist}`
+                                          : t("profile.addWishlistToOfferBasket")
+                                  }
+                                  aria-label={t("profile.addWishlistToOfferBasket")}
+                                >
+                                  +
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="px-4 py-3">
-              {(publicTab === "wishlist" ? publicWishlist : publicForSale).length === 0 ? (
-                <p className="py-6 text-center text-sm text-gray-500">
-                  {publicTab === "wishlist" ? t("profile.noPublicWishlist") : t("profile.noPublicForSale")}
-                </p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {(publicTab === "wishlist" ? publicWishlist : publicForSale).map((item) => {
-                    const cached = lookupCached(item.cardId, item.card?.scraperId);
-                    const previewCard = mergePublicProfileCardWithCatalog(item.card, cached, item.cardId);
-                    const domains = getCardDomains(cached ?? item.card ?? undefined);
-                    return (
-                      <li key={`${publicTab}-${item.cardId}`} className="flex items-center justify-between gap-3 rounded px-1 py-1 hover:bg-gray-700/40">
-                        <CardHoverPreview card={previewCard}>
-                          <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
-                            <TradeOfferDomainIconsAndQty
-                              domains={domains}
-                              quantity={item.quantity}
-                              fallbackCard={cached ?? item.card ?? undefined}
-                            />
-                            <span className="truncate text-blue-400">{item.card?.name ?? item.cardId}</span>
-                          </span>
-                        </CardHoverPreview>
-                        <span className="shrink-0 text-xs font-medium text-emerald-400">
-                          {item.pricePerCard == null
-                            ? t("profile.priceOnRequest")
-                            : t("profile.pricePerCardLabel", { price: formatProfileListPrice(item.pricePerCard) })}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
+            {showPublicListTradeBasket && (
+              <div className="hidden self-start lg:block lg:flex-[3]">
+                <div className="sticky top-[73px]">
+                  <BasketPanel
+                    basket={basket}
+                    recipientSlug={user.slug}
+                    recipientDisplayName={user.displayName}
+                    mySlug={me!.slug}
+                    onUpdateQty={updateBasketQty}
+                    onRemove={removeFromBasket}
+                    requestedBasket={!activeTrade || tradeIsMyTurn ? requestedBasket : undefined}
+                    onUpdateRequestedQty={!activeTrade || tradeIsMyTurn ? updateRequestedBasketQty : undefined}
+                    onRemoveRequested={!activeTrade || tradeIsMyTurn ? removeFromRequestedBasket : undefined}
+                    onUpdateDeclaredValue={updateBasketDeclaredValue}
+                    onUpdateRequestedDeclaredValue={updateRequestedDeclaredValue}
+                    cardCacheMap={cardCacheMap}
+                    scraperIdMap={scraperIdMap}
+                    activeTrade={activeTrade}
+                    activeTradeDetail={activeTradeDetail}
+                    isMyTurn={tradeIsMyTurn}
+                    onCounterSubmitError={handleCounterSubmitError}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         ) : (
         <div className="flex items-start gap-5">
@@ -2015,6 +2248,8 @@ export default function PublicProfilePage() {
                     requestedBasket={!activeTrade || tradeIsMyTurn ? requestedBasket : undefined}
                     onUpdateRequestedQty={!activeTrade || tradeIsMyTurn ? updateRequestedBasketQty : undefined}
                     onRemoveRequested={!activeTrade || tradeIsMyTurn ? removeFromRequestedBasket : undefined}
+                    onUpdateDeclaredValue={updateBasketDeclaredValue}
+                    onUpdateRequestedDeclaredValue={updateRequestedDeclaredValue}
                     cardCacheMap={cardCacheMap}
                     scraperIdMap={scraperIdMap}
                     activeTrade={activeTrade}
@@ -2054,7 +2289,7 @@ export default function PublicProfilePage() {
       </div>
 
       {/* Mobile: floating basket or register-to-trade button */}
-      {showTradePanel && publicTab === "collection" && (
+      {((showTradePanel && publicTab === "collection") || showPublicListTradeBasket) && (
         <button
           type="button"
           onClick={() => setBasketDrawerOpen(true)}
@@ -2065,9 +2300,9 @@ export default function PublicProfilePage() {
             <path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
           </svg>
           {t("profile.trade")}
-          {basketCount > 0 && (
+          {totalTradeBasketCount > 0 && (
             <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-white px-1 text-xs font-bold text-emerald-700">
-              {basketCount}
+              {totalTradeBasketCount}
             </span>
           )}
         </button>

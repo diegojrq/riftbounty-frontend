@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CardDetailModal } from "@/components/cards/CardDetailModal";
 import { CardTile } from "@/components/cards/CardTile";
@@ -12,7 +12,15 @@ import { useCards } from "@/lib/cards-context";
 import { getCardSetFilterValue } from "@/lib/card-set";
 import { cardMatchesAnyAbility } from "@/lib/card-ability-filter";
 import { cardDescriptionPlainText } from "@/lib/html-description";
+import {
+  formatMoneyCentMask,
+  MAX_MONEY_CENTS,
+  moneyCentsToValue,
+  parseMoneyInputValue,
+  valueToMoneyCents,
+} from "@/lib/money-input";
 import { useLocale } from "@/lib/locale-context";
+import type { Locale } from "@/lib/locale";
 import { getCollection } from "@/lib/collections";
 import { getProfile, updateProfile, type UpdateProfilePayload } from "@/lib/profile";
 import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
@@ -31,6 +39,144 @@ const MIGHT_BOUNDS = { min: 0, max: 10 };
 
 type ForSaleItem = { cardId: string; quantity: number; pricePerCard: number | null };
 
+function ForSaleCardPriceInput({
+  cardId,
+  value,
+  disabled,
+  locale,
+  label,
+  placeholder,
+  onCommit,
+}: {
+  cardId: string;
+  value: number | null;
+  disabled: boolean;
+  locale: Locale;
+  label: string;
+  placeholder: string;
+  onCommit: (id: string, price: number | null) => void | Promise<void>;
+}) {
+  const { t } = useLocale();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const skipBeforeInputRef = useRef(false);
+  const [cents, setCents] = useState(() => valueToMoneyCents(value));
+  const focusedRef = useRef(false);
+  const centsRef = useRef(cents);
+  centsRef.current = cents;
+
+  const display = formatMoneyCentMask(cents, locale);
+
+  useEffect(() => {
+    if (!focusedRef.current) {
+      const v = valueToMoneyCents(value);
+      centsRef.current = v;
+      setCents(v);
+    }
+  }, [value]);
+
+  useLayoutEffect(() => {
+    if (!focusedRef.current || !inputRef.current) return;
+    const el = inputRef.current;
+    const len = el.value.length;
+    el.setSelectionRange(len, len);
+  }, [cents, locale]);
+
+  function pushDigit(d: number) {
+    setCents((c) => {
+      const next = Math.min(MAX_MONEY_CENTS, c * 10 + d);
+      centsRef.current = next;
+      return next;
+    });
+  }
+
+  function popDigit() {
+    setCents((c) => {
+      const next = Math.trunc(c / 10);
+      centsRef.current = next;
+      return next;
+    });
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      inputMode="numeric"
+      autoComplete="off"
+      value={display}
+      onChange={() => {
+        /* controlado por onKeyDown / onBeforeInput; onChange exigido pelo React para inputs com value */
+      }}
+      title={placeholder}
+      onFocus={() => {
+        focusedRef.current = true;
+      }}
+      onKeyDown={(e) => {
+        if (disabled) return;
+        if (e.key >= "0" && e.key <= "9") {
+          e.preventDefault();
+          skipBeforeInputRef.current = true;
+          pushDigit(e.key.charCodeAt(0) - 48);
+          queueMicrotask(() => {
+            skipBeforeInputRef.current = false;
+          });
+          return;
+        }
+        if (e.key === "Backspace") {
+          e.preventDefault();
+          skipBeforeInputRef.current = true;
+          popDigit();
+          queueMicrotask(() => {
+            skipBeforeInputRef.current = false;
+          });
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      onBeforeInput={(e) => {
+        if (disabled || skipBeforeInputRef.current) return;
+        const ie = e.nativeEvent as InputEvent;
+        if (ie.inputType === "insertText" && ie.data) {
+          if (ie.data.length === 1 && /^[0-9]$/.test(ie.data)) {
+            e.preventDefault();
+            pushDigit(Number(ie.data));
+            return;
+          }
+          e.preventDefault();
+          return;
+        }
+        if (ie.inputType === "deleteContentBackward" || ie.inputType === "deleteBackward") {
+          e.preventDefault();
+          popDigit();
+        }
+      }}
+      onPaste={(e) => {
+        if (disabled) return;
+        e.preventDefault();
+        const txt = e.clipboardData.getData("text");
+        const result = parseMoneyInputValue(txt, locale);
+        if (!result.ok) {
+          toast.error(t("forSale.invalidPrice"));
+          return;
+        }
+        const next = valueToMoneyCents(result.value);
+        centsRef.current = next;
+        setCents(next);
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        void onCommit(cardId, moneyCentsToValue(centsRef.current));
+      }}
+      disabled={disabled}
+      placeholder={placeholder}
+      className="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-xs text-white placeholder-gray-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50"
+      aria-label={label}
+    />
+  );
+}
+
 function getCardDomains(card: Card): string[] {
   const result: string[] = [];
   if (card.domain) result.push(card.domain.toLowerCase());
@@ -43,7 +189,7 @@ export default function ForSalePage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { cards: allCards, loading: cardsLoading } = useCards();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { sets, formatSetWithCode } = useRiotCatalogSets();
 
   const [forSaleMap, setForSaleMap] = useState<Map<string, ForSaleItem>>(new Map());
@@ -302,19 +448,9 @@ export default function ForSalePage() {
     setActionCardId(null);
   }
 
-  async function handlePriceBlur(cardId: string, raw: string) {
+  async function handlePriceCommit(cardId: string, price: number | null) {
     const current = forSaleMap.get(cardId);
     if (!current) return;
-    const trimmed = raw.trim().replace(",", ".");
-    let price: number | null = null;
-    if (trimmed !== "") {
-      const n = Number(trimmed);
-      if (!Number.isFinite(n) || n < 0) {
-        toast.error(t("forSale.invalidPrice"));
-        return;
-      }
-      price = n;
-    }
     if (current.pricePerCard === price) return;
     const next = new Map(forSaleMap);
     next.set(cardId, { ...current, pricePerCard: price });
@@ -482,7 +618,6 @@ export default function ForSalePage() {
                 const cardId = getCardId(card);
                 const isCardLoading = actionCardId === cardId || saving;
                 const saleItem = forSaleMap.get(cardId);
-                const priceKey = `${cardId}-${saleItem?.quantity ?? 0}-${saleItem?.pricePerCard ?? "null"}`;
                 return (
                   <li key={cardId} className="relative flex flex-col">
                     <CardTile
@@ -504,16 +639,14 @@ export default function ForSalePage() {
                         <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
                           {t("forSale.priceInputLabel")}
                         </span>
-                        <input
-                          key={priceKey}
-                          type="text"
-                          inputMode="decimal"
-                          defaultValue={saleItem?.pricePerCard != null ? String(saleItem.pricePerCard) : ""}
-                          onBlur={(e) => void handlePriceBlur(cardId, e.target.value)}
+                        <ForSaleCardPriceInput
+                          cardId={cardId}
+                          value={saleItem?.pricePerCard ?? null}
                           disabled={isCardLoading}
+                          locale={locale}
+                          label={t("forSale.priceInputLabel")}
                           placeholder={t("forSale.pricePlaceholder")}
-                          className="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-xs text-white placeholder-gray-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50"
-                          aria-label={t("forSale.priceInputLabel")}
+                          onCommit={handlePriceCommit}
                         />
                       </label>
                     )}

@@ -5,8 +5,11 @@ import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
+import { ApiClientError } from "@/lib/api";
 import { createTrade } from "@/lib/trades";
+import { TRADE_DECLARED_VALUE_INVALID_I18N_KEY } from "@/lib/trade-declared-value";
 import { CardPickerModal } from "@/components/decks/CardPickerModal";
+import { TradeDeclaredValueInput } from "@/components/trades/TradeDeclaredValueInput";
 import { BackLink } from "@/components/layout/BackLink";
 import type { Card } from "@/types/card";
 import { getCardId } from "@/lib/card-id";
@@ -14,6 +17,7 @@ import { getCardId } from "@/lib/card-id";
 interface DraftItem {
   card: Card;
   quantity: number;
+  declaredValue?: number | null;
 }
 
 function NewTradeContent() {
@@ -38,7 +42,7 @@ function NewTradeContent() {
     setItems((prev) => {
       const existing = prev.find((i) => getCardId(i.card) === getCardId(card));
       if (existing) return prev; // já existe, não duplica
-      return [...prev, { card, quantity: 1 }];
+      return [...prev, { card, quantity: 1, declaredValue: null }];
     });
   }
 
@@ -68,13 +72,25 @@ function NewTradeContent() {
     try {
       const trade = await createTrade({
         recipientSlug: recipientSlug.trim(),
-        items: items.map((i) => ({ cardId: getCardId(i.card), quantity: i.quantity })),
+        items: items.map((i) => {
+          const line: { cardId: string; quantity: number; declaredValue?: number } = {
+            cardId: getCardId(i.card),
+            quantity: i.quantity,
+          };
+          if (typeof i.declaredValue === "number" && Number.isFinite(i.declaredValue)) {
+            line.declaredValue = Math.round(i.declaredValue * 100) / 100;
+          }
+          return line;
+        }),
         message: message.trim() || undefined,
       });
       toast.success(t("trades.tradeProposalSent"));
       router.push(`/trades/${trade.id}`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : t("trades.errorCreatingTrade");
+      let msg = err instanceof Error ? err.message : t("trades.errorCreatingTrade");
+      if (err instanceof ApiClientError && err.code === TRADE_DECLARED_VALUE_INVALID_I18N_KEY) {
+        msg = t(TRADE_DECLARED_VALUE_INVALID_I18N_KEY);
+      }
       setError(msg);
       toast.error(msg);
     } finally {
@@ -146,7 +162,23 @@ function NewTradeContent() {
                         <p className="text-xs text-gray-500">{item.card.type}</p>
                       )}
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className="text-[10px] font-medium text-gray-500">{t("trades.declaredValueLabelNewTrade")}</span>
+                        <TradeDeclaredValueInput
+                          value={item.declaredValue ?? null}
+                          onCommit={(n) =>
+                            setItems((prev) =>
+                              prev.map((row) =>
+                                getCardId(row.card) === getCardId(item.card) ? { ...row, declaredValue: n } : row
+                              )
+                            )
+                          }
+                          disabled={submitting}
+                          ariaLabel={t("trades.declaredValueAriaOffer")}
+                          className="w-[5.5rem] rounded border border-gray-600 bg-gray-900 px-2 py-1 text-center text-xs tabular-nums text-gray-200 outline-none placeholder:text-gray-600 focus:border-emerald-600 disabled:opacity-50"
+                        />
+                      </div>
                       <div className="flex items-center gap-1 rounded-lg border border-gray-700 bg-gray-900">
                         <button
                           type="button"

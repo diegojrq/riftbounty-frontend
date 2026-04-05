@@ -8,8 +8,10 @@ import type {
   TradeMessage,
   TradeStatusFilter,
   TradeRoleFilter,
+  UpdateTradeItemPayload,
 } from "@/types/trade";
 import type { PublicProfileCard } from "@/types/auth";
+import { normalizeDeclaredValueFromApi } from "@/lib/trade-declared-value";
 
 const BASE = "/trades";
 
@@ -37,6 +39,7 @@ function normalizeItem(raw: any, initiatorId: string): TradeItem {
     tradeId: raw.tradeId ?? "",
     cardId,
     quantity: raw.quantity ?? 1,
+    declaredValue: normalizeDeclaredValueFromApi(raw.declaredValue ?? raw.declared_value),
     side,
     card,
   };
@@ -211,26 +214,38 @@ export async function createTrade(payload: CreateTradePayload): Promise<Trade> {
 export async function addTradeItem(
   tradeId: string,
   cardId: string,
-  quantity: number
+  quantity: number,
+  declaredValue?: number | null
 ): Promise<TradeItem> {
-  const res = await apiPost<TradeItem>(`${BASE}/${encodeURIComponent(tradeId)}/items`, {
-    cardId,
-    quantity,
-  });
-  return res.data;
+  const body: Record<string, unknown> = { cardId, quantity };
+  if (typeof declaredValue === "number" && Number.isFinite(declaredValue)) {
+    body.declaredValue = Math.round(declaredValue * 100) / 100;
+  }
+  // eslint-disable-next-line
+  const res = await apiPost<any>(`${BASE}/${encodeURIComponent(tradeId)}/items`, body);
+  const raw = res.data;
+  const initiatorGuess = raw?.initiatorId ?? raw?.tradeInitiatorId ?? "";
+  return normalizeItem(raw, initiatorGuess);
 }
 
-/** PATCH /v1/trades/:id/items/:itemId — atualiza quantidade */
+/** PATCH /v1/trades/:id/items/:itemId — quantity obrigatório; declaredValue opcional (omitir = não alterar; null = limpar). */
 export async function updateTradeItem(
   tradeId: string,
   itemId: string,
-  quantity: number
+  payload: UpdateTradeItemPayload
 ): Promise<TradeItem> {
-  const res = await apiPatch<TradeItem>(
+  const body: Record<string, unknown> = { quantity: payload.quantity };
+  if (Object.prototype.hasOwnProperty.call(payload, "declaredValue")) {
+    body.declaredValue = payload.declaredValue;
+  }
+  // eslint-disable-next-line
+  const res = await apiPatch<any>(
     `${BASE}/${encodeURIComponent(tradeId)}/items/${encodeURIComponent(itemId)}`,
-    { quantity }
+    body
   );
-  return res.data;
+  const raw = res.data;
+  const initiatorGuess = raw?.initiatorId ?? raw?.tradeInitiatorId ?? "";
+  return normalizeItem(raw, initiatorGuess);
 }
 
 /** DELETE /v1/trades/:id/items/:itemId — remove item da oferta */

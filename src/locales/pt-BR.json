@@ -32,6 +32,9 @@
       "validation_main_illegal": "Carta ilegal no deck principal: \"{cardName}\".",
       "validation_sideboard_illegal": "Carta ilegal no sideboard: \"{cardName}\".",
       "validation_banned_card": "A carta \"{name}\" está banida para jogo."
+    },
+    "trades": {
+      "declared_value_invalid": "O valor declarado deve ser um número entre 0 e 999.999,99 (até 2 casas decimais)."
     }
   },
   "nav": {
@@ -352,6 +355,11 @@
     "waitingBeforeTradeActions": "Aguarde @{slug} responder antes de solicitar ou oferecer cartas.",
     "askedFor": "@{slug} pediu por ({count})",
     "whatYouAskFor": "O que você pede",
+    "declaredValueCurrency": "R$",
+    "declaredValueHint": "Preço de referência opcional nesta linha (não é pagamento). Exibido em BRL.",
+    "declaredValueAriaOffer": "Valor declarado para esta carta ofertada (BRL)",
+    "declaredValueAriaRequested": "Valor declarado para esta carta pedida (BRL)",
+    "declaredValueLabelNewTrade": "Declarado (BRL)",
     "whatYouOffer": "O que você oferece",
     "tradeEstimatedTotal": "Est. {value}",
     "tradeEstimatedPartialHint": "Algumas cartas ainda não têm preço TCG; o subtotal pode estar incompleto.",
@@ -538,9 +546,10 @@
     "subtitle": "Crie decks, ajuste listas e abra cada um para editar com a sua coleção.",
     "newDeck": "Novo deck",
     "importFromList": "Importar lista",
-    "importFromListDesc": "Cole um deck no formato de lista do jogo (cabeçalhos de seção terminando em :).",
     "importListLabel": "Lista do deck",
-    "importListPlaceholder": "Legend:\n1 Draven, Glorious Executioner\n\nChampion:\n1 Nome do Campeão\n\nMainDeck:\n3 Noxus Hopeful\n\nBattlefields:\n1 Nome do Campo\n\nRune Pool:\n3 Sua Runa\n\nSideboard:\n2 Carta do Sideboard",
+    "importListPlaceholder": "Cole a lista do deck (export do jogo ou texto equivalente).",
+    "importClose": "Fechar",
+    "importCancel": "Cancelar",
     "importNameOptional": "Nome do deck (opcional, máx. 120 caracteres)",
     "importSubmit": "Importar deck",
     "importing": "Importando…",
@@ -548,6 +557,7 @@
     "errorImportingDeck": "Não foi possível importar o deck.",
     "importListEmpty": "Cole a lista do deck antes de importar.",
     "missingCardNamesLabel": "Não encontradas no catálogo:",
+    "importErrorCodeLabel": "Código:",
     "addCard": "Adicionar carta",
     "deckCreated": "Deck criado com sucesso.",
     "deckNotFound": "Deck não encontrado.",
@@ -833,7 +843,7 @@
     "theirs": "deles",
     "need": "faltam",
     "tabCollection": "Coleção",
-    "tabSelling": "Selling",
+    "tabSelling": "À venda",
     "tabTradeDirect": "Trade",
     "tabTrade": "Trade preditivo",
     "wantFromThem": "O que eu quero dele",
@@ -872,7 +882,12 @@
     "forSaleShowcase": "Cartas à venda",
     "forSaleShowcaseHint": "Vitrine pública de cartas que este usuário está vendendo.",
     "priceOnRequest": "Preço a combinar",
-    "pricePerCardLabel": "{price}/carta"
+    "pricePerCardLabel": "{price}/carta",
+    "addFromForSaleToBasket": "Adicionar ao cesto de troca (o que você quer dele)",
+    "addWishlistToOfferBasket": "Adicionar ao cesto (o que você oferece da sua coleção)",
+    "offerWishlistNotInCollection": "Você não tem cópias desta carta na sua coleção",
+    "basketSubtotalWithValue": "Subtotal: {value}",
+    "basketSubtotalListingHint": "Soma dos preços da vitrine × quantidade (o que você pede)."
   },
   "picker": {
     "searchByNameMin": "Buscar por nome (mín. 2 caracteres)…",
@@ -901,8 +916,8 @@
     "errorLoading": "Não foi possível carregar a sua lista de venda.",
     "errorSaving": "Não foi possível guardar a sua lista de venda.",
     "errorLoadingCollection": "Não foi possível carregar a coleção para os filtros.",
-    "priceInputLabel": "Preço por carta (USD)",
-    "pricePlaceholder": "Opcional",
+    "priceInputLabel": "Preço por carta ($)",
+    "pricePlaceholder": "Opcional — digite da direita (0,00)",
     "invalidPrice": "Indique um preço válido (número ≥ 0)."
   },
   "communities": {

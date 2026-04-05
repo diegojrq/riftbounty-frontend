@@ -3,11 +3,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
-import { getUnreadCount, markAllNotificationsRead } from "@/lib/notifications";
 import { DonateButton } from "@/components/donations/DonateButton";
 
 function FlagBr({ className }: { className?: string }) {
@@ -122,8 +121,6 @@ export function Header() {
   const { t, locale, setLocale } = useLocale();
   const isAdmin = (user?.role ?? "").toLowerCase() === "admin";
   const [menuOpen, setMenuOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const guardedNav = useCallback((e: React.MouseEvent, href: string) => {
     if (!user) {
@@ -147,23 +144,6 @@ export function Header() {
     }
     return () => { document.body.style.overflow = ""; };
   }, [menuOpen]);
-
-  // Poll unread notification count when logged in
-  useEffect(() => {
-    if (!user) { setUnreadCount(0); return; }
-    const fetch = () => getUnreadCount().then(setUnreadCount).catch(() => {});
-    fetch();
-    intervalRef.current = setInterval(fetch, 30_000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [user]);
-
-  // Marcar notificações como lidas ao entrar na página de Trocas (onde o usuário vê o que importa)
-  useEffect(() => {
-    if (!user || !pathname.startsWith("/trades")) return;
-    markAllNotificationsRead()
-      .then(() => getUnreadCount().then(setUnreadCount))
-      .catch(() => {});
-  }, [user, pathname]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-800 bg-gray-900/95 backdrop-blur-sm">
@@ -295,7 +275,7 @@ export function Header() {
               <Link
                 href="/trades"
                 onClick={(e) => guardedNav(e, "/trades")}
-                className={`relative flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
                   pathname.startsWith("/trades")
                     ? "border-gray-600 bg-gray-800 text-white"
                     : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
@@ -303,13 +283,7 @@ export function Header() {
               >
                 <IconTrades />
                 {t("nav.trades")}
-                {unreadCount > 0 && (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold leading-none text-gray-900">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
               </Link>
-
             </>
           )}
         </div>
@@ -487,13 +461,7 @@ export function Header() {
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
                 {t("nav.trades")}
-                {unreadCount > 0 && (
-                  <span className="ml-auto flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500 px-1 text-xs font-bold text-gray-900">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
               </Link>
-
               {isAdmin && (
                 <Link
                   href="/admin"

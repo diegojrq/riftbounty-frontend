@@ -23,9 +23,9 @@ import type { Card } from "@/types/card";
 import { getCardId } from "@/lib/card-id";
 import { useCards } from "@/lib/cards-context";
 import { mergePublicProfileCardWithCatalog } from "@/lib/cards";
-import { formatTcgUsd, getCardTcgUnitPriceUsd } from "@/lib/card-tcg-price";
 import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
 import { getCardDomains, getRarityIcon, groupTradeItemsBySetAndType } from "@/lib/trade-offer-grouping";
+import { formatDeclaredValueBrl, mergeAggregatedDeclaredValue } from "@/lib/trade-declared-value";
 
 /* ─── helpers ─────────────────────────────────────── */
 
@@ -65,6 +65,10 @@ function aggregateTradeItemsByCardId(items: TradeItem[]): TradeItem[] {
     existing.quantity += item.quantity;
     // Prefer a non-null card payload if one of the entries has it.
     if (!existing.card && item.card) existing.card = item.card;
+    existing.declaredValue = mergeAggregatedDeclaredValue(
+      existing.declaredValue ?? null,
+      item.declaredValue ?? null
+    );
   }
   return [...byCardId.values()];
 }
@@ -107,7 +111,7 @@ function OfferPanel({
   emptyLabelMy,
   emptyLabelTheir,
 }: OfferPanelProps) {
-  const { t, locale } = useLocale();
+  const { locale } = useLocale();
   const { setCodesOrdered, getSetLabel } = useRiotCatalogSets();
   const displayItems = useMemo(() => aggregateTradeItemsByCardId(items), [items]);
 
@@ -116,45 +120,10 @@ function OfferPanel({
     [displayItems, cardCacheMap, scraperIdMap, setCodesOrdered, getSetLabel]
   );
 
-  const panelTcg = useMemo(() => {
-    let sum = 0;
-    let hadAnyPrice = false;
-    let missingAnyPrice = false;
-    for (const item of displayItems) {
-      const card = mergedCardForTradeOfferItem(item, cardCacheMap, scraperIdMap);
-      const unit = getCardTcgUnitPriceUsd(card);
-      if (unit != null) {
-        hadAnyPrice = true;
-        sum += unit * item.quantity;
-      } else {
-        missingAnyPrice = true;
-      }
-    }
-    return {
-      sum,
-      hadAnyPrice,
-      partial: hadAnyPrice && missingAnyPrice,
-    };
-  }, [displayItems, cardCacheMap, scraperIdMap]);
-
   return (
     <div className={`rounded-xl border bg-gray-800 ${isMyPanel ? "border-emerald-700/50" : "border-gray-700"}`}>
-      <div className={`flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 ${isMyPanel ? "border-emerald-700/40" : "border-gray-700"}`}>
+      <div className={`border-b px-4 py-3 ${isMyPanel ? "border-emerald-700/40" : "border-gray-700"}`}>
         <span className="min-w-0 text-sm font-semibold text-gray-200">{title}</span>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
-          {displayItems.length > 0 && (
-            <span
-              className="text-[10px] font-medium tabular-nums text-emerald-400/90"
-              title={
-                panelTcg.partial ? t("trades.tradeEstimatedPartialHint") : undefined
-              }
-            >
-              {!panelTcg.hadAnyPrice
-                ? "—"
-                : `${t("trades.tradeEstimatedTotal", { value: formatTcgUsd(panelTcg.sum, locale) })}${panelTcg.partial ? "*" : ""}`}
-            </span>
-          )}
-        </div>
       </div>
 
       <div className="px-3 py-2">
@@ -186,7 +155,6 @@ function OfferPanel({
                         {typeItems.map((item) => {
                           const cached = cardCacheMap.get(item.cardId) ?? scraperIdMap.get(item.cardId);
                           const merged = mergedCardForTradeOfferItem(item, cardCacheMap, scraperIdMap);
-                          const unitUsd = getCardTcgUnitPriceUsd(merged);
                           const domains = getCardDomains(cached ?? item.card ?? undefined);
                           const rarityIcon = getRarityIcon(item.card?.rarity ?? cached?.rarity);
                           return (
@@ -212,16 +180,11 @@ function OfferPanel({
                                       className="h-3.5 w-3.5 shrink-0 object-contain opacity-70"
                                     />
                                   )}
-                                  <span
-                                    className="ml-0.5 shrink-0 text-[10px] font-medium tabular-nums text-emerald-400/90"
-                                    title={
-                                      unitUsd != null && item.quantity > 1
-                                        ? formatTcgUsd(unitUsd * item.quantity, locale)
-                                        : undefined
-                                    }
-                                  >
-                                    {unitUsd != null ? formatTcgUsd(unitUsd, locale) : "—"}
-                                  </span>
+                                  {item.declaredValue != null && item.declaredValue !== "" && (
+                                    <span className="shrink-0 text-[10px] tabular-nums text-amber-200/90">
+                                      {formatDeclaredValueBrl(item.declaredValue, locale)}
+                                    </span>
+                                  )}
                                 </span>
                               </CardHoverPreview>
                             </li>

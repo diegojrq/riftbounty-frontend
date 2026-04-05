@@ -9,6 +9,8 @@ export interface TradeItem {
   tradeId: string;
   cardId: string;
   quantity: number;
+  /** Valor declarado informativo: null ou string com 2 decimais (ex. "15.50"). */
+  declaredValue: string | null;
   /** "initiator" | "recipient" — de qual lado é este item */
   side: "initiator" | "recipient";
   /** Pode vir null no GET /trades/:id se o backend não embutir a carta */
@@ -56,14 +58,27 @@ export interface TradeSummary {
   updatedAt: string;
 }
 
+export type CreateTradeLinePayload = {
+  cardId: string;
+  quantity: number;
+  /** Opcional; omitir = sem valor declarado. */
+  declaredValue?: number;
+};
+
 export interface CreateTradePayload {
   recipientSlug: string;
   /** Sua oferta — cartas que você dá. Pelo menos 1 item. */
-  items: { cardId: string; quantity: number }[];
+  items: CreateTradeLinePayload[];
   /** O que você quer do outro (opcional). O outro vê no trade e pode aceitar ou contrapropor. */
-  requestedItems?: { cardId: string; quantity: number }[];
+  requestedItems?: CreateTradeLinePayload[];
   message?: string;
 }
 
 export type TradeStatusFilter = TradeStatus | "all";
 export type TradeRoleFilter = "initiator" | "recipient" | "all";
+
+export type UpdateTradeItemPayload = {
+  quantity: number;
+  /** Omitir = não alterar; `null` = remover valor declarado. */
+  declaredValue?: number | null;
+};

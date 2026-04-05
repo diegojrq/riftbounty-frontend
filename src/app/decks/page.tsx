@@ -52,6 +52,7 @@ export default function DecksPage() {
   const [importList, setImportList] = useState("");
   const [importName, setImportName] = useState("");
   const [importing, setImporting] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   /** Detalhes do último erro de import (cartas em falta, etc.) */
   const [importErrorDetail, setImportErrorDetail] = useState<string | null>(null);
 
@@ -84,6 +85,20 @@ export default function DecksPage() {
     }
     fetchDecks();
   }, [authLoading, user, router, fetchDecks]);
+
+  useEffect(() => {
+    if (!importModalOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !importing) setImportModalOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [importModalOpen, importing]);
 
   async function handleCreateDeck() {
     if (!user) return;
@@ -129,6 +144,9 @@ export default function DecksPage() {
       toast.error(msg);
       if (err instanceof ApiClientError) {
         const detailParts: string[] = [];
+        if (err.code) {
+          detailParts.push(`${t("decks.importErrorCodeLabel")} ${err.code}`);
+        }
         const missing = err.errorData?.missingCardNames;
         if (Array.isArray(missing) && missing.length > 0) {
           const names = missing.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
@@ -175,59 +193,104 @@ export default function DecksPage() {
           </div>
         )}
 
-        <div className="mb-6 space-y-4">
-          <div>
+        <div className="mb-6 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleCreateDeck}
+            disabled={creating}
+            className="rounded bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {creating ? t("decks.creating") : t("decks.newDeck")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setImportModalOpen(true)}
+            disabled={importing}
+            className="rounded bg-sky-600 px-4 py-2 font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+          >
+            {t("decks.importFromList")}
+          </button>
+        </div>
+
+        {importModalOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="deck-import-modal-title"
+          >
             <button
               type="button"
-              onClick={handleCreateDeck}
-              disabled={creating}
-              className="rounded bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {creating ? t("decks.creating") : t("decks.newDeck")}
-            </button>
-          </div>
-
-          <details className="max-w-3xl rounded-lg border border-gray-700 bg-gray-800/40 p-4">
-            <summary className="cursor-pointer select-none text-sm font-medium text-white hover:text-gray-200">
-              {t("decks.importFromList")}
-            </summary>
-            <p className="mt-2 text-sm text-gray-400">{t("decks.importFromListDesc")}</p>
-            <label htmlFor="deck-import-list" className="mt-3 block text-xs font-medium uppercase tracking-wide text-gray-500">
-              {t("decks.importListLabel")}
-            </label>
-            <textarea
-              id="deck-import-list"
-              rows={12}
-              value={importList}
-              onChange={(e) => setImportList(e.target.value)}
-              placeholder={t("decks.importListPlaceholder")}
+              aria-label={t("decks.importClose")}
               disabled={importing}
-              className="mt-1 w-full resize-y rounded border border-gray-600 bg-gray-900 px-3 py-2 font-mono text-sm text-white placeholder:text-gray-600 disabled:opacity-50"
+              onClick={() => setImportModalOpen(false)}
+              className="absolute inset-0 bg-black/70 disabled:cursor-not-allowed"
             />
-            <label htmlFor="deck-import-name" className="mt-3 block text-xs font-medium uppercase tracking-wide text-gray-500">
-              {t("decks.importNameOptional")}
-            </label>
-            <input
-              id="deck-import-name"
-              type="text"
-              maxLength={120}
-              value={importName}
-              onChange={(e) => setImportName(e.target.value)}
-              disabled={importing}
-              className="mt-1 w-full max-w-md rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
-            />
-            <div className="mt-4">
-              <button
-                type="button"
-                onClick={handleImportDeck}
-                disabled={importing}
-                className="rounded bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-              >
-                {importing ? t("decks.importing") : t("decks.importSubmit")}
-              </button>
+            <div className="relative z-10 flex max-h-[min(90vh,720px)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-gray-600 bg-gray-800 shadow-xl">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-700 px-4 py-3">
+                <h2 id="deck-import-modal-title" className="text-lg font-semibold text-white">
+                  {t("decks.importFromList")}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => !importing && setImportModalOpen(false)}
+                  disabled={importing}
+                  className="rounded p-1 text-gray-400 hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={t("decks.importClose")}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+                <label htmlFor="deck-import-list-modal" className="block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  {t("decks.importListLabel")}
+                </label>
+                <textarea
+                  id="deck-import-list-modal"
+                  rows={12}
+                  value={importList}
+                  onChange={(e) => setImportList(e.target.value)}
+                  placeholder={t("decks.importListPlaceholder")}
+                  disabled={importing}
+                  className="min-h-[200px] w-full flex-1 resize-y rounded border border-gray-600 bg-gray-900 px-3 py-2 font-mono text-sm text-white placeholder:text-gray-600 disabled:opacity-50"
+                />
+                <label htmlFor="deck-import-name-modal" className="block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  {t("decks.importNameOptional")}
+                </label>
+                <input
+                  id="deck-import-name-modal"
+                  type="text"
+                  maxLength={120}
+                  value={importName}
+                  onChange={(e) => setImportName(e.target.value)}
+                  disabled={importing}
+                  className="w-full max-w-md rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+                />
+                <div className="mt-1 flex flex-wrap justify-end gap-2 border-t border-gray-700 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => !importing && setImportModalOpen(false)}
+                    disabled={importing}
+                    className="rounded border border-gray-600 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 disabled:opacity-50"
+                  >
+                    {t("decks.importCancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleImportDeck}
+                    disabled={importing}
+                    className="rounded bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                  >
+                    {importing ? t("decks.importing") : t("decks.importSubmit")}
+                  </button>
+                </div>
+              </div>
             </div>
-          </details>
-        </div>
+          </div>
+        )}
 
         {loading ? (
           <DecksSkeleton />

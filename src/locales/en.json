@@ -32,6 +32,9 @@
       "validation_main_illegal": "Illegal card in main deck: \"{cardName}\".",
       "validation_sideboard_illegal": "Illegal card in sideboard: \"{cardName}\".",
       "validation_banned_card": "The card \"{name}\" is banned for play."
+    },
+    "trades": {
+      "declared_value_invalid": "Declared value must be a number between 0 and 999,999.99 (up to 2 decimal places)."
     }
   },
   "nav": {
@@ -352,6 +355,11 @@
     "waitingBeforeTradeActions": "Wait for @{slug} to respond before requesting or offering cards.",
     "askedFor": "@{slug} asked for ({count})",
     "whatYouAskFor": "What you ask for",
+    "declaredValueCurrency": "R$",
+    "declaredValueHint": "Optional reference price for this line (not a payment). Shown in BRL.",
+    "declaredValueAriaOffer": "Declared value for this offered card (BRL)",
+    "declaredValueAriaRequested": "Declared value for this requested card (BRL)",
+    "declaredValueLabelNewTrade": "Declared (BRL)",
     "whatYouOffer": "What you offer",
     "tradeEstimatedTotal": "Est. {value}",
     "tradeEstimatedPartialHint": "Some cards don't have a TCG price yet; subtotal may be incomplete.",
@@ -538,9 +546,10 @@
     "subtitle": "Create decks and open each one to edit with your collection.",
     "newDeck": "New deck",
     "importFromList": "Import from list",
-    "importFromListDesc": "Paste a deck in the game’s list format (section headers ending with :).",
     "importListLabel": "Deck list",
-    "importListPlaceholder": "Legend:\n1 Draven, Glorious Executioner\n\nChampion:\n1 Your Champion Name\n\nMainDeck:\n3 Noxus Hopeful\n\nBattlefields:\n1 Battlefield Name\n\nRune Pool:\n3 Your Rune\n\nSideboard:\n2 Sideboard Card",
+    "importListPlaceholder": "Paste your deck list (game export or equivalent text).",
+    "importClose": "Close",
+    "importCancel": "Cancel",
     "importNameOptional": "Deck name (optional, max 120 characters)",
     "importSubmit": "Import deck",
     "importing": "Importing…",
@@ -548,6 +557,7 @@
     "errorImportingDeck": "Could not import deck.",
     "importListEmpty": "Paste a deck list before importing.",
     "missingCardNamesLabel": "Not found in catalog:",
+    "importErrorCodeLabel": "Error code:",
     "addCard": "Add card",
     "deckCreated": "Deck created successfully.",
     "deckNotFound": "Deck not found.",
@@ -872,7 +882,12 @@
     "forSaleShowcase": "Cards for sale",
     "forSaleShowcaseHint": "Public showcase of cards this user is selling.",
     "priceOnRequest": "Price on request",
-    "pricePerCardLabel": "{price}/card"
+    "pricePerCardLabel": "{price}/card",
+    "addFromForSaleToBasket": "Add to trade basket (what you want from them)",
+    "addWishlistToOfferBasket": "Add to trade basket (what you offer from your collection)",
+    "offerWishlistNotInCollection": "You have no copies of this card in your collection",
+    "basketSubtotalWithValue": "Subtotal: {value}",
+    "basketSubtotalListingHint": "Sum of listed sale prices × quantity (your ask)."
   },
   "picker": {
     "searchByNameMin": "Search by name (min 2 chars)…",
@@ -901,8 +916,8 @@
     "errorLoading": "Could not load your sale list.",
     "errorSaving": "Could not save your sale list.",
     "errorLoadingCollection": "Could not load your collection for filters.",
-    "priceInputLabel": "Price per card (USD)",
-    "pricePlaceholder": "Optional",
+    "priceInputLabel": "Price per card ($)",
+    "pricePlaceholder": "Optional — type digits from the right (0.00)",
     "invalidPrice": "Enter a valid price (zero or positive number)."
   },
   "communities": {

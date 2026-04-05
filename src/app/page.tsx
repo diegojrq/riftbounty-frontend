@@ -20,14 +20,12 @@ const DOMAINS = [
 const FEATURES_CONFIG = [
   { href: "/cards", titleKey: "home.browseCatalogue", descKey: "home.browseCatalogueDesc", ctaKey: "home.browseCards", accent: "text-blue-400", border: "hover:border-blue-700/60" },
   { href: "/collection", titleKey: "home.manageCollection", descKey: "home.manageCollectionDesc", ctaKey: "home.myCollection", accent: "text-emerald-400", border: "hover:border-emerald-700/60" },
-  { href: "/trades", titleKey: "home.tradeWithPlayers", descKey: "home.tradeWithPlayersDesc", ctaKey: "home.myTrades", accent: "text-amber-400", border: "hover:border-amber-700/60" },
   { href: "/decks", titleKey: "home.buildDecks", descKey: "home.buildDecksDesc", ctaKey: "home.myDecks", accent: "text-purple-400", border: "hover:border-purple-700/60" },
 ] as const;
 
 const FEATURE_ICONS = [
   <svg key="cards" xmlns="http://www.w3.org/2000/svg" width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="2" y="3" width="20" height="14" rx="2"/><path d="m8 21 4-4 4 4"/><path d="M8 13h8"/></svg>,
   <svg key="coll" xmlns="http://www.w3.org/2000/svg" width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>,
-  <svg key="trade" xmlns="http://www.w3.org/2000/svg" width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>,
   <svg key="decks" xmlns="http://www.w3.org/2000/svg" width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 17.5 16 19l-2-2"/><circle cx="17" cy="17" r="5"/></svg>,
 ];
 
@@ -163,7 +161,7 @@ export default function HomePage() {
         <p className="mb-10 text-center text-xs font-semibold uppercase tracking-widest text-gray-600">
           {t("home.everythingInOnePlace")}
         </p>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES_CONFIG.map(({ href, titleKey, descKey, ctaKey, accent, border }, i) => (
             <Link
               key={href}
