@@ -15,11 +15,27 @@ const MAX_CENTS = 10_000_000;
 const PRESET_CENTS = [500, 1000, 2000] as const;
 const MESSAGE_MAX = 500;
 
-function IconDollar() {
+/** Ícone de moeda / token dourado (substitui o $ genérico). */
+function IconGoldToken() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden>
-      <line x1="12" x2="12" y1="2" y2="22" />
-      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className="shrink-0 text-amber-300/95"
+    >
+      <circle cx="12" cy="12" r="8.25" stroke="currentColor" strokeWidth="1.5" opacity="0.95" />
+      <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth="1.25" opacity="0.55" />
+      <path
+        d="M12 7.5v9"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        opacity="0.75"
+      />
     </svg>
   );
 }
@@ -139,13 +155,26 @@ export function DonateButton({ className = "" }: DonateButtonProps) {
     }
   };
 
-  const buttonClass = `inline-flex items-center justify-center gap-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-300 transition-colors hover:border-emerald-500/60 hover:bg-emerald-500/20 ${className}`;
+  const buttonClass = [
+    "group inline-flex max-w-[min(100%,16rem)] items-center justify-center gap-2 rounded-full border border-amber-500/25",
+    "bg-gradient-to-b from-amber-950/55 via-gray-900/70 to-gray-950/90 px-3 py-1.5 sm:px-3.5",
+    "text-left text-[12px] font-medium leading-tight tracking-tight text-amber-50/95",
+    "shadow-sm shadow-black/25 ring-1 ring-white/5 transition",
+    "hover:border-amber-400/45 hover:from-amber-900/50 hover:text-white hover:ring-amber-500/20",
+    "focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900",
+    "sm:max-w-none sm:text-[13px]",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className={buttonClass}>
-        <IconDollar />
-        {t("nav.donate")}
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500/10 ring-1 ring-amber-400/25 transition group-hover:bg-amber-500/15 group-hover:ring-amber-300/35">
+          <IconGoldToken />
+        </span>
+        <span className="min-w-0 hyphens-auto break-words sm:whitespace-nowrap">{t("nav.donate")}</span>
       </button>
 
       {open &&

@@ -15,7 +15,9 @@ export function DonateFailureContent() {
         </svg>
       </div>
       <h1 className="mb-2 text-2xl font-bold text-white">{t("donate.failureTitle")}</h1>
-      <p className="mb-8 text-gray-400">{t("donate.failureBody")}</p>
+      <p className="mb-8 text-gray-400">
+        {t("donate.failureBody", { donateButton: t("nav.donate") })}
+      </p>
       <Link
         href="/"
         className="rounded-lg border border-gray-600 bg-gray-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-gray-700"

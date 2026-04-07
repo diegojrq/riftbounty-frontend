@@ -40,13 +40,14 @@ function IconCards() {
   );
 }
 
-function IconCommunities() {
+/** Estrela — item de evento Unleashed Pre-Rift no menu. */
+function IconUnleashedEvent() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" className="shrink-0 text-amber-400" aria-hidden>
+      <path
+        fill="currentColor"
+        d="M12 2l2.2 6.8h7.1l-5.7 4.4 2.2 6.8L12 15.9 6.2 20l2.2-6.8L2.7 8.8h7.1z"
+      />
     </svg>
   );
 }
@@ -147,9 +148,10 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-800 bg-gray-900/95 backdrop-blur-sm">
-      {/* Top row: language selector */}
-      <div className="hidden border-b border-gray-800/70 sm:block">
-        <div className="mx-auto flex max-w-[1600px] items-center justify-end px-4 py-1.5 sm:px-6 lg:px-10 xl:px-12">
+      {/* Top row: doação + idioma */}
+      <div className="border-b border-gray-800/70">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-end gap-x-3 gap-y-2 px-4 py-1.5 sm:px-6 lg:px-10 xl:px-12">
+          <DonateButton className="shrink-0" />
           <div className="flex items-center gap-0.5">
             <button
               type="button"
@@ -214,15 +216,18 @@ export function Header() {
                 {t("nav.cards")}
               </Link>
               <Link
-                href="/communities"
-                className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
-                  pathname.startsWith("/communities")
-                    ? "border-gray-600 bg-gray-800 text-white"
-                    : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
+                href="/events/unleashed-pre-rift"
+                className={`relative flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-all sm:px-3 sm:text-xs ${
+                  pathname.startsWith("/events/unleashed-pre-rift")
+                    ? "border-amber-400/70 bg-gradient-to-b from-amber-500/25 to-amber-950/50 text-white shadow-[0_0_20px_rgba(251,191,36,0.25)] ring-1 ring-amber-400/30"
+                    : "border-amber-500/35 bg-gradient-to-b from-amber-500/12 to-amber-950/25 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.12)] hover:border-amber-400/55 hover:from-amber-400/20 hover:to-amber-950/40 hover:text-white"
                 }`}
               >
-                <IconCommunities />
-                {t("nav.communities")}
+                <IconUnleashedEvent />
+                <span className="max-w-[9rem] truncate sm:max-w-none">{t("nav.unleashedPreRift")}</span>
+                <span className="hidden rounded bg-amber-500/30 px-1 py-0.5 text-[9px] font-extrabold leading-none text-amber-50 md:inline">
+                  {t("nav.unleashedPreRiftBadge")}
+                </span>
               </Link>
               <Link
                 href="/collection"
@@ -290,7 +295,6 @@ export function Header() {
 
         {/* Desktop right actions */}
         <div className="ml-auto hidden items-center gap-2 sm:flex">
-          <DonateButton />
           {loading ? (
             <span className="rounded bg-gray-800 px-3 py-1.5 text-sm text-gray-500">...</span>
           ) : user ? (
@@ -380,9 +384,6 @@ export function Header() {
             <div className="px-4 py-3 text-sm text-gray-500">{t("common.loading")}</div>
           ) : (
             <div className="flex flex-col divide-y divide-gray-800">
-              <div className="px-4 py-3.5">
-                <DonateButton className="w-full justify-center" />
-              </div>
               {user && (
                 <Link
                   href="/profile"
@@ -404,13 +405,23 @@ export function Header() {
                 {t("nav.cards")}
               </Link>
               <Link
-                href="/communities"
-                className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
-                  pathname.startsWith("/communities") ? "bg-gray-800 text-white" : "text-gray-400"
+                href="/events/unleashed-pre-rift"
+                className={`flex items-center gap-3 px-4 py-3.5 text-sm font-bold uppercase tracking-wide ${
+                  pathname.startsWith("/events/unleashed-pre-rift")
+                    ? "border-l-4 border-amber-400 bg-gradient-to-r from-amber-950/50 to-gray-900 text-amber-100"
+                    : "border-l-4 border-transparent text-amber-200/95 hover:bg-amber-950/30 hover:text-amber-50"
                 }`}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                {t("nav.communities")}
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" className="shrink-0 text-amber-400" aria-hidden>
+                  <path
+                    fill="currentColor"
+                    d="M12 2l2.2 6.8h7.1l-5.7 4.4 2.2 6.8L12 15.9 6.2 20l2.2-6.8L2.7 8.8h7.1z"
+                  />
+                </svg>
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate">{t("nav.unleashedPreRift")}</span>
+                  <span className="text-[10px] font-extrabold text-amber-400/90">{t("nav.unleashedPreRiftBadge")}</span>
+                </span>
               </Link>
               <Link
                 href="/collection"

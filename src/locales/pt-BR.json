@@ -40,6 +40,8 @@
   "nav": {
     "ariaHome": "Riftbounty início",
     "cards": "Cartas",
+    "unleashedPreRift": "Unleashed Pre-Rift",
+    "unleashedPreRiftBadge": "EVENTO",
     "myCollection": "Coleção",
     "myWishlist": "Wishlist",
     "myForSale": "À venda",
@@ -53,7 +55,7 @@
     "ariaOpenMenu": "Abrir menu",
     "ariaCloseMenu": "Fechar menu",
     "loginRequired": "Faça login para acessar essa página",
-    "donate": "Doar"
+    "donate": "Me manda um Gold Token =D"
   },
   "donate": {
     "title": "Apoie o Riftbounty",
@@ -81,7 +83,7 @@
     "successBody": "Se o pagamento foi concluído, agradecemos muito. Você pode fechar esta aba ou voltar ao app.",
     "successBackHome": "Voltar ao início",
     "failureTitle": "Doação não concluída",
-    "failureBody": "O pagamento não foi finalizado ou foi cancelado. Nada deve ter sido cobrado; se notar uma cobrança, fale com seu banco ou emissor do cartão. Você pode tentar de novo pelo botão Doar quando quiser.",
+    "failureBody": "O pagamento não foi finalizado ou foi cancelado. Nada deve ter sido cobrado; se notar uma cobrança, fale com seu banco ou emissor do cartão. Você pode tentar de novo pelo botão {donateButton} quando quiser.",
     "failureBackHome": "Voltar ao início"
   },
   "auth": {
@@ -102,6 +104,29 @@
     "alreadyHaveAccount": "Já tem uma conta?",
     "passwordMinLength": "A senha deve ter pelo menos 8 caracteres.",
     "passwordsDoNotMatch": "As senhas não coincidem."
+  },
+  "events": {
+    "unleashedPreRift": {
+      "metaTitle": "Unleashed Pre-Rift | Riftbounty",
+      "metaDescription": "Evento Unleashed Pre-Rift: formato, carta promocional e os 6 decks mini pré-construídos.",
+      "heroTitle": "Unleashed Pre-Rift",
+      "heroSubtitle": "Escolha um dos seis decks mini pré-construídos, abra seis boosters de Unleashed e monte seu deck para o evento.",
+      "formatTitle": "Formato do evento",
+      "formatIntro": "No Pre-Rift você combina estrutura fixa com descoberta de boosters — alinhado às regras publicadas para o set Unleashed.",
+      "formatBullet1": "Escolha 1 dos 6 decks mini pré-construídos listados abaixo.",
+      "formatBullet2": "Receba 6 boosters de Unleashed para abrir e complementar seu pool de deck.",
+      "formatBullet3": "Siga o regulamento do organizador e do artigo oficial para decklist e restrições.",
+      "promoTitle": "Carta promocional",
+      "promoBody": "Todos os participantes recebem esta carta promocional (coleção Unleashed).",
+      "decksTitle": "Os 6 decks mini pré-construídos",
+      "decksIntro": "Cada deck inclui 1 Legend, 1 Champion, 1 Battlefield e 12 cartas no deck principal.",
+      "labelLegend": "Legend",
+      "labelChampion": "Champion",
+      "labelBattlefield": "Battlefield",
+      "labelMainDeck": "Main deck",
+      "browseCards": "Ver cartas no catálogo",
+      "backHome": "Voltar ao início"
+    }
   },
   "home": {
     "tagline": "Colecione. Troque. Domine.",
