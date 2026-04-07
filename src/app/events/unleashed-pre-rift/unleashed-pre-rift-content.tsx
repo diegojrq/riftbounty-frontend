@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { PreRiftCardThumb, PreRiftPromoThumb } from "@/components/events/pre-rift-card-thumb";
-import { SiteFooterBlock } from "@/components/layout/SiteFooterBlock";
 import {
   UNLEASHED_PRE_RIFT_DECKS,
   UNLEASHED_PRE_RIFT_PROMO,
@@ -124,8 +123,6 @@ export function UnleashedPreRiftContent() {
             {p("browseCards")}
           </Link>
         </div>
-
-        <SiteFooterBlock as="section" className="mt-16 border-t border-gray-800 pt-10" />
       </div>
     </div>
   );

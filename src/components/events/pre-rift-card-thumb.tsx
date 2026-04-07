@@ -189,12 +189,11 @@ export function PreRiftPromoThumb({
 
   return (
     <div
-      className={`relative mx-auto max-w-[200px] overflow-hidden rounded-xl border border-amber-600/40 bg-gradient-to-b from-amber-950/30 to-gray-900/80 p-3 shadow-lg shadow-amber-900/20 ${className}`}
+      className={`relative mx-auto w-full max-w-[min(100%,22rem)] overflow-hidden rounded-xl border border-amber-600/40 bg-gradient-to-b from-amber-950/30 to-gray-900/80 p-4 shadow-lg shadow-amber-900/20 sm:max-w-[26rem] sm:p-5 md:max-w-[28rem] ${className}`}
     >
       <CardHoverPreview card={card} battlefieldAsLandscape={isBattlefieldForHover(card)}>
         <div title={a11yLabel}>{imageBlock}</div>
       </CardHoverPreview>
-      <p className="mt-3 text-center text-xs tabular-nums text-amber-200/90">{collectorNumber}</p>
     </div>
   );
 }
