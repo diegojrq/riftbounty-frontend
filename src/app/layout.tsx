@@ -10,9 +10,11 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { LangSync } from "@/components/layout/LangSync";
 import { ChunkErrorRecovery } from "@/components/layout/ChunkErrorRecovery";
+import { getSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getSiteUrl()),
   title: "Riftbounty",
   description: "Card app - collection and browse",
   icons: {

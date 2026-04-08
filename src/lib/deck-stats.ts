@@ -154,11 +154,42 @@ export function buildMainDeckCmcBuckets(deck: Deck): { rows: DeckCmcRow[]; total
 
 const KNOWN_DOMAIN_SLUGS = new Set<string>(["fury", "calm", "mind", "body", "chaos", "order"]);
 
+function isRuneCardForStats(card: Card | undefined): boolean {
+  if (!card) return false;
+  const t = (card.type ?? "").toLowerCase();
+  const r = (card.record_type ?? card.recordType ?? "").toLowerCase();
+  return t === "rune" || r.includes("rune");
+}
+
+/**
+ * Muitas runas no catálogo vêm sem `cardDomains`; para estatísticas de domínio,
+ * infere Calm/Chaos/etc. pelo nome (ex.: "Calm Rune") para não somar tudo em Incolor.
+ */
+function inferDomainSlugFromRuneName(card: Card | undefined): DeckStatDomainKey | null {
+  if (!card || !isRuneCardForStats(card)) return null;
+  const n = (card.name ?? "").toLowerCase();
+  /** Ordem: nomes mais específicos antes de substrings genéricas. */
+  const pairs: [string, DeckStatDomainKey][] = [
+    ["calm", "calm"],
+    ["chaos", "chaos"],
+    ["order", "order"],
+    ["fury", "fury"],
+    ["mind", "mind"],
+    ["body", "body"],
+  ];
+  for (const [needle, slug] of pairs) {
+    if (n.includes(needle)) return slug;
+  }
+  return null;
+}
+
 function primaryDomainSlug(card: Card | undefined): DeckStatDomainKey {
   if (!card) return "colorless";
   const domains = getCardDomains(card);
   const first = domains[0]?.toLowerCase();
   if (first && KNOWN_DOMAIN_SLUGS.has(first)) return first as DeckStatDomainKey;
+  const inferred = inferDomainSlugFromRuneName(card);
+  if (inferred) return inferred;
   return "colorless";
 }
 

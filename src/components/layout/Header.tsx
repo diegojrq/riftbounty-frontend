@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
@@ -122,6 +122,10 @@ export function Header() {
   const { t, locale, setLocale } = useLocale();
   const isAdmin = (user?.role ?? "").toLowerCase() === "admin";
   const [menuOpen, setMenuOpen] = useState(false);
+  const [decksNavOpen, setDecksNavOpen] = useState(false);
+  const decksNavRef = useRef<HTMLDivElement>(null);
+
+  const decksSectionActive = pathname.startsWith("/decks");
 
   const guardedNav = useCallback((e: React.MouseEvent, href: string) => {
     if (!user) {
@@ -134,7 +138,26 @@ export function Header() {
   // Close menu on route change
   useEffect(() => {
     setMenuOpen(false);
+    setDecksNavOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!decksNavOpen) return;
+    function onDocMouseDown(e: MouseEvent) {
+      if (decksNavRef.current && !decksNavRef.current.contains(e.target as Node)) {
+        setDecksNavOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setDecksNavOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [decksNavOpen]);
 
   // Prevent body scroll when menu open
   useEffect(() => {
@@ -265,18 +288,64 @@ export function Header() {
                 <IconForSale />
                 {t("nav.myForSale")}
               </Link>
-              <Link
-                href="/decks"
-                onClick={(e) => guardedNav(e, "/decks")}
-                className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
-                  pathname.startsWith("/decks")
-                    ? "border-gray-600 bg-gray-800 text-white"
-                    : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
-                }`}
-              >
-                <IconDecks />
-                {t("nav.myDecks")}
-              </Link>
+              <div className="relative" ref={decksNavRef}>
+                <button
+                  type="button"
+                  aria-expanded={decksNavOpen}
+                  aria-haspopup="menu"
+                  aria-label={t("nav.ariaDecksMenu")}
+                  onClick={() => setDecksNavOpen((v) => !v)}
+                  className={`flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                    decksSectionActive
+                      ? "border-gray-600 bg-gray-800 text-white"
+                      : "border-transparent text-gray-400 hover:border-gray-700 hover:bg-gray-800 hover:text-white"
+                  }`}
+                >
+                  <IconDecks />
+                  {t("nav.decks")}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`shrink-0 opacity-70 transition-transform ${decksNavOpen ? "rotate-180" : ""}`}
+                    aria-hidden
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+                {decksNavOpen && (
+                  <div
+                    role="menu"
+                    className="absolute left-0 top-full z-50 mt-1 min-w-[13rem] rounded-md border border-gray-700 bg-gray-900 py-1 shadow-lg ring-1 ring-black/20"
+                  >
+                    <Link
+                      href="/decks"
+                      role="menuitem"
+                      onClick={(e) => {
+                        guardedNav(e, "/decks");
+                        setDecksNavOpen(false);
+                      }}
+                      className="block px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-300 hover:bg-gray-800 hover:text-white"
+                    >
+                      {t("nav.decksBuilder")}
+                    </Link>
+                    <Link
+                      href="/decks/precon"
+                      role="menuitem"
+                      onClick={() => setDecksNavOpen(false)}
+                      className="block px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-300 hover:bg-gray-800 hover:text-white"
+                    >
+                      {t("nav.preconDecks")}
+                    </Link>
+                  </div>
+                )}
+              </div>
               <Link
                 href="/trades"
                 onClick={(e) => guardedNav(e, "/trades")}
@@ -453,16 +522,32 @@ export function Header() {
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                 {t("nav.myForSale")}
               </Link>
-              <Link
-                href="/decks"
-                onClick={(e) => guardedNav(e, "/decks")}
-                className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
-                  pathname.startsWith("/decks") ? "bg-gray-800 text-white" : "text-gray-400"
-                }`}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 17.5 16 19l-2-2"/><circle cx="17" cy="17" r="5"/></svg>
-                {t("nav.myDecks")}
-              </Link>
+              <div className="border-t border-gray-800/80 bg-gray-900/50">
+                <div className="px-4 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                  {t("nav.decks")}
+                </div>
+                <Link
+                  href="/decks"
+                  onClick={(e) => guardedNav(e, "/decks")}
+                  className={`flex items-center gap-3 px-4 py-3 pl-8 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
+                    pathname.startsWith("/decks") && !pathname.startsWith("/decks/precon")
+                      ? "bg-gray-800 text-white"
+                      : "text-gray-400"
+                  }`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 17.5 16 19l-2-2"/><circle cx="17" cy="17" r="5"/></svg>
+                  {t("nav.decksBuilder")}
+                </Link>
+                <Link
+                  href="/decks/precon"
+                  className={`flex items-center gap-3 px-4 py-3 pl-8 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
+                    pathname.startsWith("/decks/precon") ? "bg-gray-800 text-white" : "text-gray-400"
+                  }`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" x2="12" y1="22.08" y2="12"/></svg>
+                  {t("nav.preconDecks")}
+                </Link>
+              </div>
               <Link
                 href="/trades"
                 onClick={(e) => guardedNav(e, "/trades")}
