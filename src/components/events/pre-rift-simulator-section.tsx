@@ -41,7 +41,7 @@ function SimPullTile({ pull, foilLabel }: { pull: SimulatedPull; foilLabel: stri
         </div>
       )}
       {isFoil && (
-        <span className="absolute left-1 top-1 rounded bg-amber-500/90 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-950 shadow">
+        <span className="absolute left-1 top-1 z-20 rounded bg-amber-500/90 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-950 shadow">
           {foilLabel}
         </span>
       )}
