@@ -1,4 +1,4 @@
-import { findCardForPreRift } from "@/components/events/pre-rift-card-thumb";
+import { findCardForPreRift, resolvePreconLegendCard } from "@/components/events/pre-rift-card-thumb";
 import { PRECON_CHAMPION_DECKS } from "@/data/precon-champion-decks";
 import {
   getPreconDeckViewData,
@@ -18,6 +18,11 @@ const MAIN_NAME_ALIASES: Record<string, string[]> = {
   "Carrion Dredger": ["Carion Dredger"],
   /** Vírgula opcional no nome exibido. */
   "Mageseeker Investigator": ["Mageseeker, Investigator"],
+  /** Carta / grafia no set OGN. */
+  "Grand Strategem": ["Grand Strategy"],
+  "Pakaa Cub": ["Pakaa, Cub"],
+  "Jaull-Fish": ["Jaull Fish"],
+  "B.F. Sword": ["BF Sword", "B.F Sword"],
 };
 
 function resolveMainRowCard(cards: Card[], displayName: string): Card | undefined {
@@ -44,19 +49,33 @@ export function buildPreconSyntheticDeck(
   cards: Card[],
   displayName: string
 ): Deck | null {
-  if (slug !== "vex" && slug !== "vi") return null;
-  const s = slug as PreconDeckSlug;
-  const data = getPreconDeckViewData(s);
+  const data = getPreconDeckViewData(slug);
   if (!data) return null;
+  const s = slug as PreconDeckSlug;
 
   const deckId = `precon-${s}`;
   const def = PRECON_CHAMPION_DECKS.find((d) => d.slug === s);
 
-  const legend = findCardForPreRift(cards, data.legend);
-  let championCard = def ? findCardForPreRift(cards, def.champion) : undefined;
+  const legend = resolvePreconLegendCard(cards, data.legend, def?.legendCollector ?? undefined);
+  let championCard = def ? findCardForPreRift(cards, def.champion, def.championCollector) : undefined;
   if (!championCard && s === "vex") {
     championCard =
       findCardForPreRift(cards, "Vex, Cheerless") ?? findCardForPreRift(cards, "Vex, Mocking");
+  }
+  if (!championCard && s === "jinx") {
+    championCard = findCardForPreRift(cards, "Vi, Destructive");
+  }
+  if (!championCard && s === "lee-sin") {
+    championCard = findCardForPreRift(cards, "Udyr, Wildman");
+  }
+  if (!championCard && s === "viktor") {
+    championCard = findCardForPreRift(cards, "Heimerdinger, Inventor");
+  }
+  if (!championCard && s === "rumble") {
+    championCard = findCardForPreRift(cards, "Rumble, Scrapper");
+  }
+  if (!championCard && s === "fiora") {
+    championCard = findCardForPreRift(cards, "Fiora, Peerless");
   }
 
   const mainItems: DeckMainItem[] = data.mainDeck.map((row, i) => {

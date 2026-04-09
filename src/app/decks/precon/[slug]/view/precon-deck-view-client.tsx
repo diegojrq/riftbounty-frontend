@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { buildPreconSyntheticDeck } from "@/lib/build-precon-synthetic-deck";
+import { getPreconDeckViewData } from "@/data/precon-champion-deck-lists";
 import { DeckViewPageContent, DeckViewSkeleton } from "@/components/decks/DeckViewPageContent";
 import { useCards } from "@/lib/cards-context";
 import { useLocale } from "@/lib/locale-context";
@@ -15,9 +16,9 @@ export function PreconDeckViewClient({ slug }: { slug: string }) {
 
   const deck = useMemo(() => {
     if (!catalogReady) return null;
-    const titleKey = slug === "vex" ? "vexTitle" : slug === "vi" ? "viTitle" : null;
-    if (!titleKey) return null;
-    const title = t(`preconDecks.${titleKey}`);
+    const viewData = getPreconDeckViewData(slug);
+    if (!viewData) return null;
+    const title = t(`preconDecks.${viewData.titleKey}`);
     return buildPreconSyntheticDeck(slug, cards, title);
   }, [catalogReady, cards, slug, t]);
 

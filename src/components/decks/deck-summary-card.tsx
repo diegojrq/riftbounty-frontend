@@ -10,6 +10,35 @@ import { useLocale } from "@/lib/locale-context";
 const cardShellClass =
   "group flex flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-800 transition hover:border-gray-600 hover:shadow-xl";
 
+function DeckSummaryImageSlot({
+  card,
+  side,
+}: {
+  card: Card | null | undefined;
+  side: "legend" | "champion";
+}) {
+  const url = card && getCardImageUrl(card);
+  if (url && card) {
+    return (
+      <CardImg
+        src={url}
+        alt={side === "legend" ? getCardDisplayName(card) : card.name}
+        className="relative z-0 h-full w-1/2 object-cover object-top"
+      />
+    );
+  }
+  return (
+    <div
+      className={`relative z-0 h-full w-1/2 shrink-0 overflow-hidden bg-gray-800 ${
+        side === "champion" ? "border-l border-gray-700" : ""
+      }`}
+      aria-hidden
+    >
+      <span className="animate-card-img-skeleton absolute inset-0 z-[1]" />
+    </div>
+  );
+}
+
 export interface DeckSummaryCardProps {
   /** Se omitido, o cartão é só visualização (sem navegação). */
   href?: string;
@@ -19,7 +48,6 @@ export interface DeckSummaryCardProps {
   mainCount: number;
   runeCount: number;
   bfCount: number;
-  isValid: boolean;
 }
 
 export function DeckSummaryCard({
@@ -30,7 +58,6 @@ export function DeckSummaryCard({
   mainCount,
   runeCount,
   bfCount,
-  isValid,
 }: DeckSummaryCardProps) {
   const { t } = useLocale();
   const domains = legend?.cardDomains ?? [];
@@ -38,50 +65,9 @@ export function DeckSummaryCard({
   const inner = (
     <>
       <div className="relative isolate z-0 flex h-28 bg-gray-900">
-        {legend && getCardImageUrl(legend) ? (
-          <CardImg
-            src={getCardImageUrl(legend)!}
-            alt={getCardDisplayName(legend)}
-            className="relative z-0 h-full w-1/2 object-cover object-top"
-          />
-        ) : (
-          <div className="relative z-0 flex h-full w-1/2 items-center justify-center bg-gray-800">
-            <span className="px-2 text-center text-xs text-gray-500">
-              {legend ? getCardDisplayName(legend) : t("decks.noLegend")}
-            </span>
-          </div>
-        )}
-        {champion && getCardImageUrl(champion) ? (
-          <CardImg
-            src={getCardImageUrl(champion)!}
-            alt={champion.name}
-            className="relative z-0 h-full w-1/2 object-cover object-top"
-          />
-        ) : (
-          <div className="relative z-0 flex h-full w-1/2 items-center justify-center border-l border-gray-700 bg-gray-800">
-            <span className="px-2 text-center text-xs text-gray-500">{champion?.name ?? t("decks.noChampion")}</span>
-          </div>
-        )}
+        <DeckSummaryImageSlot card={legend} side="legend" />
+        <DeckSummaryImageSlot card={champion} side="champion" />
         <div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-gray-800 via-gray-800/10 to-transparent" />
-        <div className="absolute right-2 top-2 z-20">
-          {isValid ? (
-            <span className="flex items-center gap-1 rounded-full border border-emerald-700 bg-emerald-900/80 px-2 py-0.5 text-xs font-medium text-emerald-400 backdrop-blur-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M20 6 9 17l-5-5" />
-              </svg>
-              {t("decks.valid")}
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 rounded-full border border-gray-600 bg-gray-900/80 px-2 py-0.5 text-xs font-medium text-gray-400 backdrop-blur-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 8v4" />
-                <path d="M12 16h.01" />
-              </svg>
-              {t("decks.building")}
-            </span>
-          )}
-        </div>
       </div>
 
       <div className="px-4 py-3">
@@ -133,24 +119,32 @@ export function DeckSummaryCard({
   return <div className={`${cardShellClass} cursor-default`}>{inner}</div>;
 }
 
-/** Skeleton alinhado ao grid de decks (lista). */
+/** Skeleton alinhado ao layout do `DeckSummaryCard` (miniaturas + título + stats). */
 export function DeckGridSkeleton({ count = 8 }: { count?: number }) {
   return (
-    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-busy="true">
       {Array.from({ length: count }).map((_, i) => (
         <li key={i} className="overflow-hidden rounded-xl border border-gray-700 bg-gray-800">
-          <div className="flex h-28 bg-gray-900">
-            <div className="h-full w-1/2 animate-pulse bg-gray-700/60" />
-            <div className="h-full w-1/2 animate-pulse bg-gray-700/40" />
+          <div className="relative isolate flex h-28 bg-gray-900">
+            <div className="relative h-full w-1/2 shrink-0 overflow-hidden bg-gray-800">
+              <span className="animate-card-img-skeleton absolute inset-0" aria-hidden />
+            </div>
+            <div className="relative h-full w-1/2 shrink-0 overflow-hidden border-l border-gray-700 bg-gray-800">
+              <span className="animate-card-img-skeleton absolute inset-0" aria-hidden />
+            </div>
+            <div
+              className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-gray-800 via-gray-800/10 to-transparent"
+              aria-hidden
+            />
           </div>
           <div className="space-y-2 px-4 py-3">
-            <div className="h-4 w-3/4 animate-pulse rounded bg-gray-700" />
-            <div className="flex gap-3">
-              <div className="h-3 w-16 animate-pulse rounded bg-gray-700/60" />
-              <div className="h-3 w-16 animate-pulse rounded bg-gray-700/60" />
-              <div className="h-3 w-16 animate-pulse rounded bg-gray-700/60" />
+            <div className="h-4 max-w-[78%] animate-pulse rounded-md bg-gray-700/80" aria-hidden />
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              <div className="h-3 w-[4.5rem] animate-pulse rounded bg-gray-700/50" aria-hidden />
+              <div className="h-3 w-[4.25rem] animate-pulse rounded bg-gray-700/50" aria-hidden />
+              <div className="h-3 w-[5.5rem] animate-pulse rounded bg-gray-700/50" aria-hidden />
             </div>
-            <div className="h-3 w-1/2 animate-pulse rounded bg-gray-700/40" />
+            <div className="h-3 max-w-[55%] animate-pulse rounded bg-gray-700/40" aria-hidden />
           </div>
         </li>
       ))}

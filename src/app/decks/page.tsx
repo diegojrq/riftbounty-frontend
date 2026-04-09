@@ -302,7 +302,6 @@ export default function DecksPage() {
                     mainCount={mainCount}
                     runeCount={runeCount}
                     bfCount={bfCount}
-                    isValid={Boolean(isValid)}
                   />
                 </li>
               );

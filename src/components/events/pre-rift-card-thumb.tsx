@@ -78,7 +78,69 @@ export function findCardForPreRift(
     return unl[0];
   }
 
+  const sfd = matches.filter((c) => {
+    const n = (c.collectorNumber ?? c.collector_number ?? "").toUpperCase();
+    return n.startsWith("SFD-");
+  });
+  if (sfd.length >= 1) {
+    sfd.sort((a, b) =>
+      String(a.collectorNumber ?? a.collector_number ?? "").localeCompare(
+        String(b.collectorNumber ?? b.collector_number ?? ""),
+        undefined,
+        { numeric: true }
+      )
+    );
+    return sfd[0];
+  }
+
   return matches[0];
+}
+
+const LEGEND_TITLE_TO_FULL_DISPLAY: Record<string, string> = {
+  "Mechanized Menace": "Rumble, Mechanized Menace",
+  "Grand Duelist": "Fiora, Grand Duelist",
+};
+
+function collectorLookupVariants(hint: string): string[] {
+  const c = hint.trim();
+  if (!c) return [];
+  const out = [c];
+  const m = c.match(/^([A-Za-z]{2,4})-(\d+\/\d+)$/);
+  if (m?.[2] && !out.includes(m[2])) out.push(m[2]);
+  return out;
+}
+
+/**
+ * Legends no catálogo aparecem como `Subtype, Título` em getCardDisplayName; artigos Riot listam só o título.
+ * Usa collector (ex. SFD-181/221) e variantes (181/221) quando existir.
+ */
+export function resolvePreconLegendCard(
+  cards: Card[],
+  legendTitle: string,
+  legendCollector?: string
+): Card | undefined {
+  const names = [legendTitle];
+  const alias = LEGEND_TITLE_TO_FULL_DISPLAY[legendTitle];
+  if (alias) names.push(alias);
+  const seen = new Set<string>();
+  const uniqueNames = names.filter((n) => {
+    const k = n.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  const collectors: (string | undefined)[] = legendCollector?.trim()
+    ? collectorLookupVariants(legendCollector)
+    : [undefined];
+
+  for (const col of collectors) {
+    for (const name of uniqueNames) {
+      const found = findCardForPreRift(cards, name, col);
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
 
 interface PreRiftCardThumbProps {
