@@ -48,6 +48,8 @@ export interface DeckSummaryCardProps {
   mainCount: number;
   runeCount: number;
   bfCount: number;
+  /** Mostra selo de validação (usado em My decks). */
+  isValid?: boolean;
 }
 
 export function DeckSummaryCard({
@@ -58,6 +60,7 @@ export function DeckSummaryCard({
   mainCount,
   runeCount,
   bfCount,
+  isValid,
 }: DeckSummaryCardProps) {
   const { t } = useLocale();
   const domains = legend?.cardDomains ?? [];
@@ -71,7 +74,20 @@ export function DeckSummaryCard({
       </div>
 
       <div className="px-4 py-3">
-        <p className="truncate font-semibold text-white">{name}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="truncate font-semibold text-white">{name}</p>
+          {typeof isValid === "boolean" && (
+            <span
+              className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                isValid
+                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                  : "border-red-500/40 bg-red-500/15 text-red-300"
+              }`}
+            >
+              {isValid ? t("decks.valid") : t("decks.invalid")}
+            </span>
+          )}
+        </div>
         <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
           <span className={mainCount === 39 ? "text-emerald-500" : ""}>
             {mainCount}/39 {t("decks.mainLabel")}
