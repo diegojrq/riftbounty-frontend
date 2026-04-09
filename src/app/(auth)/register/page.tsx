@@ -27,7 +27,7 @@ function RegisterForm() {
   const searchParams = useSearchParams();
   const returnTo = safeReturnTo(searchParams.get("returnTo"));
   const { register, error, clearError } = useAuth();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [slug, setSlug] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -80,25 +80,6 @@ function RegisterForm() {
       )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="slug" className="mb-1 block text-sm font-medium text-gray-300">
-            {t("auth.username")}
-          </label>
-          <input
-            id="slug"
-            type="text"
-            required
-            minLength={3}
-            maxLength={30}
-            value={slug}
-            onChange={(e) => setSlug(normalizeSlugInput(e.target.value))}
-            className={inputClass}
-            placeholder="my_username"
-          />
-          <p className="mt-1 text-xs text-gray-500">
-            {t("auth.usernameHint")}
-          </p>
-        </div>
-        <div>
           <label htmlFor="displayName" className="mb-1 block text-sm font-medium text-gray-300">
             {t("auth.nameOptional")}
           </label>
@@ -123,6 +104,25 @@ function RegisterForm() {
             onChange={(e) => setEmail(e.target.value)}
             className={inputClass}
           />
+        </div>
+        <div>
+          <label htmlFor="slug" className="mb-1 block text-sm font-medium text-gray-300">
+            {t("auth.username")}
+          </label>
+          <input
+            id="slug"
+            type="text"
+            required
+            minLength={3}
+            maxLength={30}
+            value={slug}
+            onChange={(e) => setSlug(normalizeSlugInput(e.target.value))}
+            className={inputClass}
+            placeholder={locale === "pt-BR" ? "nome_de_usuario_insano" : "insanely_nice_username"}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            {t("auth.usernameHint")}
+          </p>
         </div>
         <div>
           <label htmlFor="password" className="mb-1 block text-sm font-medium text-gray-300">

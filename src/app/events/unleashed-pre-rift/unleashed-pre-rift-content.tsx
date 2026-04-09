@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { PreRiftCardThumb, PreRiftPromoThumb } from "@/components/events/pre-rift-card-thumb";
+import { PreRiftSimulatorSection } from "@/components/events/pre-rift-simulator-section";
 import {
   UNLEASHED_PRE_RIFT_DECKS,
   UNLEASHED_PRE_RIFT_PROMO,
@@ -49,6 +50,18 @@ export function UnleashedPreRiftContent() {
             <li>{p("formatBullet2")}</li>
             <li>{p("formatBullet3")}</li>
           </ul>
+        </section>
+
+        {/* CTA para simulador */}
+        <section className="mb-16 rounded-2xl border border-emerald-700/35 bg-gradient-to-r from-gray-800/45 via-gray-800/30 to-emerald-900/25 p-6 sm:p-8">
+          <h2 className="mb-2 text-xl font-bold text-white">{p("simCtaTitle")}</h2>
+          <p className="mb-5 max-w-3xl text-sm leading-relaxed text-gray-300">{p("simCtaIntro")}</p>
+          <a
+            href="#pre-rift-simulator"
+            className="inline-flex rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500"
+          >
+            {p("simJumpToSection")}
+          </a>
         </section>
 
         {/* Promo */}
@@ -114,6 +127,10 @@ export function UnleashedPreRiftContent() {
             ))}
           </div>
         </section>
+
+        <div className="mt-16">
+          <PreRiftSimulatorSection />
+        </div>
 
         <div className="mt-14 flex flex-wrap justify-center gap-4">
           <Link
