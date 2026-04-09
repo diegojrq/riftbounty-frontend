@@ -129,7 +129,7 @@ export function CommunityAggregateLinesModal({
                   <tr key={line.userId} className="text-gray-200">
                     <td className="px-2 py-2.5">
                       <Link
-                        href={`/${encodeURIComponent(line.slug)}`}
+                        href={`/u/${encodeURIComponent(line.slug)}`}
                         className="font-medium text-blue-400 hover:underline"
                         onClick={(e) => e.stopPropagation()}
                       >

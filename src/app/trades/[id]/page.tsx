@@ -576,7 +576,7 @@ export default function TradeDetailPage() {
     return (
       <div className="rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-2.5 text-sm text-gray-400">
         {t("trades.waitingForLabel")}
-        <a href={`/${counterpart.slug}`} className="font-medium text-blue-400 hover:underline">
+        <a href={`/u/${counterpart.slug}`} className="font-medium text-blue-400 hover:underline">
           @{counterpart.slug}
         </a>
         {t("trades.toRespondLabel")}
@@ -595,7 +595,7 @@ export default function TradeDetailPage() {
             <h1 className="text-xl font-bold text-white">
               {t("trades.tradeWith")}{" "}
               <a
-                href={`/${counterpart.slug}`}
+                href={`/u/${counterpart.slug}`}
                 className="text-blue-400 hover:underline"
               >
                 @{counterpart.slug}
@@ -628,7 +628,7 @@ export default function TradeDetailPage() {
               {t("trades.acceptTrade")}
             </button>
             <a
-              href={`/${counterpart.slug}`}
+              href={`/u/${counterpart.slug}`}
               className="flex items-center gap-2 rounded-lg border border-blue-600 bg-blue-900/30 px-4 py-2.5 text-sm font-semibold text-blue-300 transition hover:bg-blue-800/40"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
@@ -675,7 +675,7 @@ export default function TradeDetailPage() {
           <div className="mb-5 flex items-center gap-2 rounded-lg border border-blue-800/50 bg-blue-900/10 px-4 py-2.5 text-sm text-blue-300">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
             {t("trades.wantToCounterPrefix")}
-            <a href={`/${counterpart.slug}`} className="font-semibold text-blue-200 hover:underline">
+            <a href={`/u/${counterpart.slug}`} className="font-semibold text-blue-200 hover:underline">
               @{counterpart.slug}
             </a>
             {t("trades.wantToCounterSuffix")}
@@ -754,7 +754,7 @@ export default function TradeDetailPage() {
               <p className="font-medium">{t("trades.yourOfferEmpty")}</p>
               <p className="mt-1 text-amber-200/90">
                 {t("trades.wantToCounterPrefix")}
-                <a href={`/${counterpart.slug}`} className="font-semibold text-amber-100 underline hover:no-underline">
+                <a href={`/u/${counterpart.slug}`} className="font-semibold text-amber-100 underline hover:no-underline">
                   @{counterpart.slug}
                 </a>
                 {t("trades.wantToCounterSuffix")}

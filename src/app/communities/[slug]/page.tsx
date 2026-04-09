@@ -350,7 +350,7 @@ export default function CommunityDetailPage() {
               <ul className="divide-y divide-gray-800/80">
                 {members.map((m) => (
                   <li key={m.userId} className="flex flex-wrap items-center justify-between gap-2 px-2 py-2.5 hover:bg-gray-800/40">
-                    <Link href={`/${encodeURIComponent(m.slug)}`} className="text-sm font-medium text-blue-400 hover:underline">
+                    <Link href={`/u/${encodeURIComponent(m.slug)}`} className="text-sm font-medium text-blue-400 hover:underline">
                       {m.displayName || m.slug}
                     </Link>
                     <span className="text-xs text-gray-500">

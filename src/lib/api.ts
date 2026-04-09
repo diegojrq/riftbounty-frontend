@@ -152,8 +152,13 @@ export async function apiClient<T>(
 }
 
 /** POST for auth/login or auth/register */
-export async function apiPost<T>(path: string, data: unknown): Promise<ApiSuccess<T>> {
+export async function apiPost<T>(
+  path: string,
+  data: unknown,
+  options: RequestInit = {}
+): Promise<ApiSuccess<T>> {
   return apiClient<T>(path, {
+    ...options,
     method: "POST",
     body: JSON.stringify(data),
   });

@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { toast } from "sonner";
 import { apiPost } from "./api";
 import { getStoredUser, getToken, removeToken, setStoredUser, setToken } from "./auth";
+import { getLocale } from "./locale";
 import { getProfile } from "./profile";
 import type { AuthResponse, LoginCredentials, RegisterPayload, User } from "@/types/auth";
 
@@ -49,7 +50,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(async (payload: RegisterPayload) => {
     setError(null);
     try {
-      const res = await apiPost<AuthResponse>("/auth/register", payload);
+      const registerLanguage = getLocale().startsWith("en") ? "en" : "pt-BR";
+      const res = await apiPost<AuthResponse>("/auth/register", payload, {
+        headers: {
+          "Accept-Language": registerLanguage,
+        },
+      });
       const { access_token, user: u } = res.data;
       setToken(access_token);
       setStoredUser(u);
