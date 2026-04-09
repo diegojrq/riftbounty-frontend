@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Card } from "@/types/card";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
+import { CardImg } from "@/components/cards/CardImg";
 import { getCardImageUrl } from "@/lib/cards";
 import { getCardDisplayName } from "@/lib/card-display-name";
 const CARD_BACK = "/images/card-back.webp";
@@ -153,17 +154,12 @@ interface PreRiftCardThumbProps {
 }
 
 export function PreRiftCardThumb({ cards, name, collectorNumber, className = "" }: PreRiftCardThumbProps) {
-  const [imgFailed, setImgFailed] = useState(false);
   const card = useMemo(
     () => findCardForPreRift(cards, name, collectorNumber),
     [cards, name, collectorNumber]
   );
-  const url = card && !imgFailed ? getCardImageUrl(card) : null;
+  const url = card ? getCardImageUrl(card) : null;
   const a11yLabel = card ? getCardDisplayName(card) : name;
-
-  useEffect(() => {
-    setImgFailed(false);
-  }, [name, collectorNumber, card?.id]);
 
   const inner = (
     <div
@@ -171,14 +167,10 @@ export function PreRiftCardThumb({ cards, name, collectorNumber, className = "" 
       className={`relative aspect-[5/7] w-full overflow-hidden rounded-lg border border-gray-700/80 bg-gray-800/50 shadow-inner transition-colors hover:border-emerald-500/45 ${className}`}
     >
       {url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- catálogo/CDN dinâmico
-        <img
+        <CardImg
           src={url}
           alt={a11yLabel}
           className="absolute inset-0 h-full w-full object-cover"
-          loading="lazy"
-          decoding="async"
-          onError={() => setImgFailed(true)}
         />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element
@@ -230,12 +222,10 @@ export function PreRiftPromoThumb({
   const imageBlock = (
     <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg border border-gray-700/80 bg-gray-800/50 transition-colors hover:border-amber-500/40">
       {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <CardImg
           src={url}
           alt={a11yLabel}
           className="absolute inset-0 h-full w-full object-cover"
-          loading="lazy"
         />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element

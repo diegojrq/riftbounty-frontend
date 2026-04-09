@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
+import { useCards } from "@/lib/cards-context";
 import { useLocale } from "@/lib/locale-context";
+import { getCardImageUrl } from "@/lib/cards";
+import { CardImg } from "@/components/cards/CardImg";
 import { createDonationCheckout } from "@/lib/donations";
 
 /** Mínimo da API (presets já são ≥ este valor) */
@@ -78,6 +81,7 @@ interface DonateButtonProps {
 export function DonateButton({ className = "" }: DonateButtonProps) {
   const { t, locale } = useLocale();
   const { user } = useAuth();
+  const { cards } = useCards();
   const [open, setOpen] = useState(false);
   const [preset, setPreset] = useState<number | "custom">(1000);
   /** Apenas dígitos: valor em centavos (ex. "500" = R$ 5,00) */
@@ -107,6 +111,11 @@ export function DonateButton({ className = "" }: DonateButtonProps) {
     if (preset === "custom") return amountCents >= MIN_CUSTOM_CENTS;
     return true;
   }, [amountCents, preset]);
+
+  const goldTokenCard = useMemo(() => {
+    return cards.find((c) => (c.image_key ?? "").trim().toLowerCase() === "sfd-t03");
+  }, [cards]);
+  const goldTokenImage = goldTokenCard ? getCardImageUrl(goldTokenCard) : null;
 
   const resetForm = useCallback(() => {
     setPreset(1000);
@@ -194,143 +203,168 @@ export function DonateButton({ className = "" }: DonateButtonProps) {
               }}
             >
               <div
-                className="relative my-auto w-full max-w-md max-h-[min(90dvh,calc(100vh-3rem))] overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-5 shadow-xl sm:p-6"
+                className="relative my-auto w-full max-w-4xl max-h-[min(90dvh,calc(100vh-3rem))] overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-5 shadow-xl sm:p-6"
                 onClick={(e) => e.stopPropagation()}
               >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 pr-2">
-                <h2 id="donate-modal-title" className="text-lg font-semibold text-white">
-                  {t("donate.title")}
-                </h2>
-                <p className="mt-1.5 text-sm leading-relaxed text-gray-400">
-                  {t("donate.subtitle")}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleClose}
-                className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
-                aria-label={t("donate.close")}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                  <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-                </svg>
-              </button>
-            </div>
+            <div className="grid gap-6 md:grid-cols-[240px_minmax(0,1fr)] md:items-start">
+              <aside className="md:sticky md:top-0">
+                <div className="rounded-xl border border-amber-600/25 bg-gradient-to-b from-amber-950/20 to-gray-900/40 p-3">
+                  <p className="mb-2 text-center text-xs font-semibold uppercase tracking-wide text-amber-300/90">
+                    Move a Gold Token to my battlefield
+                  </p>
+                  <div className="mx-auto max-w-[220px]">
+                    {goldTokenImage ? (
+                      <CardImg
+                        src={goldTokenImage}
+                        alt="Gold Token"
+                        className="aspect-[2.5/3.5] w-full rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="aspect-[2.5/3.5] w-full rounded-lg border border-gray-700 bg-gray-800/70 p-3 text-center text-xs text-gray-400">
+                        Gold Token
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </aside>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-500">
-                  {t("donate.amount")}
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {PRESET_CENTS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => {
-                        setPreset(c);
-                        setCustomDigits("");
-                      }}
-                      className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                        preset === c
-                          ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
-                          : "border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-gray-800"
-                      }`}
-                    >
-                      {centsToReaisLabel(c, locale)}
-                    </button>
-                  ))}
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 pr-2">
+                    <h2 id="donate-modal-title" className="text-lg font-semibold text-white">
+                      {t("donate.title")}
+                    </h2>
+                    <p className="mt-1.5 text-sm leading-relaxed text-gray-400">
+                      {t("donate.subtitle")}
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setPreset("custom")}
-                    className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                      preset === "custom"
-                        ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
-                        : "border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-gray-800"
-                    }`}
+                    onClick={handleClose}
+                    className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
+                    aria-label={t("donate.close")}
                   >
-                    {t("donate.custom")}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+                    </svg>
                   </button>
                 </div>
-                {preset === "custom" && (
-                  <div className="mt-3">
-                    <label htmlFor="donate-custom-amount" className="mb-1 block text-xs text-gray-500">
-                      {t("donate.customAmountLabel")}
-                    </label>
-                    <div className="flex rounded-lg border border-gray-600 bg-gray-800 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/40">
-                      <span className="flex shrink-0 items-center border-r border-gray-600 px-3 text-sm font-medium text-gray-400">
-                        {t("donate.currencyPrefix")}
-                      </span>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                      {t("donate.amount")}
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {PRESET_CENTS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            setPreset(c);
+                            setCustomDigits("");
+                          }}
+                          className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                            preset === c
+                              ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
+                              : "border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-gray-800"
+                          }`}
+                        >
+                          {centsToReaisLabel(c, locale)}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setPreset("custom")}
+                        className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                          preset === "custom"
+                            ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
+                            : "border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-gray-800"
+                        }`}
+                      >
+                        {t("donate.custom")}
+                      </button>
+                    </div>
+                    {preset === "custom" && (
+                      <div className="mt-3">
+                        <label htmlFor="donate-custom-amount" className="mb-1 block text-xs text-gray-500">
+                          {t("donate.customAmountLabel")}
+                        </label>
+                        <div className="flex rounded-lg border border-gray-600 bg-gray-800 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/40">
+                          <span className="flex shrink-0 items-center border-r border-gray-600 px-3 text-sm font-medium text-gray-400">
+                            {t("donate.currencyPrefix")}
+                          </span>
+                          <input
+                            id="donate-custom-amount"
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            placeholder={t("donate.customPlaceholder")}
+                            value={formatBrlAmountDigitsOnly(customDigits, locale)}
+                            onChange={(e) => setCustomDigits(digitsFromInputValue(e.target.value))}
+                            className="min-w-0 flex-1 bg-transparent px-3 py-2 text-white placeholder:text-gray-500 focus:outline-none"
+                          />
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">{t("donate.amountHint")}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {!user && (
+                    <div>
+                      <label htmlFor="donate-email" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                        {t("donate.email")} <span className="font-normal normal-case text-gray-600">({t("common.optional")})</span>
+                      </label>
                       <input
-                        id="donate-custom-amount"
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="off"
-                        placeholder={t("donate.customPlaceholder")}
-                        value={formatBrlAmountDigitsOnly(customDigits, locale)}
-                        onChange={(e) => setCustomDigits(digitsFromInputValue(e.target.value))}
-                        className="min-w-0 flex-1 bg-transparent px-3 py-2 text-white placeholder:text-gray-500 focus:outline-none"
+                        id="donate-email"
+                        type="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder:text-gray-500 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                        placeholder={t("donate.emailPlaceholder")}
                       />
                     </div>
-                    <p className="mt-1 text-xs text-gray-500">{t("donate.amountHint")}</p>
+                  )}
+
+                  <div>
+                    <label htmlFor="donate-message" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                      {t("donate.message")} <span className="font-normal normal-case text-gray-600">({t("common.optional")})</span>
+                    </label>
+                    <textarea
+                      id="donate-message"
+                      rows={3}
+                      maxLength={MESSAGE_MAX}
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      className="w-full resize-y rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder:text-gray-500 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                      placeholder={t("donate.messagePlaceholder")}
+                    />
+                    <p className="mt-1 text-right text-[11px] text-gray-600">
+                      {message.length}/{MESSAGE_MAX}
+                    </p>
                   </div>
-                )}
-              </div>
 
-              {!user && (
-                <div>
-                  <label htmlFor="donate-email" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
-                    {t("donate.email")} <span className="font-normal normal-case text-gray-600">({t("common.optional")})</span>
-                  </label>
-                  <input
-                    id="donate-email"
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder:text-gray-500 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
-                    placeholder={t("donate.emailPlaceholder")}
-                  />
-                </div>
-              )}
-
-              <div>
-                <label htmlFor="donate-message" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
-                  {t("donate.message")} <span className="font-normal normal-case text-gray-600">({t("common.optional")})</span>
-                </label>
-                <textarea
-                  id="donate-message"
-                  rows={3}
-                  maxLength={MESSAGE_MAX}
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className="w-full resize-y rounded-lg border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder:text-gray-500 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
-                  placeholder={t("donate.messagePlaceholder")}
-                />
-                <p className="mt-1 text-right text-[11px] text-gray-600">
-                  {message.length}/{MESSAGE_MAX}
-                </p>
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={handleClose}
+                      disabled={submitting}
+                      className="rounded-lg border border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      {t("donate.cancel")}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting || !amountValid}
+                      className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {submitting ? t("donate.submitting") : t("donate.continue")}
+                    </button>
+                  </div>
+                </form>
               </div>
-
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={handleClose}
-                  disabled={submitting}
-                  className="rounded-lg border border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-800 disabled:opacity-50"
-                >
-                  {t("donate.cancel")}
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || !amountValid}
-                  className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {submitting ? t("donate.submitting") : t("donate.continue")}
-                </button>
-              </div>
-            </form>
+            </div>
               </div>
             </div>
           </div>,

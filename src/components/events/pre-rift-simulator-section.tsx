@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import type { Card } from "@/types/card";
 import { PreRiftCardThumb } from "@/components/events/pre-rift-card-thumb";
 import { CardHoverPreview } from "@/components/cards/CardHoverPreview";
+import { CardImg } from "@/components/cards/CardImg";
 import { getCardImageUrl } from "@/lib/cards";
 import { getCardDisplayName } from "@/lib/card-display-name";
 import {
@@ -29,13 +30,10 @@ function SimPullTile({ pull, foilLabel }: { pull: SimulatedPull; foilLabel: stri
   const inner = (
     <div className="relative aspect-[5/7] w-full overflow-hidden rounded-lg border border-gray-700/80 bg-gray-800/50 shadow-inner">
       {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <CardImg
           src={url}
           alt={label}
           className={`absolute inset-0 h-full w-full object-cover ${isFoil ? "ring-2 ring-amber-400/70 ring-offset-2 ring-offset-gray-900" : ""}`}
-          loading="lazy"
-          decoding="async"
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-gray-800 px-1 text-center text-[10px] text-gray-500">
