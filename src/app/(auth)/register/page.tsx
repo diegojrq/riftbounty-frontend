@@ -9,6 +9,7 @@ import { useLocale } from "@/lib/locale-context";
 import { normalizeSlugInput, validateSlug } from "@/lib/slug";
 
 const inputClass = "w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
+const inputErrorClass = "border-red-500 bg-red-950/20 focus:border-red-400 focus:ring-red-400";
 
 function safeReturnTo(value: string | null): string | null {
   if (!value || typeof value !== "string") return null;
@@ -35,22 +36,27 @@ function RegisterForm() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [errorField, setErrorField] = useState<"email" | "slug" | "password" | "confirmPassword" | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     clearError();
     setLocalError(null);
+    setErrorField(null);
     const slugErr = validateSlug(slug);
     if (slugErr) {
       setLocalError(slugErr);
+      setErrorField("slug");
       return;
     }
     if (password.length < 8) {
       setLocalError(t("auth.passwordMinLength"));
+      setErrorField("password");
       return;
     }
     if (password !== confirmPassword) {
       setLocalError(t("auth.passwordsDoNotMatch"));
+      setErrorField("confirmPassword");
       return;
     }
     setLoading(true);
@@ -69,6 +75,14 @@ function RegisterForm() {
   }
 
   const err = error ?? localError;
+  const resolvedErrorField = (() => {
+    if (errorField) return errorField;
+    const msg = (err ?? "").toLowerCase();
+    if (msg.includes("slug") || msg.includes("username") || msg.includes("user name")) return "slug";
+    if (msg.includes("email")) return "email";
+    if (msg.includes("password")) return "password";
+    return null;
+  })();
 
   return (
     <div className="mx-auto w-full max-w-xl px-4 py-12 sm:px-6">
@@ -88,7 +102,9 @@ function RegisterForm() {
             type="text"
             maxLength={120}
             value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            onChange={(e) => {
+              setDisplayName(e.target.value);
+            }}
             className={inputClass}
           />
         </div>
@@ -101,8 +117,16 @@ function RegisterForm() {
             type="email"
             required
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className={inputClass}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (resolvedErrorField === "email") {
+                clearError();
+                setLocalError(null);
+                setErrorField(null);
+              }
+            }}
+            className={`${inputClass} ${resolvedErrorField === "email" ? inputErrorClass : ""}`}
+            aria-invalid={resolvedErrorField === "email"}
           />
         </div>
         <div>
@@ -116,9 +140,17 @@ function RegisterForm() {
             minLength={3}
             maxLength={30}
             value={slug}
-            onChange={(e) => setSlug(normalizeSlugInput(e.target.value))}
-            className={inputClass}
+            onChange={(e) => {
+              setSlug(normalizeSlugInput(e.target.value));
+              if (resolvedErrorField === "slug") {
+                clearError();
+                setLocalError(null);
+                setErrorField(null);
+              }
+            }}
+            className={`${inputClass} ${resolvedErrorField === "slug" ? inputErrorClass : ""}`}
             placeholder={locale === "pt-BR" ? "nome_de_usuario_insano" : "insanely_nice_username"}
+            aria-invalid={resolvedErrorField === "slug"}
           />
           <p className="mt-1 text-xs text-gray-500">
             {t("auth.usernameHint")}
@@ -134,8 +166,20 @@ function RegisterForm() {
             required
             minLength={8}
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className={inputClass}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              if (resolvedErrorField === "password" || resolvedErrorField === "confirmPassword") {
+                clearError();
+                setLocalError(null);
+                setErrorField(null);
+              }
+            }}
+            className={`${inputClass} ${
+              resolvedErrorField === "password" || resolvedErrorField === "confirmPassword"
+                ? inputErrorClass
+                : ""
+            }`}
+            aria-invalid={resolvedErrorField === "password" || resolvedErrorField === "confirmPassword"}
           />
         </div>
         <div>
@@ -147,8 +191,20 @@ function RegisterForm() {
             type="password"
             required
             value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className={inputClass}
+            onChange={(e) => {
+              setConfirmPassword(e.target.value);
+              if (resolvedErrorField === "confirmPassword" || resolvedErrorField === "password") {
+                clearError();
+                setLocalError(null);
+                setErrorField(null);
+              }
+            }}
+            className={`${inputClass} ${
+              resolvedErrorField === "confirmPassword" || resolvedErrorField === "password"
+                ? inputErrorClass
+                : ""
+            }`}
+            aria-invalid={resolvedErrorField === "confirmPassword" || resolvedErrorField === "password"}
           />
         </div>
         <button
