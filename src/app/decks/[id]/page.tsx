@@ -406,7 +406,8 @@ function isDeckCompletionValid(deck: Deck): boolean {
   const mainC = deck.mainItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const runeC = deck.runeItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const bfsLen = deck.battlefields?.length ?? 0;
-  const bfsOk = bfsLen === 3 && deck.battlefields?.every((b) => b.card ?? b.cardId);
+  const bfsOk =
+    bfsLen === 3 && (deck.battlefields?.every((b) => b.card ?? b.cardId) ?? false);
   const hasLegend = !!(deck.legendCard ?? deck.legend);
   const hasChampion = !!(deck.championCard ?? deck.champion);
   const structurallyComplete = mainC === 39 && runeC === 12 && bfsOk && hasLegend && hasChampion;
