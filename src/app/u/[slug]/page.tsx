@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { BackLink } from "@/components/layout/BackLink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getPublicProfile, getProfileMatch } from "@/lib/profile";
@@ -826,8 +826,10 @@ function BasketPanel({
 
 /* ─── Page ───────────────────────────────────────────── */
 export default function PublicProfilePage() {
+  const router = useRouter();
   const params = useParams();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const slug = typeof params.slug === "string" ? params.slug : "";
   const { user: me, loading: authLoading } = useAuth();
   const { t } = useLocale();
@@ -865,6 +867,17 @@ export default function PublicProfilePage() {
   const [search, setSearch] = useState("");
   const [selectedRarities, setSelectedRarities] = useState<string[]>([]);
   const [publicTab, setPublicTab] = useState<"collection" | "wishlist" | "selling">("selling");
+  const setPublicTabWithUrl = useCallback(
+    (tab: "collection" | "wishlist" | "selling") => {
+      setPublicTab(tab);
+      const next = new URLSearchParams(searchParams.toString());
+      next.set("tab", tab);
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
   /** "collection" = coleção pública deles; "tradeDirect" = listas completas; "trade" = preditivo */
   const [collectionTab, setCollectionTab] = useState<"collection" | "tradeDirect" | "trade">("collection");
   const autoOpenedTradeTabRef = useRef<string | null>(null);
@@ -1159,6 +1172,19 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     if (!user) return;
+    const tabParam = (searchParams.get("tab") ?? "").toLowerCase().trim();
+    if (tabParam === "selling" || tabParam === "for-sale") {
+      setPublicTab("selling");
+      return;
+    }
+    if (tabParam === "wishlist") {
+      setPublicTab("wishlist");
+      return;
+    }
+    if (tabParam === "collection") {
+      setPublicTab("collection");
+      return;
+    }
     if (publicForSale.length > 0) {
       setPublicTab("selling");
       return;
@@ -1168,7 +1194,7 @@ export default function PublicProfilePage() {
       return;
     }
     setPublicTab("collection");
-  }, [user?.id, publicForSale.length, publicWishlist.length]);
+  }, [user?.id, publicForSale.length, publicWishlist.length, searchParams]);
 
   // When viewing another user's profile and logged in, show match data. Otherwise show full public collection.
   const filteredCollection = useMemo(() => {
@@ -1446,21 +1472,21 @@ export default function PublicProfilePage() {
         <div className="mb-4 inline-flex rounded-lg border border-gray-700 bg-gray-900/70 p-1">
           <button
             type="button"
-            onClick={() => setPublicTab("wishlist")}
+            onClick={() => setPublicTabWithUrl("wishlist")}
             className={`rounded px-3 py-1.5 text-sm ${publicTab === "wishlist" ? "bg-emerald-600 text-white" : "text-gray-300 hover:bg-gray-700"}`}
           >
             {t("profile.wishlistTab")}
           </button>
           <button
             type="button"
-            onClick={() => setPublicTab("selling")}
+            onClick={() => setPublicTabWithUrl("selling")}
             className={`rounded px-3 py-1.5 text-sm ${publicTab === "selling" ? "bg-emerald-600 text-white" : "text-gray-300 hover:bg-gray-700"}`}
           >
             {t("profile.tabSelling")}
           </button>
           <button
             type="button"
-            onClick={() => setPublicTab("collection")}
+            onClick={() => setPublicTabWithUrl("collection")}
             className={`rounded px-3 py-1.5 text-sm ${publicTab === "collection" ? "bg-emerald-600 text-white" : "text-gray-300 hover:bg-gray-700"}`}
           >
             {t("profile.tabCollection")}
@@ -1487,27 +1513,124 @@ export default function PublicProfilePage() {
                     <p className="py-6 text-center text-sm text-gray-500">
                       {publicTab === "wishlist" ? t("profile.noPublicWishlist") : t("profile.noPublicForSale")}
                     </p>
-                  ) : (
-                    <ul className="space-y-1.5">
-                      {(publicTab === "wishlist" ? publicWishlist : publicForSale).map((item) => {
+                  ) : publicTab === "selling" ? (
+                    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {publicForSale.map((item) => {
                         const cached = lookupCached(item.cardId, item.card?.scraperId);
                         const previewCard = mergePublicProfileCardWithCatalog(item.card, cached, item.cardId);
                         const domains = getCardDomains(cached ?? item.card ?? undefined);
-                        const isSellingRow = publicTab === "selling" && showPublicListTradeBasket;
                         const maxRequested = item.quantity;
-                        const requestedItem = isSellingRow ? requestedBasket.get(item.cardId) : undefined;
+                        const requestedItem = showPublicListTradeBasket ? requestedBasket.get(item.cardId) : undefined;
                         const inRequested = !!requestedItem;
                         const atMaxRequested =
-                          isSellingRow &&
+                          showPublicListTradeBasket &&
                           (maxRequested <= 0 || (requestedItem?.quantity ?? 0) >= maxRequested);
                         const cardForRequested =
-                          isSellingRow
+                          showPublicListTradeBasket
                             ? ({
                                 ...(item.card ?? cached),
                                 id: item.cardId,
                               } as PublicProfileCard)
                             : null;
-                        const isWishlistOfferRow = publicTab === "wishlist" && showPublicListTradeBasket;
+                        const imageUrl =
+                          cached?.imageUrl ??
+                          cached?.image_url ??
+                          item.card?.imageUrl ??
+                          item.card?.image_url ??
+                          null;
+                        const priceModeLabel =
+                          item.priceMode && item.priceMode !== "numeric"
+                            ? t("forSale.priceModeLabel")
+                            : t("forSale.priceModeNumeric");
+                        const priceValueLabel =
+                          item.priceMode === "liga_minus_percent"
+                            ? `Liga - ${item.pricePercent ?? 0}%`
+                            : item.priceMode === "tcgplayer_minus_percent"
+                              ? `TCGPlayer - ${item.pricePercent ?? 0}%`
+                              : item.pricePerCard == null
+                                ? t("profile.priceOnRequest")
+                                : formatProfileListPrice(item.pricePerCard);
+                        return (
+                          <li
+                            key={`${publicTab}-${item.cardId}`}
+                            className="overflow-hidden rounded-lg border border-gray-700 bg-gray-900/40"
+                          >
+                            <CardHoverPreview card={previewCard}>
+                              <div className="relative aspect-[2.5/3.5] w-full overflow-hidden bg-gray-800">
+                                {imageUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={imageUrl} alt={item.card?.name ?? item.cardId} className="h-full w-full object-cover" />
+                                ) : (
+                                  <div className="flex h-full items-center justify-center text-xs text-gray-500">{item.cardId}</div>
+                                )}
+                              </div>
+                            </CardHoverPreview>
+                            <div className="space-y-1 p-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <CardHoverPreview card={previewCard}>
+                                  <span className="truncate text-sm font-medium text-blue-400">{item.card?.name ?? item.cardId}</span>
+                                </CardHoverPreview>
+                                <TradeOfferDomainIconsAndQty
+                                  domains={domains}
+                                  quantity={item.quantity}
+                                  fallbackCard={cached ?? item.card ?? undefined}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-xs">
+                                {item.priceMode && item.priceMode !== "numeric" ? (
+                                  <span />
+                                ) : (
+                                  <span className="text-gray-400">{priceModeLabel}</span>
+                                )}
+                                <span className="font-bold text-emerald-400">{priceValueLabel}</span>
+                              </div>
+                              {showPublicListTradeBasket && cardForRequested && (
+                                <div className="pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      addToRequestedBasket(
+                                        cardForRequested,
+                                        maxRequested,
+                                        item.cardId,
+                                        item.pricePerCard ?? null
+                                      )
+                                    }
+                                    disabled={!!atMaxRequested || tradeActionsLocked}
+                                    className={`flex w-full items-center justify-center rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                                      atMaxRequested || tradeActionsLocked
+                                        ? "border-amber-600/60 bg-amber-900/30 text-amber-400"
+                                        : inRequested
+                                          ? "border-blue-500 bg-blue-700/60 text-blue-300 hover:bg-blue-700"
+                                          : "border-gray-700 bg-blue-800/40 text-blue-400 hover:bg-blue-700/60"
+                                    }`}
+                                    title={
+                                      tradeActionsLocked
+                                        ? t("trades.waitingBeforeTradeActions", { slug: user.slug })
+                                        : atMaxRequested
+                                          ? t("trades.maxQuantity", { count: maxRequested })
+                                          : inRequested && requestedItem
+                                            ? `${requestedItem.quantity}/${maxRequested}`
+                                            : t("profile.addFromForSaleToBasket")
+                                    }
+                                    aria-label={t("profile.addFromForSaleToBasket")}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {publicWishlist.map((item) => {
+                        const cached = lookupCached(item.cardId, item.card?.scraperId);
+                        const previewCard = mergePublicProfileCardWithCatalog(item.card, cached, item.cardId);
+                        const domains = getCardDomains(cached ?? item.card ?? undefined);
+                        const isWishlistOfferRow = showPublicListTradeBasket;
                         const myQtyForWishlist = myCollectionQtyMap.get(item.cardId) ?? 0;
                         const basketItemWishlist = isWishlistOfferRow ? basket.get(item.cardId) : undefined;
                         const inOfferBasket = !!basketItemWishlist;
@@ -1522,91 +1645,69 @@ export default function PublicProfilePage() {
                                 id: item.cardId,
                               } as PublicProfileCard)
                             : null;
+                        const imageUrl =
+                          cached?.imageUrl ??
+                          cached?.image_url ??
+                          item.card?.imageUrl ??
+                          item.card?.image_url ??
+                          null;
                         return (
                           <li
                             key={`${publicTab}-${item.cardId}`}
-                            className="flex items-center justify-between gap-2 rounded px-1 py-1 hover:bg-gray-700/40"
+                            className="overflow-hidden rounded-lg border border-gray-700 bg-gray-900/40"
                           >
                             <CardHoverPreview card={previewCard}>
-                              <span className="flex min-w-0 cursor-default items-center gap-1.5 text-sm">
+                              <div className="relative aspect-[2.5/3.5] w-full overflow-hidden bg-gray-800">
+                                {imageUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={imageUrl} alt={item.card?.name ?? item.cardId} className="h-full w-full object-cover" />
+                                ) : (
+                                  <div className="flex h-full items-center justify-center text-xs text-gray-500">{item.cardId}</div>
+                                )}
+                              </div>
+                            </CardHoverPreview>
+                            <div className="space-y-1 p-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <CardHoverPreview card={previewCard}>
+                                  <span className="truncate text-sm font-medium text-blue-400">{item.card?.name ?? item.cardId}</span>
+                                </CardHoverPreview>
                                 <TradeOfferDomainIconsAndQty
                                   domains={domains}
                                   quantity={item.quantity}
                                   fallbackCard={cached ?? item.card ?? undefined}
                                 />
-                                <span className="truncate text-blue-400">{item.card?.name ?? item.cardId}</span>
-                              </span>
-                            </CardHoverPreview>
-                            <div className="flex shrink-0 items-center gap-2">
-                              <span className="text-xs font-medium text-emerald-400">
-                                {item.pricePerCard == null
-                                  ? t("profile.priceOnRequest")
-                                  : t("profile.pricePerCardLabel", {
-                                      price: formatProfileListPrice(item.pricePerCard),
-                                    })}
-                              </span>
-                              {isSellingRow && cardForRequested && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    addToRequestedBasket(
-                                      cardForRequested,
-                                      maxRequested,
-                                      item.cardId,
-                                      item.pricePerCard ?? null
-                                    )
-                                  }
-                                  disabled={!!atMaxRequested || tradeActionsLocked}
-                                  className={`flex shrink-0 items-center justify-center rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
-                                    atMaxRequested || tradeActionsLocked
-                                      ? "border-amber-600/60 bg-amber-900/30 text-amber-400"
-                                      : inRequested
-                                        ? "border-blue-500 bg-blue-700/60 text-blue-300 hover:bg-blue-700"
-                                        : "border-gray-700 bg-blue-800/40 text-blue-400 hover:bg-blue-700/60"
-                                  }`}
-                                  title={
-                                    tradeActionsLocked
-                                      ? t("trades.waitingBeforeTradeActions", { slug: user.slug })
-                                      : atMaxRequested
-                                        ? t("trades.maxQuantity", { count: maxRequested })
-                                        : inRequested && requestedItem
-                                          ? `${requestedItem.quantity}/${maxRequested}`
-                                          : t("profile.addFromForSaleToBasket")
-                                  }
-                                  aria-label={t("profile.addFromForSaleToBasket")}
-                                >
-                                  +
-                                </button>
-                              )}
+                              </div>
                               {isWishlistOfferRow && cardForOfferFromWishlist && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    addToBasket(cardForOfferFromWishlist, myQtyForWishlist, item.cardId)
-                                  }
-                                  disabled={!!atMaxOfferWishlist || tradeActionsLocked}
-                                  className={`flex shrink-0 items-center justify-center rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
-                                    atMaxOfferWishlist || tradeActionsLocked
-                                      ? "border-amber-600/60 bg-amber-900/30 text-amber-400"
-                                      : inOfferBasket
-                                        ? "border-green-500 bg-green-700/60 text-green-300 hover:bg-green-700"
-                                        : "border-gray-700 bg-green-800/40 text-green-400 hover:bg-green-700/60"
-                                  }`}
-                                  title={
-                                    tradeActionsLocked
-                                      ? t("trades.waitingBeforeTradeActions", { slug: user.slug })
-                                      : atMaxOfferWishlist
-                                        ? myQtyForWishlist <= 0
-                                          ? t("profile.offerWishlistNotInCollection")
-                                          : t("trades.maxQuantity", { count: myQtyForWishlist })
-                                        : inOfferBasket && basketItemWishlist
-                                          ? `${basketItemWishlist.quantity}/${myQtyForWishlist}`
-                                          : t("profile.addWishlistToOfferBasket")
-                                  }
-                                  aria-label={t("profile.addWishlistToOfferBasket")}
-                                >
-                                  +
-                                </button>
+                                <div className="pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      addToBasket(cardForOfferFromWishlist, myQtyForWishlist, item.cardId)
+                                    }
+                                    disabled={!!atMaxOfferWishlist || tradeActionsLocked}
+                                    className={`flex w-full items-center justify-center rounded border px-2 py-1 text-[10px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                                      atMaxOfferWishlist || tradeActionsLocked
+                                        ? "border-amber-600/60 bg-amber-900/30 text-amber-400"
+                                        : inOfferBasket
+                                          ? "border-green-500 bg-green-700/60 text-green-300 hover:bg-green-700"
+                                          : "border-gray-700 bg-green-800/40 text-green-400 hover:bg-green-700/60"
+                                    }`}
+                                    title={
+                                      tradeActionsLocked
+                                        ? t("trades.waitingBeforeTradeActions", { slug: user.slug })
+                                        : atMaxOfferWishlist
+                                          ? myQtyForWishlist <= 0
+                                            ? t("profile.offerWishlistNotInCollection")
+                                            : t("trades.maxQuantity", { count: myQtyForWishlist })
+                                          : inOfferBasket && basketItemWishlist
+                                            ? `${basketItemWishlist.quantity}/${myQtyForWishlist}`
+                                            : t("profile.addWishlistToOfferBasket")
+                                    }
+                                    aria-label={t("profile.addWishlistToOfferBasket")}
+                                  >
+                                    +
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </li>

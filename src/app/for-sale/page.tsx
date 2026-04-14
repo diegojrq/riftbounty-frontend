@@ -22,8 +22,9 @@ import {
 import { useLocale } from "@/lib/locale-context";
 import type { Locale } from "@/lib/locale";
 import { getCollection } from "@/lib/collections";
-import { getProfile, updateProfile, type UpdateProfilePayload } from "@/lib/profile";
+import { clearForSale, getProfile, updateProfile, type UpdateProfilePayload } from "@/lib/profile";
 import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
+import type { ForSalePriceMode } from "@/types/auth";
 import type { Card } from "@/types/card";
 import { getCardId } from "@/lib/card-id";
 import { getCardDisplayName } from "@/lib/card-display-name";
@@ -36,8 +37,17 @@ const TYPE_OPTIONS = ["gear", "spell", "rune", "legend", "unit", "battlefield", 
 const ENERGY_BOUNDS = { min: 0, max: 12 };
 const POWER_BOUNDS = { min: 0, max: 10 };
 const MIGHT_BOUNDS = { min: 0, max: 10 };
+const OWNED_QTY_BOUNDS = { min: 0, max: 20 };
 
-type ForSaleItem = { cardId: string; quantity: number; pricePerCard: number | null };
+type ForSaleItem = {
+  cardId: string;
+  quantity: number;
+  pricePerCard: number | null;
+  priceMode: ForSalePriceMode;
+  pricePercent: number | null;
+};
+
+const FIXED_PERCENT = 10;
 
 function ForSaleCardPriceInput({
   cardId,
@@ -196,6 +206,8 @@ export default function ForSalePage() {
   const [collectionQtyMap, setCollectionQtyMap] = useState<Map<string, number>>(new Map());
   const [loadingForSale, setLoadingForSale] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [clearingForSale, setClearingForSale] = useState(false);
+  const [isClearForSaleModalOpen, setIsClearForSaleModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionCardId, setActionCardId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(LIMIT);
@@ -214,6 +226,9 @@ export default function ForSalePage() {
   const [selectedAbilities, setSelectedAbilities] = useState<string[]>([]);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState<"all" | "owned" | "missing">("all");
+  const [ownedQtyThreshold, setOwnedQtyThreshold] = useState(0);
+
+  const fixedDiscountMode: ForSalePriceMode = locale === "pt-BR" ? "liga_minus_percent" : "tcgplayer_minus_percent";
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
@@ -231,6 +246,8 @@ export default function ForSalePage() {
           cardId: item.cardId,
           quantity: Math.max(1, Math.trunc(item.quantity || 1)),
           pricePerCard: item.pricePerCard ?? null,
+          priceMode: item.priceMode ?? "numeric",
+          pricePercent: item.pricePercent ?? null,
         });
       }
       setForSaleMap(map);
@@ -274,7 +291,13 @@ export default function ForSalePage() {
 
   useEffect(() => {
     setVisibleCount(LIMIT);
-  }, [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, energyRange, powerRange, mightRange, collectionStatus]);
+  }, [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, energyRange, powerRange, mightRange, collectionStatus, ownedQtyThreshold]);
+
+  useEffect(() => {
+    if (collectionStatus !== "owned" && ownedQtyThreshold !== 0) {
+      setOwnedQtyThreshold(0);
+    }
+  }, [collectionStatus, ownedQtyThreshold]);
 
   const enrichedCards = useMemo(
     () =>
@@ -288,6 +311,7 @@ export default function ForSalePage() {
           forSaleQty: sale?.quantity ?? 0,
           forSalePrice: sale?.pricePerCard ?? null,
           ownedInCollection: ownedQty > 0,
+          ownedQty,
         };
       }),
     [allCards, forSaleMap, collectionQtyMap]
@@ -303,6 +327,7 @@ export default function ForSalePage() {
         selectedSet ||
         selectedAbilities.length > 0 ||
         collectionStatus !== "all" ||
+        ownedQtyThreshold > 0 ||
         energyRange[0] > ENERGY_BOUNDS.min ||
         energyRange[1] < ENERGY_BOUNDS.max ||
         powerRange[0] > POWER_BOUNDS.min ||
@@ -310,7 +335,7 @@ export default function ForSalePage() {
         mightRange[0] > MIGHT_BOUNDS.min ||
         mightRange[1] < MIGHT_BOUNDS.max
       ),
-    [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, collectionStatus, energyRange, powerRange, mightRange]
+    [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, collectionStatus, ownedQtyThreshold, energyRange, powerRange, mightRange]
   );
 
   const filteredCards = useMemo(() => {
@@ -320,6 +345,7 @@ export default function ForSalePage() {
     const mightFilterActive = mightRange[0] > MIGHT_BOUNDS.min || mightRange[1] < MIGHT_BOUNDS.max;
     return source.filter((card) => {
       if (collectionStatus === "owned" && !card.ownedInCollection) return false;
+      if (collectionStatus === "owned" && card.ownedQty <= ownedQtyThreshold) return false;
       if (collectionStatus === "missing" && card.ownedInCollection) return false;
       if (nameFilter) {
         const q = nameFilter.toLowerCase();
@@ -358,11 +384,10 @@ export default function ForSalePage() {
       }
       return true;
     });
-  }, [enrichedCards, hasDiscoveryFilters, nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, energyRange, powerRange, mightRange, collectionStatus]);
+  }, [enrichedCards, hasDiscoveryFilters, nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, energyRange, powerRange, mightRange, collectionStatus, ownedQtyThreshold]);
 
   const visibleCards = filteredCards.slice(0, visibleCount);
   const hasMore = visibleCount < filteredCards.length;
-
   const loadMore = useCallback(() => setVisibleCount((v) => v + LIMIT), []);
 
   useEffect(() => {
@@ -401,7 +426,10 @@ export default function ForSalePage() {
       const forSale = [...nextMap.values()].map((item) => ({
         cardId: item.cardId,
         quantity: item.quantity,
-        pricePerCard: item.pricePerCard ?? undefined,
+        ...(item.priceMode !== "numeric" ? { priceMode: item.priceMode } : {}),
+        ...(item.priceMode === "numeric"
+          ? { pricePerCard: item.pricePerCard ?? undefined, pricePercent: null }
+          : { pricePerCard: null, pricePercent: FIXED_PERCENT }),
       }));
       setSaving(true);
       try {
@@ -416,6 +444,16 @@ export default function ForSalePage() {
     [t]
   );
 
+  async function handleSaveCard(cardId: string) {
+    setActionCardId(cardId);
+    try {
+      await persistForSale(new Map(forSaleMap));
+      toast.success(t("forSale.saveSuccess"));
+    } finally {
+      setActionCardId(null);
+    }
+  }
+
   async function handleAdd(card: Card) {
     const cardId = getCardId(card);
     setActionCardId(cardId);
@@ -425,6 +463,8 @@ export default function ForSalePage() {
       cardId,
       quantity: (current?.quantity ?? 0) + 1,
       pricePerCard: current?.pricePerCard ?? null,
+      priceMode: current?.priceMode ?? "numeric",
+      pricePercent: current?.pricePercent ?? null,
     });
     await persistForSale(next);
     setActionCardId(null);
@@ -457,6 +497,21 @@ export default function ForSalePage() {
     await persistForSale(next);
   }
 
+  async function handlePriceModeChange(cardId: string, mode: "numeric" | "fixed_discount") {
+    const current = forSaleMap.get(cardId);
+    const targetMode: ForSalePriceMode = mode === "numeric" ? "numeric" : fixedDiscountMode;
+    if (!current || current.priceMode === targetMode) return;
+    const next = new Map(forSaleMap);
+    next.set(cardId, {
+      ...current,
+      priceMode: targetMode,
+      // Regra: limpar o campo que não se aplica ao trocar modo
+      pricePerCard: targetMode === "numeric" ? current.pricePerCard : null,
+      pricePercent: targetMode === "numeric" ? null : FIXED_PERCENT,
+    });
+    await persistForSale(next);
+  }
+
   const hasActiveFilters = hasDiscoveryFilters;
 
   const clearFilters = () => {
@@ -467,10 +522,25 @@ export default function ForSalePage() {
     setSelectedSet(undefined);
     setSelectedAbilities([]);
     setCollectionStatus("all");
+    setOwnedQtyThreshold(0);
     setEnergyRange([ENERGY_BOUNDS.min, ENERGY_BOUNDS.max]);
     setPowerRange([POWER_BOUNDS.min, POWER_BOUNDS.max]);
     setMightRange([MIGHT_BOUNDS.min, MIGHT_BOUNDS.max]);
   };
+
+  async function handleClearForSale() {
+    setClearingForSale(true);
+    try {
+      const result = await clearForSale();
+      await loadForSaleAndCollection();
+      toast.success(t("forSale.clearSuccess", { removed: result.removed }));
+      setIsClearForSaleModalOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("forSale.clearError"));
+    } finally {
+      setClearingForSale(false);
+    }
+  }
 
   if (authLoading || !user || (cardsLoading && allCards.length === 0) || loadingForSale) {
     return <div className="min-h-screen bg-gray-900" />;
@@ -485,18 +555,59 @@ export default function ForSalePage() {
               <h1 className="text-2xl font-bold text-white">{t("forSale.title")}</h1>
               <p className="mt-1 max-w-3xl text-sm leading-relaxed text-gray-400">{t("forSale.subtitle")}</p>
             </div>
-            {error && (
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsClearForSaleModalOpen(true)}
+                disabled={clearingForSale || saving || forSaleMap.size === 0}
+                className="rounded border border-red-700/60 bg-red-900/25 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {clearingForSale ? t("forSale.clearingButtonLoading") : t("forSale.clearButton")}
+              </button>
+              {error && (
                 <div className="rounded bg-red-900/50 px-3 py-1.5 text-sm text-red-200">{error}</div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </header>
       </div>
 
-      <div className="sticky top-0 z-20 border-b border-gray-700 bg-gray-900 sm:top-[61px]">
+      {isClearForSaleModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+          onClick={() => setIsClearForSaleModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold text-white">{t("forSale.clearButton")}</h2>
+            <p className="mt-1 text-sm text-gray-400">{t("forSale.clearConfirm")}</p>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsClearForSaleModalOpen(false)}
+                disabled={clearingForSale}
+                className="rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-200 hover:bg-gray-700 disabled:opacity-50"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={handleClearForSale}
+                disabled={clearingForSale}
+                className="rounded border border-red-700/60 bg-red-900/25 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-900/40 disabled:opacity-50"
+              >
+                {clearingForSale ? t("forSale.clearingButtonLoading") : t("forSale.clearButton")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="sticky top-0 z-20 border-b border-gray-700 bg-gray-900 sm:top-[100px]">
         <div className="mx-auto w-full max-w-[1600px] px-4 py-3 sm:px-6 lg:px-10 xl:px-12">
-          <div className="mb-3 hidden items-center gap-2 sm:flex">
+          <div className="mb-1 hidden items-center gap-2 sm:flex">
             <div className="relative min-w-0 flex-1">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden>
                 <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
@@ -544,6 +655,28 @@ export default function ForSalePage() {
                       </button>
                     ))}
                   </div>
+                  {collectionStatus === "owned" && (
+                    <div className="mt-3 min-w-[280px] max-w-md">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                            {t("collection.ownedGreaterThanLabel")}
+                          </span>
+                          <span className="text-xs tabular-nums text-gray-400">{ownedQtyThreshold}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={OWNED_QTY_BOUNDS.min}
+                          max={OWNED_QTY_BOUNDS.max}
+                          step={1}
+                          value={ownedQtyThreshold}
+                          onChange={(e) => setOwnedQtyThreshold(Number(e.target.value))}
+                          className="h-2 w-full appearance-none rounded-full bg-gray-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-amber-500 [&::-webkit-slider-thumb]:bg-gray-800 [&::-webkit-slider-thumb]:shadow [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-amber-500 [&::-moz-range-thumb]:bg-gray-800 [&::-moz-range-thumb]:cursor-pointer"
+                          aria-label={t("collection.ownedGreaterThanLabel")}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="hidden h-10 w-px shrink-0 self-end bg-gray-700 sm:block" />
                 <div className="shrink-0">
@@ -613,13 +746,13 @@ export default function ForSalePage() {
               {t("collection.cardsOfTotal", { count: visibleCards.length, total: filteredCards.length })}
               {!hasDiscoveryFilters && <span className="ml-1">{t("forSale.showingOnlyForSale")}</span>}
             </p>
-            <ul className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            <ul className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {visibleCards.map((card) => {
                 const cardId = getCardId(card);
                 const isCardLoading = actionCardId === cardId || saving;
                 const saleItem = forSaleMap.get(cardId);
                 return (
-                  <li key={cardId} className="relative flex flex-col">
+                  <li key={cardId} className="relative flex flex-col rounded-xl border border-gray-700/80 bg-gray-800/25 p-2 sm:p-0 sm:rounded-none sm:border-0 sm:bg-transparent">
                     <CardTile
                       wrapperElement="div"
                       card={card}
@@ -635,20 +768,54 @@ export default function ForSalePage() {
                       onDecrease={() => handleDecrease(card)}
                     />
                     {card.inForSale && (
-                      <label className="mt-2 flex flex-col gap-0.5">
-                        <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
-                          {t("forSale.priceInputLabel")}
-                        </span>
-                        <ForSaleCardPriceInput
-                          cardId={cardId}
-                          value={saleItem?.pricePerCard ?? null}
-                          disabled={isCardLoading}
-                          locale={locale}
-                          label={t("forSale.priceInputLabel")}
-                          placeholder={t("forSale.pricePlaceholder")}
-                          onCommit={handlePriceCommit}
-                        />
-                      </label>
+                      <div className="mt-2 border-t border-gray-700/80 pt-2 sm:border-t-0 sm:pt-0">
+                        <div className="flex items-end gap-2">
+                          <div className="grid flex-1 grid-cols-2 gap-2">
+                            <label className={`flex flex-col gap-0.5 ${(saleItem?.priceMode ?? "numeric") !== "numeric" ? "col-span-2" : ""}`}>
+                              <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                                {t("forSale.priceModeLabel")}
+                              </span>
+                              <select
+                                value={(saleItem?.priceMode ?? "numeric") === "numeric" ? "numeric" : "fixed_discount"}
+                                onChange={(e) => void handlePriceModeChange(cardId, e.target.value as "numeric" | "fixed_discount")}
+                                disabled={isCardLoading}
+                                className="w-full rounded border border-gray-600 bg-gray-800 px-2 py-1.5 text-xs text-white disabled:opacity-50"
+                                aria-label={t("forSale.priceModeLabel")}
+                              >
+                                <option value="numeric">{t("forSale.priceModeNumeric")}</option>
+                                <option value="fixed_discount">{t("forSale.priceModeFixedTen")}</option>
+                              </select>
+                            </label>
+
+                            {(saleItem?.priceMode ?? "numeric") === "numeric" && (
+                              <label className="flex flex-col gap-0.5">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                                  {t("forSale.priceInputLabel")}
+                                </span>
+                                <ForSaleCardPriceInput
+                                  cardId={cardId}
+                                  value={saleItem?.pricePerCard ?? null}
+                                  disabled={isCardLoading}
+                                  locale={locale}
+                                  label={t("forSale.priceInputLabel")}
+                                  placeholder={t("forSale.pricePlaceholder")}
+                                  onCommit={handlePriceCommit}
+                                />
+                              </label>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveCard(cardId)}
+                            disabled={isCardLoading}
+                            className="mb-0.5 flex size-9 shrink-0 items-center justify-center rounded-md border-2 border-green-600 bg-green-700 text-white shadow transition-colors hover:bg-green-600 hover:border-green-500 disabled:opacity-50"
+                            aria-label={t("forSale.saveButton")}
+                            title={t("forSale.saveButton")}
+                          >
+                            {isCardLoading ? "…" : "✓"}
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </li>
                 );

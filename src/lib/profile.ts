@@ -1,5 +1,6 @@
-import { apiGet, apiPatch, apiPost } from "./api";
+import { apiDelete, apiGet, apiPatch, apiPost } from "./api";
 import type {
+  ForSalePriceMode,
   MatchItem,
   OfferableItem,
   ProfileCardListItem,
@@ -46,6 +47,8 @@ type ProfileCardListItemLike = Partial<ProfileCardListItem> & {
   card_id?: string;
   card_uuid?: string;
   price_per_card?: number | null;
+  price_mode?: ForSalePriceMode;
+  price_percent?: number | null;
 };
 
 function normalizeProfileCardListItem(item: ProfileCardListItemLike): ProfileCardListItem {
@@ -59,6 +62,18 @@ function normalizeProfileCardListItem(item: ProfileCardListItemLike): ProfileCar
     cardId: item.cardId ?? item.cardUuid ?? item.card_id ?? item.card_uuid ?? "",
     quantity: typeof item.quantity === "number" && Number.isFinite(item.quantity) ? item.quantity : 1,
     pricePerCard: price,
+    priceMode:
+      item.priceMode === "liga_minus_percent" || item.priceMode === "tcgplayer_minus_percent" || item.priceMode === "numeric"
+        ? item.priceMode
+        : item.price_mode === "liga_minus_percent" || item.price_mode === "tcgplayer_minus_percent" || item.price_mode === "numeric"
+          ? item.price_mode
+          : "numeric",
+    pricePercent:
+      typeof item.pricePercent === "number" && Number.isFinite(item.pricePercent)
+        ? item.pricePercent
+        : typeof item.price_percent === "number" && Number.isFinite(item.price_percent)
+          ? item.price_percent
+          : null,
     card: normalizePublicProfileCard((item.card as PublicProfileCard | null) ?? null),
   };
 }
@@ -72,6 +87,8 @@ export interface UpdateProfileCardListItemInput {
   cardId: string;
   quantity: number;
   pricePerCard?: number | null;
+  priceMode?: ForSalePriceMode;
+  pricePercent?: number | null;
 }
 
 /** Payload for PATCH /auth/me — all fields optional */
@@ -109,17 +126,40 @@ export async function updateProfile(payload: UpdateProfilePayload): Promise<User
 
 export interface AddMissingWishlistPayload {
   limit?: number;
+  setCode?: string;
 }
 
 export interface AddMissingWishlistResponse {
   limit: number;
   added: number;
   totalWishlist: number;
+  setCode?: string;
+  processedFromSet?: number;
 }
 
 /** POST /auth/me/wishlist/add-missing — merge missing collection cards into wishlist */
 export async function addMissingWishlistCards(payload: AddMissingWishlistPayload = {}): Promise<AddMissingWishlistResponse> {
   const res = await apiPost<AddMissingWishlistResponse>("/auth/me/wishlist/add-missing", payload);
+  return res.data;
+}
+
+export interface ClearWishlistResponse {
+  removed: number;
+}
+
+/** DELETE /auth/me/wishlist — remove todos os itens da wishlist do utilizador logado */
+export async function clearWishlist(): Promise<ClearWishlistResponse> {
+  const res = await apiDelete<ClearWishlistResponse>("/auth/me/wishlist");
+  return res.data;
+}
+
+export interface ClearForSaleResponse {
+  removed: number;
+}
+
+/** DELETE /auth/me/for-sale — remove todos os itens da lista de venda do utilizador logado */
+export async function clearForSale(): Promise<ClearForSaleResponse> {
+  const res = await apiDelete<ClearForSaleResponse>("/auth/me/for-sale");
   return res.data;
 }
 

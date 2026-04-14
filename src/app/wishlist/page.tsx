@@ -14,7 +14,7 @@ import { cardMatchesAnyAbility } from "@/lib/card-ability-filter";
 import { cardDescriptionPlainText } from "@/lib/html-description";
 import { useLocale } from "@/lib/locale-context";
 import { getCollection } from "@/lib/collections";
-import { addMissingWishlistCards, getProfile, updateProfile, type UpdateProfilePayload } from "@/lib/profile";
+import { addMissingWishlistCards, clearWishlist, getProfile, updateProfile, type UpdateProfilePayload } from "@/lib/profile";
 import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
 import type { Card } from "@/types/card";
 import { getCardId } from "@/lib/card-id";
@@ -28,6 +28,7 @@ const TYPE_OPTIONS = ["gear", "spell", "rune", "legend", "unit", "battlefield", 
 const ENERGY_BOUNDS = { min: 0, max: 12 };
 const POWER_BOUNDS = { min: 0, max: 10 };
 const MIGHT_BOUNDS = { min: 0, max: 10 };
+const OWNED_QTY_BOUNDS = { min: 0, max: 20 };
 
 type WishlistItem = { cardId: string; quantity: number; pricePerCard: number | null };
 
@@ -51,6 +52,10 @@ export default function WishlistPage() {
   const [loadingWishlist, setLoadingWishlist] = useState(true);
   const [saving, setSaving] = useState(false);
   const [addingMissing, setAddingMissing] = useState(false);
+  const [clearingWishlist, setClearingWishlist] = useState(false);
+  const [addMissingSetCode, setAddMissingSetCode] = useState<string>("");
+  const [isAddMissingModalOpen, setIsAddMissingModalOpen] = useState(false);
+  const [isClearWishlistModalOpen, setIsClearWishlistModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionCardId, setActionCardId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(LIMIT);
@@ -69,6 +74,7 @@ export default function WishlistPage() {
   const [selectedAbilities, setSelectedAbilities] = useState<string[]>([]);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [collectionStatus, setCollectionStatus] = useState<"all" | "owned" | "missing">("all");
+  const [ownedQtyThreshold, setOwnedQtyThreshold] = useState(0);
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
@@ -129,7 +135,13 @@ export default function WishlistPage() {
 
   useEffect(() => {
     setVisibleCount(LIMIT);
-  }, [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, energyRange, powerRange, mightRange, collectionStatus]);
+  }, [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, energyRange, powerRange, mightRange, collectionStatus, ownedQtyThreshold]);
+
+  useEffect(() => {
+    if (collectionStatus !== "owned" && ownedQtyThreshold !== 0) {
+      setOwnedQtyThreshold(0);
+    }
+  }, [collectionStatus, ownedQtyThreshold]);
 
   const enrichedCards = useMemo(
     () =>
@@ -142,6 +154,7 @@ export default function WishlistPage() {
           inWishlist: !!wish,
           wishlistQty: wish?.quantity ?? 0,
           ownedInCollection: ownedQty > 0,
+          ownedQty,
         };
       }),
     [allCards, wishlistMap, collectionQtyMap]
@@ -157,6 +170,7 @@ export default function WishlistPage() {
         selectedSet ||
         selectedAbilities.length > 0 ||
         collectionStatus !== "all" ||
+        ownedQtyThreshold > 0 ||
         energyRange[0] > ENERGY_BOUNDS.min ||
         energyRange[1] < ENERGY_BOUNDS.max ||
         powerRange[0] > POWER_BOUNDS.min ||
@@ -164,7 +178,7 @@ export default function WishlistPage() {
         mightRange[0] > MIGHT_BOUNDS.min ||
         mightRange[1] < MIGHT_BOUNDS.max
       ),
-    [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, collectionStatus, energyRange, powerRange, mightRange]
+    [nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, collectionStatus, ownedQtyThreshold, energyRange, powerRange, mightRange]
   );
 
   const filteredCards = useMemo(() => {
@@ -174,6 +188,7 @@ export default function WishlistPage() {
     const mightFilterActive = mightRange[0] > MIGHT_BOUNDS.min || mightRange[1] < MIGHT_BOUNDS.max;
     return source.filter((card) => {
       if (collectionStatus === "owned" && !card.ownedInCollection) return false;
+      if (collectionStatus === "owned" && card.ownedQty <= ownedQtyThreshold) return false;
       if (collectionStatus === "missing" && card.ownedInCollection) return false;
       if (nameFilter) {
         const q = nameFilter.toLowerCase();
@@ -212,7 +227,7 @@ export default function WishlistPage() {
       }
       return true;
     });
-  }, [enrichedCards, hasDiscoveryFilters, nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, energyRange, powerRange, mightRange, collectionStatus]);
+  }, [enrichedCards, hasDiscoveryFilters, nameFilter, selectedDomains, selectedRarity, selectedType, selectedSet, selectedAbilities, energyRange, powerRange, mightRange, collectionStatus, ownedQtyThreshold]);
 
   const visibleCards = filteredCards.slice(0, visibleCount);
   const hasMore = visibleCount < filteredCards.length;
@@ -312,6 +327,7 @@ export default function WishlistPage() {
     setSelectedSet(undefined);
     setSelectedAbilities([]);
     setCollectionStatus("all");
+    setOwnedQtyThreshold(0);
     setEnergyRange([ENERGY_BOUNDS.min, ENERGY_BOUNDS.max]);
     setPowerRange([POWER_BOUNDS.min, POWER_BOUNDS.max]);
     setMightRange([MIGHT_BOUNDS.min, MIGHT_BOUNDS.max]);
@@ -320,19 +336,33 @@ export default function WishlistPage() {
   async function handleAddMissingToWishlist() {
     setAddingMissing(true);
     try {
-      const result = await addMissingWishlistCards();
+      const payload = addMissingSetCode ? { setCode: addMissingSetCode } : {};
+      const result = await addMissingWishlistCards(payload);
       await loadWishlistAndCollection();
-      toast.success(
-        t("wishlist.addMissingSuccess", {
-          added: result.added,
-          total: result.totalWishlist,
-          limit: result.limit,
-        })
-      );
+      const baseMessage = t("wishlist.addMissingSuccessSimple", {
+        added: result.added,
+      });
+      const setLabel = result.setCode ? formatSetWithCode(result.setCode) : null;
+      toast.success(setLabel ? `${baseMessage} (${setLabel})` : baseMessage);
+      setIsAddMissingModalOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("wishlist.addMissingError"));
     } finally {
       setAddingMissing(false);
+    }
+  }
+
+  async function handleClearWishlist() {
+    setClearingWishlist(true);
+    try {
+      const result = await clearWishlist();
+      await loadWishlistAndCollection();
+      toast.success(t("wishlist.clearSuccess", { removed: result.removed }));
+      setIsClearWishlistModalOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("wishlist.clearError"));
+    } finally {
+      setClearingWishlist(false);
     }
   }
 
@@ -352,11 +382,19 @@ export default function WishlistPage() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={handleAddMissingToWishlist}
-                disabled={addingMissing || saving}
+                onClick={() => setIsAddMissingModalOpen(true)}
+                disabled={addingMissing || clearingWishlist || saving}
                 className="rounded border border-emerald-600/60 bg-emerald-900/30 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-800/30 disabled:opacity-50"
               >
                 {addingMissing ? t("wishlist.addingMissingButtonLoading") : t("wishlist.addingMissingButton")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsClearWishlistModalOpen(true)}
+                disabled={addingMissing || clearingWishlist || saving || wishlistMap.size === 0}
+                className="rounded border border-red-700/60 bg-red-900/25 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {clearingWishlist ? t("wishlist.clearingButtonLoading") : t("wishlist.clearButton")}
               </button>
               {error && <div className="rounded bg-red-900/50 px-3 py-1.5 text-sm text-red-200">{error}</div>}
             </div>
@@ -364,9 +402,104 @@ export default function WishlistPage() {
         </header>
       </div>
 
-      <div className="sticky top-0 z-20 border-b border-gray-700 bg-gray-900 sm:top-[61px]">
+      {isAddMissingModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+          onClick={() => setIsAddMissingModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold text-white">{t("wishlist.addMissingModalTitle")}</h2>
+            <p className="mt-1 text-sm text-gray-400">{t("wishlist.addMissingModalSubtitle")}</p>
+            <div className="mt-4 space-y-2">
+              <label className="flex cursor-pointer items-center gap-2 rounded border border-gray-700 px-3 py-2 text-sm text-gray-200 hover:bg-gray-800">
+                <input
+                  type="radio"
+                  name="add-missing-set"
+                  value=""
+                  checked={addMissingSetCode === ""}
+                  onChange={() => setAddMissingSetCode("")}
+                  className="accent-emerald-500"
+                />
+                <span>{t("cards.allSets")}</span>
+              </label>
+              {sets.map((set) => (
+                <label
+                  key={set.code}
+                  className="flex cursor-pointer items-center gap-2 rounded border border-gray-700 px-3 py-2 text-sm text-gray-200 hover:bg-gray-800"
+                >
+                  <input
+                    type="radio"
+                    name="add-missing-set"
+                    value={set.code}
+                    checked={addMissingSetCode === set.code}
+                    onChange={() => setAddMissingSetCode(set.code)}
+                    className="accent-emerald-500"
+                  />
+                  <span>{formatSetWithCode(set.code)}</span>
+                </label>
+              ))}
+            </div>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddMissingModalOpen(false)}
+                disabled={addingMissing}
+                className="rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-200 hover:bg-gray-700 disabled:opacity-50"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={handleAddMissingToWishlist}
+                disabled={addingMissing}
+                className="rounded border border-emerald-600/60 bg-emerald-900/30 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-800/30 disabled:opacity-50"
+              >
+                {addingMissing ? t("wishlist.addingMissingButtonLoading") : t("wishlist.addMissingModalConfirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isClearWishlistModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+          onClick={() => setIsClearWishlistModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-gray-700 bg-gray-900 p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold text-white">{t("wishlist.clearButton")}</h2>
+            <p className="mt-1 text-sm text-gray-400">{t("wishlist.clearConfirm")}</p>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsClearWishlistModalOpen(false)}
+                disabled={clearingWishlist}
+                className="rounded border border-gray-600 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-200 hover:bg-gray-700 disabled:opacity-50"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={handleClearWishlist}
+                disabled={clearingWishlist}
+                className="rounded border border-red-700/60 bg-red-900/25 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-900/40 disabled:opacity-50"
+              >
+                {clearingWishlist ? t("wishlist.clearingButtonLoading") : t("wishlist.clearButton")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="sticky top-0 z-20 border-b border-gray-700 bg-gray-900 sm:top-[100px]">
         <div className="mx-auto w-full max-w-[1600px] px-4 py-3 sm:px-6 lg:px-10 xl:px-12">
-          <div className="mb-3 hidden items-center gap-2 sm:flex">
+          <div className="mb-1 hidden items-center gap-2 sm:flex">
             <div className="relative min-w-0 flex-1">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden>
                 <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
@@ -414,6 +547,28 @@ export default function WishlistPage() {
                       </button>
                     ))}
                   </div>
+                  {collectionStatus === "owned" && (
+                    <div className="mt-3 min-w-[280px] max-w-md">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                            {t("collection.ownedGreaterThanLabel")}
+                          </span>
+                          <span className="text-xs tabular-nums text-gray-400">{ownedQtyThreshold}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={OWNED_QTY_BOUNDS.min}
+                          max={OWNED_QTY_BOUNDS.max}
+                          step={1}
+                          value={ownedQtyThreshold}
+                          onChange={(e) => setOwnedQtyThreshold(Number(e.target.value))}
+                          className="h-2 w-full appearance-none rounded-full bg-gray-700 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-amber-500 [&::-webkit-slider-thumb]:bg-gray-800 [&::-webkit-slider-thumb]:shadow [&::-webkit-slider-thumb]:-mt-1 [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-amber-500 [&::-moz-range-thumb]:bg-gray-800 [&::-moz-range-thumb]:cursor-pointer"
+                          aria-label={t("collection.ownedGreaterThanLabel")}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="hidden h-10 w-px shrink-0 self-end bg-gray-700 sm:block" />
                 <div className="shrink-0">

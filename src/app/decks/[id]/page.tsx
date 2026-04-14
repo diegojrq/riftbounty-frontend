@@ -402,6 +402,28 @@ function getNextPicker(deck: Deck, t: DeckValidationTranslate): PickerMode {
   return "rune";
 }
 
+function isDeckCompletionValid(deck: Deck): boolean {
+  const mainC = deck.mainItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
+  const runeC = deck.runeItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
+  const bfsLen = deck.battlefields?.length ?? 0;
+  const bfsOk = bfsLen === 3 && deck.battlefields?.every((b) => b.card ?? b.cardId);
+  const hasLegend = !!(deck.legendCard ?? deck.legend);
+  const hasChampion = !!(deck.championCard ?? deck.champion);
+  const structurallyComplete = mainC === 39 && runeC === 12 && bfsOk && hasLegend && hasChampion;
+  const noErrors = rawDeckValidationErrors(deck.validation).length === 0;
+  const noWarnings = rawDeckValidationWarnings(deck.validation).length === 0;
+  const validationValid = deck.validation?.valid === true;
+  const noClientCopyOverflow = !hasMainSideboardCopyOverflow(deck);
+  const noBannedCards = bannedCardNamesInDeck(deck).length === 0;
+  return (
+    noBannedCards &&
+    noErrors &&
+    noWarnings &&
+    (validationValid || structurallyComplete) &&
+    noClientCopyOverflow
+  );
+}
+
 const VALID_DOMAIN_SLUGS = new Set(["fury", "calm", "mind", "body", "chaos", "order"]);
 const UNIT_ICON = "/images/types/unit.webp";
 const BATTLEFIELD_ICON = "/images/types/battlefields.webp";
@@ -490,6 +512,7 @@ export default function DeckBuilderPage() {
   const [pickerDomains, setPickerDomains] = useState<string[]>([]); // main: multi
   const [pickerType, setPickerType] = useState<string | undefined>(undefined);
   const [pickerAbilities, setPickerAbilities] = useState<string[]>([]);
+  const [pickerFiltersOpen, setPickerFiltersOpen] = useState(true);
   const [cardSearchQuery, setCardSearchQuery] = useState("");
   const [showValidModal, setShowValidModal] = useState(false);
   const [onlyInCollection, setOnlyInCollection] = useState(false);
@@ -697,24 +720,7 @@ export default function DeckBuilderPage() {
   // Opens the modal only when deck transitions from invalid → valid during editing
   useEffect(() => {
     if (!deck) return;
-    const mainC = deck.mainItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
-    const runeC = deck.runeItems?.reduce((s, i) => s + i.quantity, 0) ?? 0;
-    const bfsLen = deck.battlefields?.length ?? 0;
-    const bfsOk = bfsLen === 3 && deck.battlefields?.every((b) => b.card ?? b.cardId);
-    const hasLegend = !!(deck.legendCard ?? deck.legend);
-    const hasChampion = !!(deck.championCard ?? deck.champion);
-    const structurallyComplete = mainC === 39 && runeC === 12 && bfsOk && hasLegend && hasChampion;
-    const noErrors = rawDeckValidationErrors(deck.validation).length === 0;
-    const noWarnings = rawDeckValidationWarnings(deck.validation).length === 0;
-    const validationValid = deck.validation?.valid === true;
-    const noClientCopyOverflow = !hasMainSideboardCopyOverflow(deck);
-    const noBannedCards = bannedCardNamesInDeck(deck).length === 0;
-    const isValid =
-      noBannedCards &&
-      noErrors &&
-      noWarnings &&
-      (validationValid || structurallyComplete) &&
-      noClientCopyOverflow;
+    const isValid = isDeckCompletionValid(deck);
     if (isValid && prevValidRef.current !== true) {
       setShowValidModal(true);
     }
@@ -759,10 +765,16 @@ export default function DeckBuilderPage() {
       try {
         const updated = await setChampion(deck.id, getCardId(card));
         setDeck(updated);
-        const next = getNextPicker(updated, t);
-        setPicker(next);
-        if (next === "battlefields") setBattlefieldSlotBeingEdited(null);
-        setMobilePickerOpen(false);
+        const completed = isDeckCompletionValid(updated);
+        if (completed) {
+          setMobilePickerOpen(false);
+          setShowValidModal(true);
+        } else {
+          const next = getNextPicker(updated, t);
+          setPicker(next);
+          if (next === "battlefields") setBattlefieldSlotBeingEdited(null);
+          setMobilePickerOpen(false);
+        }
 
         if (!(deck.name?.trim())) {
           const legendObj = updated.legendCard ?? updated.legend;
@@ -803,7 +815,13 @@ export default function DeckBuilderPage() {
       try {
         const updated = await addMainCard(deck.id, cid, 1);
         setDeck(updated);
-        setPicker(getNextPicker(updated, t));
+        const completed = isDeckCompletionValid(updated);
+        if (completed) {
+          setMobilePickerOpen(false);
+          setShowValidModal(true);
+        } else {
+          setPicker(getNextPicker(updated, t));
+        }
         restorePickerScroll();
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToAddCard"));
@@ -824,7 +842,13 @@ export default function DeckBuilderPage() {
       try {
         const updated = await addRuneCard(deck.id, getCardId(card), 1);
         setDeck(updated);
-        setPicker(getNextPicker(updated, t));
+        const completed = isDeckCompletionValid(updated);
+        if (completed) {
+          setMobilePickerOpen(false);
+          setShowValidModal(true);
+        } else {
+          setPicker(getNextPicker(updated, t));
+        }
         restorePickerScroll();
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToAddRune"));
@@ -864,9 +888,15 @@ export default function DeckBuilderPage() {
       try {
         const updated = await setBattlefield(deck.id, position, getCardId(card));
         setDeck(updated);
-        const next = getNextPicker(updated, t);
-        setPicker(next);
-        if (next !== "battlefields") setMobilePickerOpen(false);
+        const completed = isDeckCompletionValid(updated);
+        if (completed) {
+          setMobilePickerOpen(false);
+          setShowValidModal(true);
+        } else {
+          const next = getNextPicker(updated, t);
+          setPicker(next);
+          if (next !== "battlefields") setMobilePickerOpen(false);
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : t("decks.failedToSetBattlefield"));
       }
@@ -998,7 +1028,7 @@ export default function DeckBuilderPage() {
       {/* Modal deck válido */}
       {showValidModal && deck && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm"
           onClick={() => setShowValidModal(false)}
         >
           <div
@@ -1362,11 +1392,36 @@ export default function DeckBuilderPage() {
                         </p>
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setPickerFiltersOpen((v) => !v)}
+                      className="ml-auto inline-flex items-center gap-1.5 rounded border border-gray-600 bg-gray-800 px-2.5 py-1.5 text-xs text-gray-200 hover:bg-gray-700"
+                      aria-expanded={pickerFiltersOpen}
+                    >
+                      {pickerFiltersOpen ? t("decks.closeFilters") : t("decks.openFilters")}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                        className={`transition-transform ${pickerFiltersOpen ? "rotate-180" : ""}`}
+                      >
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
                   </div>
 
-                  {/* Domain · Collection · Type — one row when applicable */}
-                  {(picker === "legend" || picker === "champion" || picker === "battlefields" || picker === "main" || picker === "rune" || picker === "sideboard") && (
-                    <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  {pickerFiltersOpen && (
+                    <>
+                      {/* Domain · Collection · Type — one row when applicable */}
+                      {(picker === "legend" || picker === "champion" || picker === "battlefields" || picker === "main" || picker === "rune" || picker === "sideboard") && (
+                        <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                       {/* Domain — not used for battlefields */}
                       {picker !== "battlefields" && (() => {
                         const isMultiDomain = picker === "main" || picker === "rune" || picker === "sideboard";
@@ -1481,14 +1536,16 @@ export default function DeckBuilderPage() {
                           </div>
                         </>
                       )}
-                    </div>
-                  )}
+                        </div>
+                      )}
 
-                  {/* Abilities — main and sideboard (GET /v1/abilities) */}
-                  {(picker === "main" || picker === "sideboard") && (
-                    <div className="mb-3">
-                      <AbilitiesFilter selected={pickerAbilities} onChange={setPickerAbilities} />
-                    </div>
+                      {/* Abilities — main and sideboard (GET /v1/abilities) */}
+                      {(picker === "main" || picker === "sideboard") && (
+                        <div className="mb-3">
+                          <AbilitiesFilter selected={pickerAbilities} onChange={setPickerAbilities} />
+                        </div>
+                      )}
+                    </>
                   )}
 
                   <div className="mb-3">

@@ -408,7 +408,7 @@ function CardsPageContent() {
 
       {/* Filter bar — sticky no desktop (só borda inferior azul; sombra forte subia e parecia “borda” no topo). No mobile o destaque vai pra barra fixa de baixo. */}
       <div
-        className={`sticky top-0 z-20 border-b border-t-0 bg-gray-900/95 backdrop-blur-sm sm:top-[86px] ${
+        className={`sticky top-0 z-20 border-b border-t-0 bg-gray-900/95 backdrop-blur-sm sm:top-[100px] ${
           hasActiveFilters
             ? "max-sm:border-gray-700 max-sm:shadow-[0_8px_20px_rgba(0,0,0,0.35)] sm:border-blue-500/50 sm:shadow-none"
             : "border-gray-700 shadow-[0_8px_20px_rgba(0,0,0,0.35)]"
@@ -416,7 +416,7 @@ function CardsPageContent() {
       >
         <div className="mx-auto w-full max-w-[1600px] px-4 py-3 sm:px-6 lg:px-10 xl:px-12">
 
-          <div className="mb-3 hidden items-center gap-2 sm:flex">
+          <div className="mb-0 hidden items-center gap-2 sm:flex">
             <div className="relative min-w-0 flex-1">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden>
                 <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>

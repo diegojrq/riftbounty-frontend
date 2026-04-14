@@ -69,10 +69,14 @@ export interface PublicCollectionItem {
 }
 
 /** Shared item used by wishlist and forSale in profile payloads */
+export type ForSalePriceMode = "numeric" | "liga_minus_percent" | "tcgplayer_minus_percent";
+
 export interface ProfileCardListItem {
   cardId: string;
   quantity: number;
   pricePerCard: number | null;
+  priceMode?: ForSalePriceMode;
+  pricePercent?: number | null;
   card: PublicProfileCard | null;
 }
 
