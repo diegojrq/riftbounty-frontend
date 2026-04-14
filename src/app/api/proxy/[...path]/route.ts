@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const getBackendUrl = () => {
-  const url = process.env.API_URL;
-  if (!url) throw new Error("API_URL not set");
+  const url = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL;
+  if (!url) throw new Error("API_URL or NEXT_PUBLIC_API_URL must be set");
   return url.replace(/\/$/, "");
 };
 

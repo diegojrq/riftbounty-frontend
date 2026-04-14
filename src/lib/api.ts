@@ -64,8 +64,8 @@ const buildUrl = (path: string): string => {
   if (typeof window !== "undefined") {
     return `/api/proxy/${pathNormalized}`;
   }
-  const base = (process.env.API_URL ?? "").replace(/\/$/, "");
-  if (!base) throw new Error("API_URL not set in .env.local");
+  const base = (process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+  if (!base) throw new Error("API_URL or NEXT_PUBLIC_API_URL must be set (server-side fetch).");
   return `${base}/${pathNormalized}`;
 };
 
