@@ -17,7 +17,8 @@ import { useCards } from "@/lib/cards-context";
 import { useRiotCatalogSets } from "@/lib/riot-catalog-sets-context";
 import type { PublicUser, MatchItem, OfferableItem, PublicProfileCard } from "@/types/auth";
 import type { Card } from "@/types/card";
-import { mergePublicProfileCardWithCatalog } from "@/lib/cards";
+import { getCardImageUrl, mergePublicProfileCardWithCatalog } from "@/lib/cards";
+import { CardImg } from "@/components/cards/CardImg";
 import { getCardId } from "@/lib/card-id";
 import { ApiClientError } from "@/lib/api";
 import { TradeDeclaredValueInput } from "@/components/trades/TradeDeclaredValueInput";
@@ -1532,12 +1533,7 @@ export default function PublicProfilePageClient() {
                                 id: item.cardId,
                               } as PublicProfileCard)
                             : null;
-                        const imageUrl =
-                          cached?.imageUrl ??
-                          cached?.image_url ??
-                          item.card?.imageUrl ??
-                          item.card?.image_url ??
-                          null;
+                        const thumbUrl = getCardImageUrl(previewCard);
                         const priceModeLabel =
                           item.priceMode && item.priceMode !== "numeric"
                             ? t("forSale.priceModeLabel")
@@ -1557,9 +1553,13 @@ export default function PublicProfilePageClient() {
                           >
                             <CardHoverPreview card={previewCard}>
                               <div className="relative aspect-[2.5/3.5] w-full overflow-hidden bg-gray-800">
-                                {imageUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={imageUrl} alt={item.card?.name ?? item.cardId} className="h-full w-full object-cover" />
+                                {thumbUrl ? (
+                                  <CardImg
+                                    src={thumbUrl}
+                                    alt={item.card?.name ?? item.cardId}
+                                    className="h-full w-full object-cover"
+                                    skeleton={false}
+                                  />
                                 ) : (
                                   <div className="flex h-full items-center justify-center text-xs text-gray-500">{item.cardId}</div>
                                 )}
@@ -1653,12 +1653,7 @@ export default function PublicProfilePageClient() {
                                 id: item.cardId,
                               } as PublicProfileCard)
                             : null;
-                        const imageUrl =
-                          cached?.imageUrl ??
-                          cached?.image_url ??
-                          item.card?.imageUrl ??
-                          item.card?.image_url ??
-                          null;
+                        const thumbUrl = getCardImageUrl(previewCard);
                         return (
                           <li
                             key={`${publicTab}-${item.cardId}`}
@@ -1666,9 +1661,13 @@ export default function PublicProfilePageClient() {
                           >
                             <CardHoverPreview card={previewCard}>
                               <div className="relative aspect-[2.5/3.5] w-full overflow-hidden bg-gray-800">
-                                {imageUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={imageUrl} alt={item.card?.name ?? item.cardId} className="h-full w-full object-cover" />
+                                {thumbUrl ? (
+                                  <CardImg
+                                    src={thumbUrl}
+                                    alt={item.card?.name ?? item.cardId}
+                                    className="h-full w-full object-cover"
+                                    skeleton={false}
+                                  />
                                 ) : (
                                   <div className="flex h-full items-center justify-center text-xs text-gray-500">{item.cardId}</div>
                                 )}
