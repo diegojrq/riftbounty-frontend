@@ -5,6 +5,12 @@
 
 import { apiGet, apiPost, apiPatch, apiDelete } from "./api";
 import type { Card, CardsListResponse } from "@/types/card";
+import type {
+  LigaSyncRequest,
+  LigaSyncResponseData,
+  PriceDiffQuery,
+  PriceDiffResponseData,
+} from "@/types/admin-tcg-liga";
 
 const BASE = "admin/cards";
 
@@ -189,6 +195,40 @@ export async function runAdminTcgSync(): Promise<AdminTcgSyncSummary> {
   const res = await apiPost<AdminTcgSyncSummary>("admin/tcg/sync", {});
   return res.data;
 }
+
+const LIGA_SYNC_TIMEOUT_MS = 120_000;
+
+/** POST /v1/admin/tcg/liga/sync — preços Liga (TCG vs fonte Liga) */
+export async function runAdminLigaSync(body: LigaSyncRequest): Promise<LigaSyncResponseData> {
+  const res = await apiPost<LigaSyncResponseData>("admin/tcg/liga/sync", body, {
+    timeoutMs: LIGA_SYNC_TIMEOUT_MS,
+  });
+  return res.data;
+}
+
+/** GET /v1/admin/tcg/price-diff — ranking de diferenças Liga x TCG */
+export async function getAdminTcgPriceDiff(query: PriceDiffQuery): Promise<PriceDiffResponseData> {
+  const res = await apiGet<PriceDiffResponseData>("admin/tcg/price-diff", {
+    priceType: query.priceType,
+    sortMetric: query.sortMetric,
+    order: query.order,
+    limit: query.limit,
+    offset: query.offset,
+    ...(query.set ? { set: query.set } : {}),
+  });
+  if (!res.data) {
+    throw new Error("Empty price-diff response");
+  }
+  return res.data;
+}
+
+export type {
+  LigaSyncRequest,
+  LigaSyncResponseData,
+  PriceDiffItem,
+  PriceDiffQuery,
+  PriceDiffResponseData,
+} from "@/types/admin-tcg-liga";
 
 /** POST /v1/admin/catalog-version/bump — incrementa versão do catálogo e invalida cache no backend */
 export async function bumpAdminCatalogVersion(): Promise<AdminCatalogVersionBumpResponse> {

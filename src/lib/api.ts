@@ -10,6 +10,9 @@ import type { ApiSuccess } from "@/types/api";
 
 const DEFAULT_TIMEOUT_MS = 10000;
 
+/** Opções de fetch; `timeoutMs` é consumido pelo cliente e não é enviado ao `fetch`. */
+export type ApiClientOptions = RequestInit & { timeoutMs?: number };
+
 export interface ApiFieldError {
   path: string;
   code?: string;
@@ -71,15 +74,17 @@ const buildUrl = (path: string): string => {
 
 export async function apiClient<T>(
   path: string,
-  options: RequestInit = {}
+  options: ApiClientOptions = {}
 ): Promise<ApiSuccess<T>> {
   const url = buildUrl(path);
+  const { timeoutMs: timeoutOverride, ...fetchOptions } = options;
+  const timeoutMs = timeoutOverride ?? DEFAULT_TIMEOUT_MS;
 
   const token = typeof window !== "undefined" ? getToken() : null;
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     "Accept-Language": getLocale(),
-    ...options.headers,
+    ...fetchOptions.headers,
   };
   if (token) {
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
@@ -90,13 +95,13 @@ export async function apiClient<T>(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url, {
-      ...options,
+      ...fetchOptions,
       headers,
-      signal: options.signal ?? controller.signal,
+      signal: fetchOptions.signal ?? controller.signal,
     });
     clearTimeout(timeoutId);
 
@@ -155,7 +160,7 @@ export async function apiClient<T>(
 export async function apiPost<T>(
   path: string,
   data: unknown,
-  options: RequestInit = {}
+  options: ApiClientOptions = {}
 ): Promise<ApiSuccess<T>> {
   return apiClient<T>(path, {
     ...options,
@@ -245,15 +250,18 @@ export async function apiPostMultipart<T>(path: string, formData: FormData): Pro
 /** GET; params with undefined/empty values are omitted */
 export async function apiGet<T>(
   path: string,
-  params?: Record<string, string | number | boolean | undefined>
+  params?: Record<string, string | number | boolean | undefined>,
+  options?: ApiClientOptions
 ): Promise<ApiSuccess<T>> {
-  if (!params) return apiClient<T>(path);
   const search = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== "") search.set(k, String(v));
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") search.set(k, String(v));
+    }
   }
   const qs = search.toString();
-  return apiClient<T>(qs ? `${path}?${qs}` : path);
+  const url = qs ? `${path}?${qs}` : path;
+  return apiClient<T>(url, options ?? {});
 }
 
 /** DELETE */

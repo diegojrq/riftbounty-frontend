@@ -13,6 +13,7 @@ export default function AdminHomePage() {
     { href: "/admin/communities", titleKey: "admin.homeCommunitiesTitle", descKey: "admin.homeCommunitiesDesc" },
     { href: "/admin/cards", titleKey: "admin.homeCardsTitle", descKey: "admin.homeCardsDesc" },
     { href: "/admin/tcg-sync", titleKey: "admin.homeTcgTitle", descKey: "admin.homeTcgDesc" },
+    { href: "/admin/liga-pricing", titleKey: "admin.homeLigaPricingTitle", descKey: "admin.homeLigaPricingDesc" },
     { href: "/admin/catalog-bump", titleKey: "admin.homeBumpTitle", descKey: "admin.homeBumpDesc" },
     { href: "/admin/catalog-load", titleKey: "admin.homeLoadTitle", descKey: "admin.homeLoadDesc" },
     { href: "/admin/reconcile-images", titleKey: "admin.homeReconcileTitle", descKey: "admin.homeReconcileDesc" },

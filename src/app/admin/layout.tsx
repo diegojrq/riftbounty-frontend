@@ -41,6 +41,11 @@ export default function AdminLayout({
     { href: "/admin", labelKey: "admin.navHome", match: (p) => p === "/admin" },
     { href: "/admin/cards", labelKey: "admin.navCards", match: (p) => p.startsWith("/admin/cards") },
     { href: "/admin/tcg-sync", labelKey: "admin.navTcg", match: (p) => p.startsWith("/admin/tcg-sync") },
+    {
+      href: "/admin/liga-pricing",
+      labelKey: "admin.navLigaPricing",
+      match: (p) => p.startsWith("/admin/liga-pricing"),
+    },
     { href: "/admin/catalog-bump", labelKey: "admin.navBump", match: (p) => p.startsWith("/admin/catalog-bump") },
     { href: "/admin/catalog-load", labelKey: "admin.navLoad", match: (p) => p.startsWith("/admin/catalog-load") },
     { href: "/admin/reconcile-images", labelKey: "admin.navReconcile", match: (p) => p.startsWith("/admin/reconcile-images") },
