@@ -648,6 +648,7 @@ export default function WishlistPage() {
                       wrapperElement="div"
                       card={card}
                       showTcgPriceChip
+                      priceChipMode="ptbr-liga-fallback-tcg"
                       inCollection={card.inWishlist}
                       quantity={card.wishlistQty}
                       showCollectionActions

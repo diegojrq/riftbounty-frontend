@@ -71,6 +71,15 @@ export interface Card {
   tcgMarketPrice?: number | null;
   tcg_price_updated_at?: string | null;
   tcgPriceUpdatedAt?: string | null;
+  /** Liga prices in BRL. API pode enviar snake_case ou camelCase. */
+  liga_min_price?: number | string | null;
+  ligaMinPrice?: number | string | null;
+  liga_mid_price?: number | string | null;
+  ligaMidPrice?: number | string | null;
+  liga_max_price?: number | string | null;
+  ligaMaxPrice?: number | string | null;
+  liga_price_updated_at?: string | null;
+  ligaPriceUpdatedAt?: string | null;
   /** Ex.: `[{ "id": "new", "label": "New" }]` — usado para chips na UI. */
   flags?: CardFlag[];
   /** Banida para jogo (equivale a bannedAt != null no backend). */

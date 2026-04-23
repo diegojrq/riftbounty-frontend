@@ -30,6 +30,10 @@ interface CardTileProps {
   battlefieldAsLandscape?: boolean;
   /** Show TCG market chip on top-right (used on cards/collection pages). */
   showTcgPriceChip?: boolean;
+  /** Price chip strategy for pages that can prefer Liga in PT-BR. */
+  priceChipMode?: "tcg-only" | "ptbr-liga-fallback-tcg";
+  /** Show source tooltip on price chip hover. */
+  showPriceChipSourceTooltip?: boolean;
   /** Keys of active add animations (one element rendered per key, allows stacking) */
   addKeys?: string[];
   /** Keys of active remove animations (one element rendered per key, allows stacking) */
@@ -74,7 +78,7 @@ function parseTcgPrice(value: unknown): number | null {
 }
 
 /** Mesma prioridade que CollectionStats.getCardTcgPrice (market → mid → low → high). */
-function getChipPrice(card: Card): number | null {
+function getTcgChipPrice(card: Card): number | null {
   const market = parseTcgPrice(card.tcgMarketPrice ?? card.tcg_market_price);
   const mid = parseTcgPrice(card.tcgMidPrice ?? card.tcg_mid_price);
   const low = parseTcgPrice(card.tcgLowPrice ?? card.tcg_low_price);
@@ -82,10 +86,17 @@ function getChipPrice(card: Card): number | null {
   return market ?? mid ?? low ?? high;
 }
 
-function formatUsd(value: number): string {
-  return new Intl.NumberFormat("en-US", {
+function getLigaChipPrice(card: Card): number | null {
+  const mid = parseTcgPrice(card.ligaMidPrice ?? card.liga_mid_price);
+  const low = parseTcgPrice(card.ligaMinPrice ?? card.liga_min_price);
+  const high = parseTcgPrice(card.ligaMaxPrice ?? card.liga_max_price);
+  return mid ?? low ?? high;
+}
+
+function formatCurrency(value: number, currency: "USD" | "BRL", locale: "en-US" | "pt-BR"): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
-    currency: "USD",
+    currency,
     maximumFractionDigits: 2,
   }).format(value);
 }
@@ -104,12 +115,14 @@ export function CardTile({
   wrapperElement = "li",
   battlefieldAsLandscape = false,
   showTcgPriceChip = false,
+  priceChipMode = "tcg-only",
+  showPriceChipSourceTooltip = false,
   addKeys = [],
   removeKeys = [],
   onAdd,
   onDecrease,
 }: CardTileProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const displayName = getCardDisplayName(card);
   const qty = Number(quantity ?? card.collectionQuantity ?? 0);
   const canDecrease = inCollection && qty >= 1;
@@ -128,7 +141,14 @@ export function CardTile({
 
   const cardImageUrl = getCardImageUrl(card);
   const showCardImage = !!cardImageUrl && !SUPPRESS_CARD_IMAGES;
-  const tcgChipPrice = showTcgPriceChip ? getChipPrice(card) : null;
+  const tcgChipPrice = showTcgPriceChip ? getTcgChipPrice(card) : null;
+  const ligaChipPrice = showTcgPriceChip ? getLigaChipPrice(card) : null;
+  const shouldPreferLiga = priceChipMode === "ptbr-liga-fallback-tcg" && locale === "pt-BR";
+  const chipPrice = shouldPreferLiga ? ligaChipPrice : tcgChipPrice;
+  const chipCurrency: "USD" | "BRL" = shouldPreferLiga ? "BRL" : "USD";
+  const chipLocale: "en-US" | "pt-BR" = locale === "pt-BR" ? "pt-BR" : "en-US";
+  const chipSourceTooltip =
+    shouldPreferLiga && chipPrice != null ? "Preço na Liga" : chipPrice != null ? "TCGPlayer price" : undefined;
 
   const imageNode = showCardImage ? (
     isLandscape ? (
@@ -171,10 +191,13 @@ export function CardTile({
     >
       {showNewFlag && <CardNewFlagChip />}
       {card.banned && <CardBannedBadge />}
-      {tcgChipPrice != null && !showCollectionActions && (
+      {chipPrice != null && !showCollectionActions && (
         <div className="pointer-events-none absolute bottom-2 left-2 z-30">
-          <span className="inline-flex items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2.5 py-1 text-xs font-bold italic text-emerald-50 shadow-md">
-            {formatUsd(tcgChipPrice)}
+          <span
+            className="inline-flex items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2.5 py-1 text-xs font-bold italic text-emerald-50 shadow-md"
+            title={showPriceChipSourceTooltip ? chipSourceTooltip : undefined}
+          >
+            {formatCurrency(chipPrice, chipCurrency, chipLocale)}
           </span>
         </div>
       )}
@@ -257,11 +280,14 @@ export function CardTile({
                     </button>
                   </div>
                 </div>
-                {(collectorNumber || tcgChipPrice != null) && (
+                {(collectorNumber || chipPrice != null) && (
                   <div className="flex items-center justify-between gap-1">
-                    {tcgChipPrice != null ? (
-                      <span className="inline-flex h-9 items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2 text-xs font-bold italic text-emerald-50 shadow-md">
-                        {formatUsd(tcgChipPrice)}
+                    {chipPrice != null ? (
+                      <span
+                        className="inline-flex h-9 items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2 text-xs font-bold italic text-emerald-50 shadow-md"
+                        title={showPriceChipSourceTooltip ? chipSourceTooltip : undefined}
+                      >
+                        {formatCurrency(chipPrice, chipCurrency, chipLocale)}
                       </span>
                     ) : (
                       <span />
@@ -338,11 +364,14 @@ export function CardTile({
                     </button>
                   </div>
                 </div>
-                {(collectorNumber || tcgChipPrice != null) && (
+                {(collectorNumber || chipPrice != null) && (
                   <div className="flex items-center justify-between gap-1">
-                    {tcgChipPrice != null ? (
-                      <span className="inline-flex h-9 items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2 text-xs font-bold italic text-emerald-50 shadow-md">
-                        {formatUsd(tcgChipPrice)}
+                    {chipPrice != null ? (
+                      <span
+                        className="inline-flex h-9 items-center rounded-md border border-emerald-300/70 bg-emerald-600/70 px-2 text-xs font-bold italic text-emerald-50 shadow-md"
+                        title={showPriceChipSourceTooltip ? chipSourceTooltip : undefined}
+                      >
+                        {formatCurrency(chipPrice, chipCurrency, chipLocale)}
                       </span>
                     ) : (
                       <span />

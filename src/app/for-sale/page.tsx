@@ -757,6 +757,8 @@ export default function ForSalePage() {
                       wrapperElement="div"
                       card={card}
                       showTcgPriceChip
+                      priceChipMode="ptbr-liga-fallback-tcg"
+                      showPriceChipSourceTooltip
                       inCollection={card.inForSale}
                       quantity={card.forSaleQty}
                       showCollectionActions

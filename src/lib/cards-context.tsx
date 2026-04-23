@@ -91,6 +91,22 @@ async function fetchAllCards(): Promise<Card[]> {
   return normalizeCatalogCards(items);
 }
 
+function cacheHasLigaFields(cards: Card[]): boolean {
+  if (!cards.length) return true;
+  return cards.some((card) => {
+    const withCamel = card as Card & { ligaMinPrice?: unknown; ligaMidPrice?: unknown; ligaMaxPrice?: unknown };
+    const withSnake = card as Card & { liga_min_price?: unknown; liga_mid_price?: unknown; liga_max_price?: unknown };
+    return (
+      withCamel.ligaMinPrice !== undefined ||
+      withCamel.ligaMidPrice !== undefined ||
+      withCamel.ligaMaxPrice !== undefined ||
+      withSnake.liga_min_price !== undefined ||
+      withSnake.liga_mid_price !== undefined ||
+      withSnake.liga_max_price !== undefined
+    );
+  });
+}
+
 export function CardsProvider({ children }: { children: React.ReactNode }) {
   // Sempre inicia vazio para garantir que SSR e cliente renderizem o mesmo HTML inicial
   const [cards, setCards] = useState<Card[]>([]);
@@ -115,11 +131,12 @@ export function CardsProvider({ children }: { children: React.ReactNode }) {
 
     // Verifica versão no backend (chamada leve)
     const backendVersion = await fetchCatalogVersion();
+    const cacheNeedsLigaMigration = !!cached && !cacheHasLigaFields(cached.cards);
     const versionMismatch =
       backendVersion !== null && cached?.version !== backendVersion;
 
     // Cache ainda válido: TTL ok e versão bate
-    if (!force && cached && !isCacheStale() && !versionMismatch) {
+    if (!force && cached && !isCacheStale() && !versionMismatch && !cacheNeedsLigaMigration) {
       setLoading(false);
       return;
     }

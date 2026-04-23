@@ -125,7 +125,7 @@ export function Header() {
   const [decksNavOpen, setDecksNavOpen] = useState(false);
   const decksNavRef = useRef<HTMLDivElement>(null);
 
-  const decksSectionActive = pathname.startsWith("/decks");
+  const decksSectionActive = pathname.startsWith("/decks") || pathname.startsWith("/play");
 
   const guardedNav = useCallback((e: React.MouseEvent, href: string) => {
     if (!user) {
@@ -343,6 +343,17 @@ export function Header() {
                     >
                       {t("nav.preconDecks")}
                     </Link>
+                    <Link
+                      href="/play"
+                      role="menuitem"
+                      onClick={(e) => {
+                        guardedNav(e, "/play");
+                        setDecksNavOpen(false);
+                      }}
+                      className="block px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-emerald-300/95 hover:bg-gray-800 hover:text-emerald-200"
+                    >
+                      {t("nav.playOnline")}
+                    </Link>
                   </div>
                 )}
               </div>
@@ -546,6 +557,16 @@ export function Header() {
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" x2="12" y1="22.08" y2="12"/></svg>
                   {t("nav.preconDecks")}
+                </Link>
+                <Link
+                  href="/play"
+                  onClick={(e) => guardedNav(e, "/play")}
+                  className={`flex items-center gap-3 px-4 py-3 pl-8 text-sm font-medium uppercase hover:bg-gray-800 hover:text-white ${
+                    pathname.startsWith("/play") ? "bg-gray-800 text-emerald-200" : "text-emerald-400"
+                  }`}
+                >
+                  <IconDecks />
+                  {t("nav.playOnline")}
                 </Link>
               </div>
               <Link
