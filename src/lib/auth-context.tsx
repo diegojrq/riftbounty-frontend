@@ -76,8 +76,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = useCallback(async () => {
     try {
       const data = await getProfile();
-      setUser(data);
-      setStoredUser(data);
+      const stored = getStoredUser();
+      const merged: User = {
+        ...data,
+        role: data.role !== undefined && data.role !== null ? data.role : stored?.role,
+      };
+      setUser(merged);
+      setStoredUser(merged);
     } catch {
       // keep current user on failure
     }

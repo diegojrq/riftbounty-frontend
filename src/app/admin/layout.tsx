@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/lib/locale-context";
 
@@ -16,20 +16,31 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
+  const { user, loading, refreshUser } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useLocale();
+  const [profileChecked, setProfileChecked] = useState(false);
 
   useEffect(() => {
     if (loading) return;
+    let cancelled = false;
+    void refreshUser().finally(() => {
+      if (!cancelled) setProfileChecked(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, refreshUser]);
+
+  useEffect(() => {
+    if (!profileChecked) return;
     if (!user || user.role !== "admin") {
       router.replace("/");
-      return;
     }
-  }, [user, loading, router]);
+  }, [user, profileChecked, router]);
 
-  if (loading || !user || user.role !== "admin") {
+  if (loading || !profileChecked || !user || user.role !== "admin") {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <p className="text-gray-500">{t("common.loading")}</p>
