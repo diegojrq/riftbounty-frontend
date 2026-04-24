@@ -1,15 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocale } from "@/lib/locale-context";
-import { runAdminTcgSync, type AdminTcgSyncSummary } from "@/lib/admin";
+import {
+  getAdminSyncJob,
+  runAdminTcgSync,
+  tickAdminSyncJob,
+  type AdminSyncJob,
+  type AdminTcgSyncSummary,
+} from "@/lib/admin";
 
 export default function AdminTcgSyncPage() {
   const { t } = useLocale();
   const [syncRunning, setSyncRunning] = useState(false);
   const [syncSummary, setSyncSummary] = useState<AdminTcgSyncSummary | null>(null);
+  const [job, setJob] = useState<AdminSyncJob | null>(null);
+  const lastJobStatusRef = useRef<string | null>(null);
+  const tickInFlightRef = useRef(false);
 
   const formatGroupErrors = (errors: unknown[]): string => {
     return errors
@@ -28,9 +37,11 @@ export default function AdminTcgSyncPage() {
     if (syncRunning) return;
     setSyncRunning(true);
     try {
-      const result = await runAdminTcgSync();
-      setSyncSummary(result);
-      toast.success(t("admin.tcgSyncSuccess"));
+      const queuedJob = await runAdminTcgSync();
+      lastJobStatusRef.current = null;
+      tickInFlightRef.current = false;
+      setJob(queuedJob);
+      toast.success("Job de sync enfileirado.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.toLowerCase().includes("already running")) {
@@ -44,6 +55,44 @@ export default function AdminTcgSyncPage() {
       setSyncRunning(false);
     }
   };
+
+  useEffect(() => {
+    if (!job?.id) return;
+    if (job.status === "completed" || job.status === "failed") return;
+
+    const timer = window.setInterval(() => {
+      void (async () => {
+        if (tickInFlightRef.current) return;
+        tickInFlightRef.current = true;
+        try {
+          const afterTick = await tickAdminSyncJob(job.id);
+          setJob(afterTick);
+
+          const prev = lastJobStatusRef.current;
+          lastJobStatusRef.current = afterTick.status;
+
+          if (prev !== "completed" && afterTick.status === "completed") {
+            const result = (afterTick.result ?? null) as AdminTcgSyncSummary | null;
+            if (result) setSyncSummary(result);
+            toast.success(t("admin.tcgSyncSuccess"));
+          } else if (prev !== "failed" && afterTick.status === "failed") {
+            toast.error(afterTick.errorMessage || t("admin.tcgSyncError"));
+          }
+        } catch {
+          try {
+            const next = await getAdminSyncJob(job.id);
+            setJob(next);
+          } catch {
+            // ignore
+          }
+        } finally {
+          tickInFlightRef.current = false;
+        }
+      })();
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [job?.id, job?.status, t]);
 
   return (
     <div className="space-y-8">
@@ -76,6 +125,12 @@ export default function AdminTcgSyncPage() {
           )}
           {syncRunning ? t("admin.tcgSyncRunning") : t("admin.tcgSyncButton")}
         </button>
+        {job && (
+          <p className="mt-3 text-xs text-gray-400">
+            Job: <span className="font-mono">{job.id}</span> — status:{" "}
+            <span className="uppercase">{job.status}</span> ({job.attempts}/{job.maxAttempts})
+          </p>
+        )}
       </div>
 
       {syncSummary && (

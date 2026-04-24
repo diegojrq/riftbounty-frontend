@@ -34,6 +34,23 @@ export interface AdminTcgSyncSummary {
   remainingWithoutProductId: number;
 }
 
+export interface AdminSyncJob {
+  id: string;
+  jobType: "tcg_sync" | "liga_sync";
+  status: "pending" | "running" | "completed" | "failed";
+  payload: Record<string, unknown>;
+  progress: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  errorMessage: string | null;
+  attempts: number;
+  maxAttempts: number;
+  nextRunAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AdminCatalogVersionBumpResponse {
   version: string | number;
 }
@@ -191,18 +208,36 @@ export async function listAdminAttributes(): Promise<AdminRefItem[]> {
 }
 
 /** POST /v1/admin/tcg/sync — executa match + atualização de preços TCG */
-export async function runAdminTcgSync(): Promise<AdminTcgSyncSummary> {
-  const res = await apiPost<AdminTcgSyncSummary>("admin/tcg/sync", {});
+export async function runAdminTcgSync(): Promise<AdminSyncJob> {
+  const res = await apiPost<AdminSyncJob>("admin/tcg/sync", {});
   return res.data;
 }
 
 const LIGA_SYNC_TIMEOUT_MS = 120_000;
 
 /** POST /v1/admin/tcg/liga/sync — preços Liga (TCG vs fonte Liga) */
-export async function runAdminLigaSync(body: LigaSyncRequest): Promise<LigaSyncResponseData> {
-  const res = await apiPost<LigaSyncResponseData>("admin/tcg/liga/sync", body, {
+export async function runAdminLigaSync(body: LigaSyncRequest): Promise<AdminSyncJob> {
+  const res = await apiPost<AdminSyncJob>("admin/tcg/liga/sync", body, {
     timeoutMs: LIGA_SYNC_TIMEOUT_MS,
   });
+  return res.data;
+}
+
+/** GET /v1/admin/sync/jobs/:id */
+export async function getAdminSyncJob(jobId: string): Promise<AdminSyncJob> {
+  const res = await apiGet<AdminSyncJob>(`admin/sync/jobs/${encodeURIComponent(jobId)}`);
+  return res.data;
+}
+
+const ADMIN_SYNC_TICK_TIMEOUT_MS = 120_000;
+
+/** POST /v1/admin/sync/jobs/:id/tick — processa um chunk do job (runner via browser) */
+export async function tickAdminSyncJob(jobId: string): Promise<AdminSyncJob> {
+  const res = await apiPost<AdminSyncJob>(
+    `admin/sync/jobs/${encodeURIComponent(jobId)}/tick`,
+    {},
+    { timeoutMs: ADMIN_SYNC_TICK_TIMEOUT_MS }
+  );
   return res.data;
 }
 

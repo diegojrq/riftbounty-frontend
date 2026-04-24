@@ -4,8 +4,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
+  getAdminSyncJob,
   getAdminTcgPriceDiff,
   runAdminLigaSync,
+  tickAdminSyncJob,
+  type AdminSyncJob,
   type LigaSyncResponseData,
   type PriceDiffResponseData,
 } from "@/lib/admin";
@@ -56,6 +59,9 @@ export default function AdminLigaPricingPage() {
 
   const [syncRunning, setSyncRunning] = useState(false);
   const [syncSummary, setSyncSummary] = useState<LigaSyncResponseData | null>(null);
+  const [job, setJob] = useState<AdminSyncJob | null>(null);
+  const lastJobStatusRef = useRef<string | null>(null);
+  const tickInFlightRef = useRef(false);
 
   const [priceType, setPriceType] = useState<"low" | "mid" | "high">("mid");
   const [sortMetric, setSortMetric] = useState<"absolute" | "signed">("absolute");
@@ -139,11 +145,10 @@ export default function AdminLigaPricingPage() {
         dryRun: opts.dryRun,
       };
       const result = await runAdminLigaSync(body);
-      setSyncSummary(result);
-      toast.success(
-        opts.dryRun ? t("admin.ligaPricingSyncSuccessDry") : t("admin.ligaPricingSyncSuccessReal")
-      );
-      void refetchPriceDiff();
+      lastJobStatusRef.current = null;
+      tickInFlightRef.current = false;
+      setJob(result);
+      toast.success("Job de sync enfileirado.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("403") || msg.toLowerCase().includes("admin")) {
@@ -155,6 +160,49 @@ export default function AdminLigaPricingPage() {
       setSyncRunning(false);
     }
   };
+
+  useEffect(() => {
+    if (!job?.id) return;
+    if (job.status === "completed" || job.status === "failed") return;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        if (tickInFlightRef.current) return;
+        tickInFlightRef.current = true;
+        try {
+          const afterTick = await tickAdminSyncJob(job.id);
+          setJob(afterTick);
+
+          const prev = lastJobStatusRef.current;
+          lastJobStatusRef.current = afterTick.status;
+
+          if (prev !== "completed" && afterTick.status === "completed") {
+            const result = (afterTick.result ?? null) as LigaSyncResponseData | null;
+            if (result) {
+              setSyncSummary(result);
+              toast.success(
+                result.dryRun ? t("admin.ligaPricingSyncSuccessDry") : t("admin.ligaPricingSyncSuccessReal")
+              );
+            } else {
+              toast.success("Sync concluído.");
+            }
+            void refetchPriceDiff();
+          } else if (prev !== "failed" && afterTick.status === "failed") {
+            toast.error(afterTick.errorMessage || t("admin.ligaPricingSyncError"));
+          }
+        } catch {
+          try {
+            const next = await getAdminSyncJob(job.id);
+            setJob(next);
+          } catch {
+            // ignore
+          }
+        } finally {
+          tickInFlightRef.current = false;
+        }
+      })();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [job?.id, job?.status, refetchPriceDiff, t]);
 
   const handleSyncReal = () => {
     if (!window.confirm(t("admin.ligaPricingSyncRealConfirm"))) return;
@@ -252,6 +300,12 @@ export default function AdminLigaPricingPage() {
             {t("admin.ligaPricingSyncReal")}
           </button>
         </div>
+        {job && (
+          <p className="text-xs text-gray-500">
+            Job: <span className="font-mono">{job.id}</span> — status:{" "}
+            <span className="uppercase">{job.status}</span> ({job.attempts}/{job.maxAttempts})
+          </p>
+        )}
         <p className="text-xs text-gray-500">{t("admin.ligaPricingSyncHint")}</p>
       </section>
 
